@@ -24,9 +24,16 @@ from playground.types import Persona
 from playground.user_sim.prompt import render_persona_block
 
 
-def persona_system_prompt(persona: Persona, *, persona_yaml_path: str) -> str:
+def persona_system_prompt(
+    persona: Persona,
+    *,
+    persona_yaml_path: str,
+    persona_language: str | None = None,
+) -> str:
     persona_body = render_persona_block(
-        persona, persona_yaml_path=persona_yaml_path
+        persona,
+        persona_yaml_path=persona_yaml_path,
+        persona_language=persona_language,
     ).strip()
     if not persona_body:
         raise ValueError(f"empty persona render for yaml path: {persona_yaml_path}")
@@ -82,6 +89,7 @@ class InprocessSurveyEvalRunner:
         *,
         created_at: str,
         persona_yaml_path: str,
+        persona_language: str | None = None,
         on_event: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> SurveyEvalResult:
         config = config or SurveyEvalConfig()
@@ -92,7 +100,9 @@ class InprocessSurveyEvalRunner:
 
         task_prompt = build_survey_task_prompt(instrument=instrument)
         persona_prompt = persona_system_prompt(
-            persona, persona_yaml_path=persona_yaml_path
+            persona,
+            persona_yaml_path=persona_yaml_path,
+            persona_language=persona_language,
         )
         prompts = {
             "personaPrompt": persona_prompt,

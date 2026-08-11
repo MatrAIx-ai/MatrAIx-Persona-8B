@@ -13,6 +13,7 @@ from playground.harbor.chat_eval import (
     run_harbor_chat_eval_for_persona,
 )
 from playground.harbor.trial_events import TrialEventWriter
+from playground.user_sim.prompt import persona_language_scope
 from matraix.agents.persona.mixin import PersonaMixin
 
 
@@ -62,10 +63,11 @@ class PersonaUserSim(PersonaMixin, BaseAgent):
         def on_event(event: dict) -> None:
             event_writer.append(event)
 
-        result, session_id = await run_harbor_chat_eval_for_persona(
-            environment,
-            self._persona,
-            model_name=self.model_name,
-            on_event=on_event,
-        )
+        with persona_language_scope(self.effective_persona_language):
+            result, session_id = await run_harbor_chat_eval_for_persona(
+                environment,
+                self._persona,
+                model_name=self.model_name,
+                on_event=on_event,
+            )
         del result, session_id

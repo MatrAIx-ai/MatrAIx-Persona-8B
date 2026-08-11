@@ -205,6 +205,7 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
             created_at=created_at,
             on_event=on_event,
             persona_yaml_path=persona_yaml_path,
+            persona_language=self.effective_persona_language,
         )
         payload = _survey_result_payload(result)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as handle:

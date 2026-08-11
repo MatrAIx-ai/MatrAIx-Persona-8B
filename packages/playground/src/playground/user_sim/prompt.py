@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
+from matraix.persona_dimension_catalog import resolve_persona_language
 from playground.task_content_bundle import TaskContentBundle
 from playground.types import Persona
 
 _GUIDELINES_PATH = Path(__file__).resolve().parent / "sim_guidelines.md"
+_PERSONA_LANGUAGE_OVERRIDE: ContextVar[str | None] = ContextVar(
+    "playground_persona_language_override", default=None
+)
+
+
+@contextmanager
+def persona_language_scope(language: str | None) -> Iterator[None]:
+    """Apply one runtime persona language to all prompts in this task context."""
+    token = _PERSONA_LANGUAGE_OVERRIDE.set(language)
+    try:
+        yield
+    finally:
+        _PERSONA_LANGUAGE_OVERRIDE.reset(token)
 
 
 def load_sim_guidelines() -> str:
@@ -43,7 +59,18 @@ def _persona_context(persona: Persona) -> str:
     return "\n".join(parts)
 
 
-def render_persona_block(persona: Persona, *, persona_yaml_path: Optional[str] = None) -> str:
+def render_persona_block(
+    persona: Persona,
+    *,
+    persona_yaml_path: Optional[str] = None,
+    persona_language: Optional[str] = None,
+) -> str:
+    requested_language = (
+        persona_language
+        if persona_language is not None
+        else _PERSONA_LANGUAGE_OVERRIDE.get()
+    )
+    effective_language = resolve_persona_language(requested_language)
     if persona_yaml_path:
         try:
             from matraix.agents.persona.loader import load_persona
@@ -55,7 +82,9 @@ def render_persona_block(persona: Persona, *, persona_yaml_path: Optional[str] =
 
             loaded = load_persona(persona_yaml_path)
             template = resolve_persona_template(loaded, None, PERSONA_SYSTEM_TEMPLATE)
-            return render_persona_template(template, loaded).strip()
+            return render_persona_template(
+                template, loaded, language=effective_language
+            ).strip()
         except Exception:
             pass
     return _persona_context(persona)
