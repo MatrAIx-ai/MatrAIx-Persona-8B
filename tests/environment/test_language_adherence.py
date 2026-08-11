@@ -243,6 +243,90 @@ def test_unsupported_persona_language_is_reported_not_approximated() -> None:
     assert "language_match_rate" not in facets
 
 
+FEEDBACK = {
+    "needConstraintSatisfaction": "yes",
+    "personalPreferenceSatisfaction": "yes",
+    "overallExperienceRating": 8,
+    "reason": "The dispute was logged and I knew what happened next.",
+    "askedUsefulClarificationQuestions": False,
+}
+
+
+def _feedback_payload(feedback: dict[str, Any] | None) -> Any:
+    messages = _messages(
+        ("customer", "Meine Rechnung ist falsch."),
+        ("support", REPLIES["de"]),
+        ("customer", "Danke."),
+        ("support", REPLIES["de"]),
+    )
+    combined = " ".join(message["content"] for message in messages)
+    return verifier.build_evaluation_payload(messages, combined, feedback, "German")
+
+
+def _outcome_facets(payload: Any) -> dict[str, Any]:
+    context = next(
+        item for item in payload["contexts"] if item["contextType"] == "task_outcome"
+    )
+    return {facet["key"]: facet["value"] for facet in context["facets"]}
+
+
+def test_self_report_drives_outcome_when_present() -> None:
+    facets = _outcome_facets(_feedback_payload(FEEDBACK))
+    assert facets["outcome_status"] == "resolved"
+    assert facets["resolution_basis"] == "user_feedback"
+    assert facets["outcome_reason"] == FEEDBACK["reason"]
+
+
+def test_outcome_falls_back_to_transcript_without_self_report() -> None:
+    facets = _outcome_facets(_feedback_payload(None))
+    assert facets["resolution_basis"] == "conversation_commitment"
+
+
+@pytest.mark.parametrize(
+    ("need", "preference", "expected"),
+    [
+        ("yes", "yes", "resolved"),
+        ("yes", "partially", "partially_resolved"),
+        ("partially", "no", "partially_resolved"),
+        ("no", "yes", "unresolved"),
+    ],
+)
+def test_outcome_status_buckets(need: str, preference: str, expected: str) -> None:
+    feedback = {
+        **FEEDBACK,
+        "needConstraintSatisfaction": need,
+        "personalPreferenceSatisfaction": preference,
+    }
+    assert _outcome_facets(_feedback_payload(feedback))["outcome_status"] == expected
+
+
+def test_verifier_does_not_emit_user_feedback_context() -> None:
+    """The platform synthesizes it from the self-report schema; see the docstring.
+
+    Emitting one here would short-circuit that path (job_aggregation.py) and lose
+    the schema-derived kinds and enum choices, so this is load-bearing.
+    """
+    payload = _feedback_payload(FEEDBACK)
+    context_types = {context["contextType"] for context in payload["contexts"]}
+    assert "user_feedback" not in context_types
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"overallExperienceRating": 0},
+        {"overallExperienceRating": 11},
+        {"overallExperienceRating": "8"},
+        {"askedUsefulClarificationQuestions": "no"},
+        {"reason": "   "},
+        {"needConstraintSatisfaction": ""},
+    ],
+)
+def test_invalid_self_report_fails_the_trial(bad: dict[str, Any]) -> None:
+    with pytest.raises(SystemExit):
+        _feedback_payload({**FEEDBACK, **bad})
+
+
 def test_every_facet_kind_is_accepted_by_aggregation() -> None:
     """Invalid kinds are dropped silently downstream, so assert them here."""
     messages = _messages(
