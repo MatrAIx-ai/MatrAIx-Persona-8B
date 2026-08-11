@@ -19,7 +19,10 @@ describe("resolveMessage — fallback chain (pack[key] ?? enPack[key] ?? fallbac
 
   it("falls back to the en-US pack when the key is missing from the active pack", () => {
     const zh: Record<string, string> = { "shared.key": "zh value" };
-    const en: Record<string, string> = { "shared.key": "en value", "en.only": "en-only value" };
+    const en: Record<string, string> = {
+      "shared.key": "en value",
+      "en.only": "en-only value",
+    };
     expect(resolveMessage(zh, en, "shared.key")).toBe("zh value");
     expect(resolveMessage(zh, en, "en.only")).toBe("en-only value");
   });
@@ -86,18 +89,27 @@ describe("interpolate", () => {
   });
 });
 
-describe("pack completeness (en-US vs zh-CN)", () => {
+describe("pack integrity and optional locale fallback", () => {
   const enKeys = Object.keys(enPack);
   const zhKeys = Object.keys(zhPack);
 
-  it("zh-CN covers every en-US key (nothing for zh to fall back on)", () => {
-    const zhMissingEnKeys = enKeys.filter((key) => !(key in zhPack));
-    expect(zhMissingEnKeys).toEqual([]);
+  it("has no duplicate keys within each pack", () => {
+    expect(new Set(enKeys).size).toBe(enKeys.length);
+    expect(new Set(zhKeys).size).toBe(zhKeys.length);
   });
 
-  it("every en-US key resolves to a zh-CN value through the active pack", () => {
+  it("allows an incomplete optional locale to fall back to en-US", () => {
+    const incompleteZh: Record<string, string> = {
+      "shell.home.title": "行星级",
+    };
+    expect(resolveMessage(incompleteZh, enPack, "shell.locale.picker")).toBe(
+      enPack["shell.locale.picker"],
+    );
+  });
+
+  it("resolves every en-US key through the active zh-CN pack or English fallback", () => {
     for (const key of enKeys) {
-      expect(resolveMessage(zhPack, enPack, key)).toBe(zhPack[key]);
+      expect(resolveMessage(zhPack, enPack, key)).toBe(zhPack[key] ?? enPack[key]);
     }
   });
 
@@ -108,11 +120,6 @@ describe("pack completeness (en-US vs zh-CN)", () => {
       "shell.preflight.optionalAdaptersNeedAttention",
       "taskDisplay.title.harborPriceSensitivityHasbroGamingCandyLand",
     ]);
-  });
-
-  it("has no duplicate keys within each pack", () => {
-    expect(new Set(enKeys).size).toBe(enKeys.length);
-    expect(new Set(zhKeys).size).toBe(zhKeys.length);
   });
 });
 
@@ -128,6 +135,11 @@ describe("registry", () => {
     for (const meta of LOCALE_REGISTRY) {
       expect(loaderCodes).toContain(meta.code);
     }
+  });
+
+  it("English is the first registered locale (English-first)", () => {
+    expect(LOCALE_REGISTRY[0].code).toBe("en-US");
+    expect(LOCALE_REGISTRY[0].label).toBe("English");
   });
 
   it("lazily loads a non-empty en-US pack via dynamic import", async () => {

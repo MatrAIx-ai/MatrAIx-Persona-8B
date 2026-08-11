@@ -58,6 +58,7 @@ import { useCockpitRunCancel } from "./setup/useCockpitRunCancel";
 import { useCockpitSetupLock } from "./setup/useCockpitSetupLock";
 import { api, ApiError } from "@/lib/api";
 import { useHarborCockpitRun, type HarborCockpitPhase } from "@/lib/useHarborCockpitRun";
+import { PersonaLanguagePicker } from "@/components/i18n/PersonaLanguagePicker";
 import { useUrlState } from "@/lib/useUrlState";
 import { usePgTaskIdDeepLink } from "@/lib/usePgTaskIdDeepLink";
 import { useCockpitInstruction } from "@/lib/useCockpitInstruction";
@@ -73,6 +74,7 @@ import type {
 import { personaModelPipelineLabel } from "@/lib/personaAgentCatalog";
 import { chatbotEvalTaskCards, sortByAvailability } from "./setup/cockpitTaskCards";
 import { mergeChatbotTaskAvailability } from "@/lib/chatbotTaskAvailability";
+import { resolveLaunchLanguage, readPersonaLanguageSetting } from "@/lib/personaLanguage";
 
 /** Per-app display name + icon (presentational; the data layer is app-agnostic). */
 const APP_NAME: Record<string, string> = {
@@ -284,7 +286,7 @@ function ChatbotEvalCockpit({
   onTaskTypeChange,
   isActive,
 }: ChatbotEvalCockpitProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<PlaygroundJobView>({ taskKind: "chatbot" });
@@ -539,6 +541,7 @@ function ChatbotEvalCockpit({
       chatApplicationId: knownLaunchApplicationId ?? undefined,
       chatApplicationContext: launchChatApplicationContext,
       chatMaxTurns: maxTurns,
+      ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
       mapDebrief: (debrief, ctx) =>
         mapChatbotDebriefToJobView(debrief, ctx, {
           personaId: persona.id,
@@ -598,6 +601,7 @@ function ChatbotEvalCockpit({
           chatApplicationId: knownLaunchApplicationId ?? undefined,
           chatApplicationContext: launchChatApplicationContext,
           chatMaxTurns: maxTurns,
+          ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
         });
         setBatchJobName(launched.jobName, { taskId: selectedTask.id, personaPool });
       } catch (exc) {
@@ -946,6 +950,9 @@ function ChatbotEvalCockpit({
               />
             </div>
           )}
+          <div className="flex items-center justify-end gap-3 pb-2">
+            <PersonaLanguagePicker />
+          </div>
           <RunLaunchBar
             canRun={
               hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) &&

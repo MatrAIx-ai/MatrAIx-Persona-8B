@@ -1000,6 +1000,8 @@ class HarborJobService:
         os_app_backend: str | None = None,
         cua_backend: str | None = None,
         execution_plane: str | None = None,
+        language: str | None = None,
+        language_source: str | None = None,
     ) -> str:
         from backend.service.execution_plane import (
             ExecutionPlaneError,
@@ -1181,6 +1183,18 @@ class HarborJobService:
                     if isinstance(kwargs, dict):
                         kwargs.setdefault("max_steps", 100)
         job_meta = job_config.pop("_job_meta", None)
+
+        # Runtime / persona prompt language (official review #3): explicit
+        # en|zh overrides env MATRAIX_PERSONA_LANGUAGE; None = follow env.
+        if language or language_source:
+            for agent in job_config.get("agents", []):
+                if isinstance(agent, dict):
+                    kwargs = agent.setdefault("kwargs", {})
+                    if isinstance(kwargs, dict):
+                        if language:
+                            kwargs["persona_language"] = language
+                        if language_source:
+                            kwargs["persona_language_source"] = language_source
 
         self.generated_configs_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.generated_configs_dir / "{}.yaml".format(resolved_job_name)

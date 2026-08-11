@@ -1778,4 +1778,8 @@ export default {
   "taskDisplay.type.web": "网页",
   "turnBubble.toolCallFailed": "工具调用失败",
   "turnBubble.toolCallOk": "工具调用正常",
+  "personaLanguage.label": "Persona 语言",
+  "personaLanguage.followUi": "跟随界面",
+  "personaLanguage.english": "English",
+  "personaLanguage.chinese": "简体中文",
 };

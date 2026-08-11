@@ -83,6 +83,8 @@ import {
 } from "./cockpitShared";
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
 import { HARBOR_TASK_PATHS } from "@/lib/types";
+import { PersonaLanguagePicker } from "@/components/i18n/PersonaLanguagePicker";
+import { resolveLaunchLanguage, readPersonaLanguageSetting } from "@/lib/personaLanguage";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -180,7 +182,7 @@ export function SurveyEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: SurveyEvalCockpitProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<SurveyEvalJobView>({ taskKind: "survey" });
@@ -375,6 +377,7 @@ export function SurveyEvalCockpit({
         personaId: persona.id,
         personaModel,
         mode: "auto",
+        ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
         mapDebrief: (debrief, ctx) =>
           mapSurveyDebriefToJobView(debrief, ctx, {
             personaId: persona.id,
@@ -391,7 +394,7 @@ export function SurveyEvalCockpit({
           }),
       });
     },
-    [persona, isRunning, run, personaModel, harborTasks],
+    [persona, isRunning, run, personaModel, harborTasks, locale],
   );
 
   const handleRun = useCallback(() => {
@@ -423,6 +426,7 @@ export function SurveyEvalCockpit({
           personaModel,
           ...personaFields,
           mode: "auto",
+          ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
         });
         setBatchJobName(launched.jobName, { taskId: selectedCard.id, personaPool });
       } catch (exc) {
@@ -443,6 +447,7 @@ export function SurveyEvalCockpit({
     personaModel,
     parallelTrials,
     personaPool,
+    locale,
     handleRun,
     setBatchJobName,
   ]);
@@ -586,7 +591,14 @@ export function SurveyEvalCockpit({
 
   const cockpitView = (
     <CockpitSetupShell
-      header={<RunHeader taskType={taskType} onTaskTypeChange={onTaskTypeChange} />}
+      header={
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <RunHeader taskType={taskType} onTaskTypeChange={onTaskTypeChange} />
+          </div>
+          <PersonaLanguagePicker />
+        </div>
+      }
       left={
         <PersonaSamplingRail
           taskType="survey"
@@ -781,7 +793,7 @@ function SurveyLive({
   instructionMarkdown?: string;
   onRetry: () => void;
 }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
   const activeInstrument = result?.instrument ?? instrument;
@@ -871,7 +883,7 @@ function SurveyAnswerCard({
   answer: SurveyAnswer;
   question: SurveyQuestion | null;
 }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const meta = questionTypeMeta(question?.type ?? "", t);
   const confidence = answer.confidence;
   return (
@@ -911,7 +923,7 @@ function SurveyAnswerCard({
 }
 
 function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: SurveyQuestion | null }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const type = question?.type;
 
   if (type === "likert") {
@@ -1029,7 +1041,7 @@ function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: Sur
 
 /** Collapsible Q&A trajectory timeline. */
 function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const groups = groupSurveyTrajectory(events);
   return (
@@ -1140,7 +1152,7 @@ function ErrorCard({
   onRetry: () => void;
   retryLabel?: string;
 }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const resolvedRetryLabel = retryLabel ?? t("eval.common.tryAgain", "Try again");
   return (
     <section className="rounded-md border border-danger/30 bg-danger/10 p-5">

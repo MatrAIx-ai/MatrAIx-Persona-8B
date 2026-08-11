@@ -736,6 +736,32 @@ class HarborJobLaunchRequest(BaseModel):
     chatApplicationId: Optional[str] = None
     chatApplicationContext: Optional[str] = None
     chatMaxTurns: Optional[int] = None
+    # Runtime / persona prompt language (official review #3): explicit en|zh
+    # overrides env MATRAIX_PERSONA_LANGUAGE; None = follow env/default.
+    # Backend never trusts the browser locale — the frontend resolves
+    # follow-UI itself and records it via languageSource.
+    language: Optional[str] = None
+    languageSource: Optional[str] = None
+
+    @field_validator("language")
+    @classmethod
+    def _validate_language(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"en", "zh"}:
+            raise ValueError("language must be en, zh, or null (follow env/default)")
+        return normalized
+
+    @field_validator("languageSource")
+    @classmethod
+    def _validate_language_source(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"follow_ui", "explicit", "env"}:
+            raise ValueError("languageSource must be follow_ui, explicit, env, or null")
+        return normalized
 
     @field_validator("mode")
     @classmethod

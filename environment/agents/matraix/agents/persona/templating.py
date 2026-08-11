@@ -46,6 +46,7 @@ def render_persona_template(
     persona: Persona,
     *,
     instruction: str | None = None,
+    language: str | None = None,
 ) -> str:
     env = Environment(
         loader=FileSystemLoader(template_path.parent),
@@ -60,5 +61,5 @@ def render_persona_template(
 
     return template.render(
         **persona.template_context(instruction=instruction),
-        **build_template_context_extras(persona.dimensions),
+        **build_template_context_extras(persona.dimensions, language=language),
     ).strip()

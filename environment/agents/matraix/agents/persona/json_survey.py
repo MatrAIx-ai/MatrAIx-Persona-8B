@@ -120,6 +120,8 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
         logs_dir: Path,
         persona_path: str | None = None,
         persona_template_path: str | None = None,
+        persona_language: str | None = None,
+        persona_language_source: str | None = None,
         survey_task_path: str | None = None,
         survey_instrument_path: str | None = None,
         **kwargs,
@@ -128,6 +130,8 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
             persona_path,
             AgentName.PERSONA_JSON_SURVEY.value,
             persona_template_path=persona_template_path,
+            persona_language=persona_language,
+            persona_language_source=persona_language_source,
         )
         self._survey_task_path = survey_task_path
         self._survey_instrument_path = survey_instrument_path

@@ -55,6 +55,8 @@ import { useCockpitSetupLock } from "./setup/useCockpitSetupLock";
 import { osAppTaskCards } from "./setup/cockpitTaskCards";
 import { FOCUS_RING, Sym } from "./cockpitShared";
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
+import { PersonaLanguagePicker } from "@/components/i18n/PersonaLanguagePicker";
+import { resolveLaunchLanguage, readPersonaLanguageSetting } from "@/lib/personaLanguage";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -113,7 +115,7 @@ export function OsAppEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: OsAppEvalCockpitProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, vncUrl, sandboxId, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<OsAppEvalJobView>({ taskKind: "os-app" });
@@ -300,6 +302,7 @@ export function OsAppEvalCockpit({
         ...personaFields,
         mode: "auto" as const,
         osAppSubmissionProfile: targetTask.osAppSubmissionProfile ?? undefined,
+        ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
       };
     },
     [
@@ -311,6 +314,7 @@ export function OsAppEvalCockpit({
       resolveCuaRuntime,
       parallelTrials,
       personaPool,
+      locale,
     ],
   );
 
@@ -325,6 +329,7 @@ export function OsAppEvalCockpit({
       osAppBackend: activeCuaRuntime,
       mode: "auto",
       osAppSubmissionProfile: task.osAppSubmissionProfile ?? undefined,
+      ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
       mapDebrief: (debrief, ctx) =>
         mapOsAppDebriefToJobView(debrief, ctx, {
           personaId: persona.id,
@@ -334,7 +339,7 @@ export function OsAppEvalCockpit({
           platform: task.platform,
         }),
     });
-  }, [persona, task, isRunning, run, personaModel, activeCuaRuntime]);
+  }, [persona, task, isRunning, run, personaModel, activeCuaRuntime, locale]);
 
   const handleLaunch = useCallback(async () => {
     if (
@@ -366,6 +371,7 @@ export function OsAppEvalCockpit({
     harborLaunchBody,
     handleRun,
     personaPool,
+    locale,
     setBatchJobName,
   ]);
 
@@ -498,7 +504,14 @@ export function OsAppEvalCockpit({
 
   const cockpitView = (
     <CockpitSetupShell
-      header={<RunHeader taskType={taskType} onTaskTypeChange={onTaskTypeChange} />}
+      header={
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <RunHeader taskType={taskType} onTaskTypeChange={onTaskTypeChange} />
+          </div>
+          <PersonaLanguagePicker />
+        </div>
+      }
       left={
         <PersonaSamplingRail
           taskType="os-app"
@@ -698,7 +711,7 @@ function OsAppResults({
   vncUrl: string | null;
   sandboxId: string | null;
 }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
   const recordingUrl =

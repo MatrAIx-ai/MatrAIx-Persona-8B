@@ -28,6 +28,8 @@ export interface HarborCockpitRunInput<TJob> {
   osAppSubmissionProfile?: string;
   agentName?: string;
   osAppBackend?: string;
+  language?: "en" | "zh" | null;
+  languageSource?: "follow_ui" | "explicit" | null;
   mapDebrief: (debrief: PlaygroundResult, ctx: { jobName: string; trialName: string }) => TJob;
   mapLive?: (live: HarborCockpitLiveState, ctx: { jobName: string; trialName: string }) => TJob;
 }
@@ -179,6 +181,8 @@ export function useHarborCockpitRun<TJob>(options: UseHarborCockpitRunOptions) {
           chatMaxTurns: input.chatMaxTurns,
           osAppSubmissionProfile: input.osAppSubmissionProfile,
           osAppBackend: input.osAppBackend,
+          language: input.language,
+          languageSource: input.languageSource,
         });
         setHarborJobName(launched.jobName);
         setUrlState({

@@ -77,6 +77,7 @@ import {
   personaDescriptiveTitle,
 } from "./cockpitShared";
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
+import { resolveLaunchLanguage, readPersonaLanguageSetting } from "@/lib/personaLanguage";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -131,7 +132,7 @@ export function WebEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: WebEvalCockpitProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<WebEvalJobView>({ taskKind: "web" });
@@ -336,6 +337,7 @@ export function WebEvalCockpit({
       personaModel,
       agentName: activeWebAgent,
       mode: "auto",
+      ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
       mapDebrief: (debrief, ctx) =>
         mapWebDebriefToJobView(debrief, ctx, {
           personaId: persona.id,
@@ -370,6 +372,7 @@ export function WebEvalCockpit({
           agentName: activeWebAgent,
           ...personaFields,
           mode: "auto",
+          ...resolveLaunchLanguage(readPersonaLanguageSetting(), locale),
         });
         setBatchJobName(launched.jobName, { taskId: task.id, personaPool });
       } catch (exc) {
@@ -712,7 +715,7 @@ function WebResults({
   persona: PlaygroundPersona | null;
   onRetry: () => void;
 }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
   const personaTitle = persona ? personaDescriptiveTitle(null, persona.blurb, persona.source) : t("eval.web.personaFallback", "Persona");
@@ -799,7 +802,7 @@ function ErrorCard({
   onRetry: () => void;
   retryLabel?: string;
 }) {
-  const { t } = useI18n();
+const { t } = useI18n();
   const resolvedRetryLabel = retryLabel ?? t("eval.common.tryAgain", "Try again");
   return (
     <section className="rounded-md border border-danger/30 bg-danger/10 p-5">
