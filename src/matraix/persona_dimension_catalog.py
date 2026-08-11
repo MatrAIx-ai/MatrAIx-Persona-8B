@@ -18,6 +18,17 @@ from typing import Any
 
 DEFAULT_CATALOG_PATH = "persona/schema/dimensions.json"
 
+
+def resolve_persona_language(language: str | None) -> str:
+    """Return the requested persona language, env language, or English default."""
+    if language is not None:
+        lang = str(language).strip().lower()
+        if lang in ("zh", "en"):
+            return lang
+    env = os.environ.get("MATRAIX_PERSONA_LANGUAGE", "").strip().lower()
+    return "zh" if env == "zh" else "en"
+
+
 # Soft budget for the persona block inside agent system/instruction prompts.
 # Default is unlimited — full non-null / non-default attributes are always kept
 # so task append never forces persona truncation. Override with
