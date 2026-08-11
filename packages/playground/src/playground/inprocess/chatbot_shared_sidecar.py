@@ -48,6 +48,7 @@ _PRIMARY_SERVICE_ORDER: tuple[str, ...] = (
     "support-api",
     "support-bot",
     "meal-plan-api",
+    "telco-support-api",
 )
 
 _SHARED_BY_SERVICE: dict[str, SharedSidecarSpec] = {
@@ -79,6 +80,15 @@ _SHARED_BY_SERVICE: dict[str, SharedSidecarSpec] = {
         service_name="meal-plan-api",
         build_context="meal-plan-api",
         host_port=8905,
+        primary_env="CHATBOT_API_URL",
+    ),
+    # Safe to share across a cohort: conversation state is session-scoped, so one
+    # process serving many trials does not merge their transcripts.
+    "telco-support-api": SharedSidecarSpec(
+        application_id="multilingual_telco_support",
+        service_name="telco-support-api",
+        build_context="telco-support-api",
+        host_port=8907,
         primary_env="CHATBOT_API_URL",
     ),
 }

@@ -86,6 +86,7 @@ SUPPORTED_APPLICATION_IDS = (
     "acme_support_api",
     "acme_support_mcp",
     "meal_planning_nutrition",
+    "multilingual_telco_support",
 )
 DEFAULT_APPLICATION_CONTEXTS = {
     "finance_openbb": "financial_research",

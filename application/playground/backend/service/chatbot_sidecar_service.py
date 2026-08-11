@@ -74,6 +74,18 @@ _SIDECAR_SPECS: dict[str, SidecarSpec] = {
         primary_env="CHATBOT_API_URL",
         legacy_env=None,
     ),
+    "multilingual_telco_support": SidecarSpec(
+        application_id="multilingual_telco_support",
+        compose_dir=(
+            "environment/task-environments/application/"
+            "chatbot-api-sidecar_multilingual-telco-support"
+        ),
+        service_name="telco-support-api",
+        build_context="telco-support-api",
+        host_port=8907,
+        primary_env="CHATBOT_API_URL",
+        legacy_env=None,
+    ),
 }
 
 

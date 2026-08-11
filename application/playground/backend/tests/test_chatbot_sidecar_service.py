@@ -36,6 +36,7 @@ def test_list_sidecar_statuses(monkeypatch: pytest.MonkeyPatch) -> None:
         "acme_support_api",
         "acme_support_mcp",
         "meal_planning_nutrition",
+        "multilingual_telco_support",
     }
     assert all(item["ok"] for item in statuses)
     by_id = {item["applicationId"]: item for item in statuses}
@@ -43,6 +44,7 @@ def test_list_sidecar_statuses(monkeypatch: pytest.MonkeyPatch) -> None:
     assert by_id["acme_support_api"]["canStart"] is True
     assert by_id["acme_support_mcp"]["canStart"] is True
     assert by_id["meal_planning_nutrition"]["canStart"] is True
+    assert by_id["multilingual_telco_support"]["canStart"] is True
 
 
 def test_start_sidecar_runs_compose_for_sidecar_only(
