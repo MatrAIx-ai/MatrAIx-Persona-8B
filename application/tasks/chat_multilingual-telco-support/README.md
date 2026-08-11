@@ -107,12 +107,19 @@ Two constraints explain the numbers, and both are easy to break by accident:
   "defaultMode": "stratified",
   "pool": "persona/datasets/matraix-persona-1m",
   "dimensionFilters": {
-    "primary_language": ["English", "Spanish", "German", "French", "Portuguese", "Turkish"]
+    "primary_language": ["English", "Spanish", "German", "Turkish"]
   },
   "stratifyFields": ["primary_language"],
   "sampleSizePerValueGroup": 4
 }
 ```
+
+The four values are exactly the languages the verifier can detect
+(`PERSONA_LANGUAGE_CODES` in `tests/test_state.py`) and the SUT can speak. Adding
+a fifth to the filter without extending both would fill a whole stratum with
+`persona_language_unsupported` rows — honest, but not a measurement. Widening the
+cohort means widening the detector's word lists and the sidecar's phrasebook
+first.
 
 `"Turkish"` is worth a note: it appears in the dataset but **not** in the
 `primary_language` value list in `persona/schema/dimensions.json`. Retrieval
