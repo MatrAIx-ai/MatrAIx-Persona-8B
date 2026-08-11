@@ -26,7 +26,11 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 function readStoredLocale(): Locale {
   try {
     const value = window.localStorage.getItem(STORAGE_KEY);
-    return value === "en-US" || value === "zh-CN" ? value : DEFAULT_LOCALE;
+    // Validated against the registry, not a hardcoded pair — adding a
+    // language only requires a registry entry + pack, not a provider edit.
+    return LOCALES.some((l) => l.code === value)
+      ? (value as Locale)
+      : DEFAULT_LOCALE;
   } catch {
     return DEFAULT_LOCALE;
   }
@@ -37,6 +41,26 @@ function readStoredLocale(): Locale {
 const inflight = new Map<Locale, Promise<MessagePack>>();
 
 const packCache = new Map<Locale, MessagePack>([["en-US", enPack]]);
+
+/** Load a locale pack through the shared per-locale in-flight map and cache.
+ * Both setLocale and the startup restore path go through here, so a locale is
+ * never requested twice while its first load is still pending. */
+function loadPack(locale: Locale): Promise<MessagePack> {
+  const cached = packCache.get(locale);
+  if (cached !== undefined) return Promise.resolve(cached);
+  const pending = inflight.get(locale);
+  if (pending) return pending;
+  const request = localePacks[locale]()
+    .then((p) => {
+      packCache.set(locale, p);
+      return p;
+    })
+    .finally(() => {
+      inflight.delete(locale);
+    });
+  inflight.set(locale, request);
+  return request;
+}
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(readStoredLocale);
@@ -51,9 +75,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const stored = readStoredLocale();
     if (stored === "en-US") return;
     let cancelled = false;
-    localePacks[stored]()
+    loadPack(stored)
       .then((p) => {
-        packCache.set(stored, p);
         if (!cancelled && requestedRef.current === stored) {
           setPack(p);
         }
@@ -75,24 +98,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     // Keep the UI consistent instantly: fall back to the always-present en-US
     // pack while the target locale loads.
     setPack(enPack);
-    const cached = packCache.get(next);
-    const load =
-      cached !== undefined
-        ? Promise.resolve(cached)
-        : (() => {
-            const pending = inflight.get(next);
-            if (pending) return pending;
-            const request = localePacks[next]()
-              .then((p) => {
-                packCache.set(next, p);
-                return p;
-              })
-              .finally(() => {
-                inflight.delete(next);
-              });
-            inflight.set(next, request);
-            return request;
-          })();
+    const load = loadPack(next);
     load
       .then((p) => {
         // Only apply if this locale is still the one the user asked for

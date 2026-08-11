@@ -759,8 +759,13 @@ class HarborJobLaunchRequest(BaseModel):
         if value is None:
             return None
         normalized = value.strip().lower()
-        if normalized not in {"follow_ui", "explicit", "env"}:
-            raise ValueError("languageSource must be follow_ui, explicit, env, or null")
+        # "env" is NOT acceptable from callers: that provenance is derived
+        # server-side (mixin) when no explicit language was supplied.
+        if normalized not in {"follow_ui", "explicit"}:
+            raise ValueError(
+                "languageSource must be follow_ui, explicit, or null "
+                "(env provenance is derived server-side)"
+            )
         return normalized
 
     @model_validator(mode="after")

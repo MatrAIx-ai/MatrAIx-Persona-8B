@@ -570,6 +570,7 @@ function ChatbotEvalCockpit({
     maxTurns,
     phase,
     reset,
+    locale,
   ]);
 
   const handleLaunch = useCallback(async () => {
@@ -630,6 +631,7 @@ function ChatbotEvalCockpit({
     selectedTask,
     handleRun,
     setBatchJobName,
+    locale,
   ]);
 
   const handleRetry = useCallback(() => {
