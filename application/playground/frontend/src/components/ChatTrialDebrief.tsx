@@ -19,6 +19,7 @@ import type { PlaygroundQuestionnaire } from "@/lib/types";
 import type { TrialEvaluationArtifact, TrialEvaluationContext } from "@/lib/types";
 import type { SelfReportSchema, UserFeedbackArtifact } from "@/lib/types";
 import { SchemaSelfReportPanel } from "./SchemaSelfReportPanel";
+import { useI18n } from "../i18n/I18nProvider";
 
 export type ChatTrialVerifier = NonNullable<RunDetailView["verifier"]>;
 
@@ -126,6 +127,7 @@ function ChatContractSummary({
 }: {
   trialEvaluation: TrialEvaluationArtifact | null | undefined;
 }) {
+  const { t } = useI18n();
   const outcome = contextOfType(trialEvaluation, "task_outcome");
   const conversation = contextOfType(trialEvaluation, "conversation_summary");
   const feedback =
@@ -149,39 +151,44 @@ function ChatContractSummary({
   return (
     <div className="space-y-3 glass-tile rounded-md p-4">
       <div className="space-y-1">
-        <SubsectionHeading>Trial summary</SubsectionHeading>
+        <SubsectionHeading>{t("runs.trialSummary", "Trial summary")}</SubsectionHeading>
         <p className="text-[14px] leading-relaxed text-text-variant">
-          Chat-specific signals from this trial: outcome, how the conversation unfolded, and the
-          persona&apos;s post-chat rating.
+          {t(
+            "runs.chatSignals",
+            "Chat-specific signals from this trial: outcome, how the conversation unfolded, and the persona’s post-chat rating.",
+          )}
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {outcome ? (
           <SummarySignalCard
-            title="Task outcome"
+            title={t("runs.taskOutcome", "Task outcome")}
             value={outcomeStatus}
             eyebrow={resolutionBasis ? formatFacetToken(resolutionBasis) : null}
-            detail={outcomeReason || "No outcome explanation was recorded."}
+            detail={outcomeReason || t("runs.noOutcomeExplanation", "No outcome explanation was recorded.")}
           />
         ) : null}
         {conversation ? (
           <SummarySignalCard
-            title="Conversation path"
+            title={t("runs.conversationPath", "Conversation path")}
             value={conversationPath}
             eyebrow={
               turnCount != null || clarificationCount != null
-                ? `${turnCount ?? "-"} msgs · ${clarificationCount ?? "-"} clarifications`
+                ? t("runs.messagesAndClarifications", "{messages} msgs · {clarifications} clarifications", {
+                    messages: turnCount ?? "-",
+                    clarifications: clarificationCount ?? "-",
+                  })
                 : null
             }
-            detail={processNotes || "No process summary was recorded."}
+            detail={processNotes || t("runs.noProcessSummary", "No process summary was recorded.")}
           />
         ) : null}
         {feedback ? (
           <SummarySignalCard
-            title="User feedback"
+            title={t("runs.userFeedback", "User feedback")}
             value={rating != null ? `${rating}/10` : needSatisfaction}
             eyebrow={rating != null ? needSatisfaction : null}
-            detail={feedbackReason || "No feedback explanation was recorded."}
+            detail={feedbackReason || t("runs.noFeedbackExplanation", "No feedback explanation was recorded.")}
           />
         ) : null}
       </div>
@@ -254,6 +261,7 @@ export function ChatSelfReport({
   userFeedback?: UserFeedbackArtifact | null;
   selfReportSchema?: SelfReportSchema | null;
 }) {
+  const { t } = useI18n();
   const feedback: UserFeedbackArtifact | null =
     userFeedback && Object.keys(userFeedback).length > 0
       ? userFeedback
@@ -310,8 +318,9 @@ export function ChatSelfReport({
 
   return (
     <DashedNote>
-      No persona self-report was recorded. The simulator writes{" "}
-      <span className="font-mono text-[13px]">user_feedback.json</span> after the conversation ends.
+      {t("runs.noPersonaSelfReport", "No persona self-report was recorded. The simulator writes")} {" "}
+      <span className="font-mono text-[13px]">user_feedback.json</span>{" "}
+      {t("runs.afterConversationEnds", "after the conversation ends.")}
     </DashedNote>
   );
 }
@@ -324,6 +333,7 @@ export function ChatObjectiveEvaluation({
   metrics: RunDetailView["metricScores"];
   verifier?: ChatTrialVerifier | null;
 }) {
+  const { t } = useI18n();
   const artifactMissing =
     verifier &&
     !verifier.passed &&
@@ -333,32 +343,38 @@ export function ChatObjectiveEvaluation({
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatTile caption="Turns" value={metrics?.numTurns ?? "-"} />
+        <StatTile caption={t("runs.turns", "Turns")} value={metrics?.numTurns ?? "-"} />
         {verifier ? (
           <div
             className={`flex flex-col justify-center rounded-lg px-3 py-2.5 ${
               verifier.passed ? "bg-secondary/10" : "bg-danger/10"
             }`}
           >
-            <span className="hud text-[11px] text-text-dim">Run complete</span>
+            <span className="hud text-[11px] text-text-dim">{t("runs.runComplete", "Run complete")}</span>
             <div className="mt-1 flex items-center gap-2">
               <span className="text-[15px] font-semibold text-text-main">
-                {verifier.passed ? "Passed checks" : "Failed checks"}
+                {verifier.passed
+                  ? t("runs.passedChecks", "Passed checks")
+                  : t("runs.failedChecks", "Failed checks")}
               </span>
-              <span className="font-mono text-[13px] text-text-variant">reward {verifier.reward}</span>
+              <span className="font-mono text-[13px] text-text-variant">
+                {t("runs.reward", "reward {value}", { value: verifier.reward })}
+              </span>
             </div>
           </div>
         ) : (
           <div className="flex flex-col justify-center rounded-lg glass-tile glass-tile--dim px-3 py-2.5">
-            <span className="hud text-[11px] text-text-dim">Run complete</span>
-            <span className="mt-1 text-[15px] text-text-variant">Checks pending</span>
+            <span className="hud text-[11px] text-text-dim">{t("runs.runComplete", "Run complete")}</span>
+            <span className="mt-1 text-[15px] text-text-variant">{t("runs.checksPending", "Checks pending")}</span>
           </div>
         )}
       </div>
       {artifactMissing ? (
         <p className="text-[14px] leading-relaxed text-text-variant">
-          Scores above were recovered from the live event stream. Artifact checks failed because
-          output files were missing on this run. Re-run the job for a clean pass.
+          {t(
+            "runs.artifactMissing",
+            "Scores above were recovered from the live event stream. Artifact checks failed because output files were missing on this run. Re-run the job for a clean pass.",
+          )}
         </p>
       ) : null}
       {verifier?.detail && !verifier.passed ? (
@@ -381,8 +397,9 @@ export function ChatTrialTranscript({
   domain?: string;
   persona?: RunPersona | null;
 }) {
+  const { t } = useI18n();
   if (transcript.length === 0) {
-    return <DashedNote>No conversation turns were recorded for this trial.</DashedNote>;
+    return <DashedNote>{t("runs.noConversationTurns", "No conversation turns were recorded for this trial.")}</DashedNote>;
   }
   return (
     <div className="space-y-7 rounded-md glass-panel p-5">
@@ -414,25 +431,28 @@ export function ChatTrialDebriefBody({
   taskTitle,
   showSectionHeadings = true,
 }: ChatTrialDebriefBodyProps) {
+  const { t } = useI18n();
   const applicationId = config.applicationId?.trim() || null;
   const app = applicationId ? appName(applicationId) : taskTitle?.trim() || appName(null);
 
   return (
     <div className="space-y-6">
       <section className="space-y-4">
-        {showSectionHeadings && <SectionHeading>Evaluation</SectionHeading>}
+        {showSectionHeadings && <SectionHeading>{t("runs.evaluation", "Evaluation")}</SectionHeading>}
         <div className="space-y-2 glass-tile rounded-md p-3">
           <p className="text-[14px] leading-relaxed text-text-variant">
-            Run checks confirm the conversation finished and artifacts are valid — not a quality
-            score.
+            {t(
+              "runs.chatEvaluation",
+              "Run checks confirm the conversation finished and artifacts are valid — not a quality score.",
+            )}
           </p>
           <ChatObjectiveEvaluation metrics={metricScores} verifier={verifier} />
         </div>
         <ChatContractSummary trialEvaluation={trialEvaluation} />
         <div className="space-y-3 glass-tile rounded-md p-4">
-          {showSectionHeadings && <SubsectionHeading>Persona self-report</SubsectionHeading>}
+          {showSectionHeadings && <SubsectionHeading>{t("runs.personaSelfReport", "Persona self-report")}</SubsectionHeading>}
           <p className="text-[14px] leading-relaxed text-text-variant">
-            How the simulated user rated the chat after it ended.
+            {t("runs.personaRatingPrompt", "How the simulated user rated the chat after it ended.")}
           </p>
           <ChatSelfReport
             questionnaire={questionnaire}
@@ -443,7 +463,7 @@ export function ChatTrialDebriefBody({
       </section>
 
       <section className="space-y-3">
-        {showSectionHeadings && <SectionHeading>Conversation</SectionHeading>}
+        {showSectionHeadings && <SectionHeading>{t("runs.conversation", "Conversation")}</SectionHeading>}
         <ChatTrialTranscript
           transcript={transcript}
           appLabel={app}
@@ -468,6 +488,7 @@ function TranscriptTurn({
   domain: string;
   persona?: RunPersona | null;
 }) {
+  const { t } = useI18n();
   const turnView: TurnView = {
     userMessage: turn.userMessage,
     assistantMessage: turn.assistantMessage ?? "",
@@ -482,7 +503,9 @@ function TranscriptTurn({
       style={{ animationDelay: `${Math.min(index, 6) * 30}ms`, animationFillMode: "backwards" }}
     >
       <div className="flex items-center justify-center">
-        <span className="hud text-[11px] text-text-dim">Turn {index + 1}</span>
+        <span className="hud text-[11px] text-text-dim">
+          {t("runs.turn", "Turn {index}", { index: index + 1 })}
+        </span>
       </div>
       <PersonaBubble
         message={turn.userMessage}
@@ -508,11 +531,16 @@ function TranscriptTurn({
 }
 
 function DecisionTag({ decision }: { decision: string }) {
+  const { t } = useI18n();
   const satisfied = decision === "satisfied";
   const cls = satisfied
     ? "text-secondary bg-secondary/10"
     : "text-warn bg-warn/10";
-  const label = satisfied ? "Got what they needed" : decision === "give_up" ? "Gave up" : humanizeToken(decision);
+  const label = satisfied
+    ? t("runs.gotWhatTheyNeeded", "Got what they needed")
+    : decision === "give_up"
+      ? t("runs.gaveUp", "Gave up")
+      : humanizeToken(decision);
   return (
     <span className={`inline-flex items-center rounded px-1.5 py-px hud text-[11px] ${cls}`}>{label}</span>
   );

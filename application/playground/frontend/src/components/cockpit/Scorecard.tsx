@@ -18,6 +18,7 @@
 import { SCORE_BAND_CLASS, Sym, scoreBand } from "./cockpitShared";
 import type { PlaygroundMetricScores, PlaygroundQuestionnaire } from "@/lib/types";
 import type { PlaygroundRunPhase } from "@/lib/usePlayground";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface ScorecardProps {
   questionnaire: PlaygroundQuestionnaire | null;
@@ -32,6 +33,7 @@ function clamp(value: number, max: number): number {
 }
 
 export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
+  const { t } = useI18n();
   const running = phase === "building" || phase === "running";
 
   if (running && !questionnaire) return <ScorecardSkeleton />;
@@ -43,8 +45,8 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           <Sym name="fact_check" size={28} className="text-text-dim" />
           <p className="mt-2 text-[15px] leading-relaxed text-text-variant">
             {phase === "error" || phase === "timeout"
-              ? "This run stopped before it could be scored."
-              : "Run a simulation and the scores will appear here."}
+              ? t("scorecards.empty.failed")
+              : t("scorecards.empty.ready")}
           </p>
         </div>
       </div>
@@ -70,11 +72,11 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
         <div className="flex items-center justify-between border-b border-outline bg-surface-low px-3 py-2.5">
           <div className="flex items-center gap-2">
             <Sym name="verified" fill={1} size={18} className="text-primary" />
-            <h3 className="hud text-[13px] text-primary">Scorecard</h3>
+            <h3 className="hud text-[13px] text-primary">{t("scorecards.header")}</h3>
           </div>
           <span className="flex items-center gap-1 hud text-[12px] text-text-dim">
             <span className="h-2 w-2 rounded-full bg-secondary" aria-hidden />
-            Scored
+            {t("scorecards.scored")}
           </span>
         </div>
 
@@ -82,14 +84,14 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           {/* Overall score + quote */}
           <div className="mb-3 flex items-start gap-3">
             <div className="flex flex-shrink-0 flex-col items-center">
-              <div className="flex items-baseline gap-0.5" aria-label={`Overall rating ${overall} out of 10`}>
+              <div className="flex items-baseline gap-0.5" aria-label={t("scorecards.aria.overallRating", undefined, { overall })}>
                 <span className={`font-display text-[44px] font-bold leading-none tracking-tight tabular-nums ${overallColor.text}`}>
                   {overall}
                 </span>
                 <span className="text-[15px] text-text-dim">/ 10</span>
               </div>
               <span className="mt-1 text-center hud text-[12px] text-text-dim">
-                How the user rated it
+                {t("scorecards.rating.userRated")}
               </span>
             </div>
             {questionnaire.ratingReason && (
@@ -105,7 +107,7 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           <div className="mb-3 space-y-2.5">
             {(questionnaire.constraintSatisfaction ?? 0) > 0 ? (
               <CriterionRow
-                label="Did it respect the must-haves?"
+                label={t("scorecards.criteria.mustHaves")}
                 score={questionnaire.constraintSatisfaction}
                 max={5}
                 rationale={questionnaire.constraintRationale}
@@ -113,7 +115,7 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
             ) : null}
             {(questionnaire.preferenceSatisfaction ?? 0) > 0 ? (
               <CriterionRow
-                label="Did it match their tastes?"
+                label={t("scorecards.criteria.tastes")}
                 score={questionnaire.preferenceSatisfaction}
                 max={5}
                 rationale={questionnaire.preferenceRationale}
@@ -130,13 +132,15 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           ) : null}
           {/* Metrics strip: real counts only (no tokens / cost). */}
           <div className="mt-3 grid grid-cols-1 gap-2">
-            <MetricTile value={String(metrics.numTurns)} caption="Total turns" />
+            <MetricTile value={String(metrics.numTurns)} caption={t("scorecards.metrics.totalTurns")} />
           </div>
 
           {/* Scale hint: what the colours mean. */}
           <p className="mt-3 text-[12px] leading-relaxed text-text-dim">
-            Scores read <span className="text-secondary">green</span> when the app did well,{" "}
-            <span className="text-warn">amber</span> when so-so, <span className="text-danger">red</span> when it missed.
+            {t("scorecards.scale.start")}<span className="text-secondary">{t("scorecards.scale.green")}</span>
+            {t("scorecards.scale.middle")}<span className="text-warn">{t("scorecards.scale.amber")}</span>
+            {t("scorecards.scale.badPrefix")}<span className="text-danger">{t("scorecards.scale.red")}</span>
+            {t("scorecards.scale.end")}
           </p>
         </div>
       </div>
@@ -188,6 +192,7 @@ function CriterionRow({
 
 /** The clarifying-questions callout (mint when useful, neutral when not). */
 function ClarifyingLine({ asked, notes }: { asked: boolean; notes: string }) {
+  const { t } = useI18n();
   return (
     <div
       className={`flex items-start gap-2 rounded-md px-3 py-2 ${
@@ -201,8 +206,9 @@ function ClarifyingLine({ asked, notes }: { asked: boolean; notes: string }) {
         className={`mt-0.5 ${asked ? "text-secondary" : "text-text-dim"}`}
       />
       <span className="text-[14px] text-text-main">
-        <span className="font-semibold">Follow-up questions</span>
-        {asked ? ": asked helpful ones" : ": didn't ask any"}
+        <span className="font-semibold">{t("scorecards.followUp.title")}</span>
+        {t("scorecards.followUp.separator")}
+        {asked ? t("scorecards.followUp.asked") : t("scorecards.followUp.notAsked")}
         {notes ? `. ${notes}` : "."}
       </span>
     </div>

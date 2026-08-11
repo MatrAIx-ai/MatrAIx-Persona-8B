@@ -4,6 +4,7 @@
  */
 import { surveyQuestionTypeChipClass, surveyQuestionTypeLabel } from "@/lib/surveyDisplay";
 import type { SurveyInstrument, SurveyQuestion } from "@/lib/types";
+import { useI18n } from "../i18n/I18nProvider";
 
 export interface QuestionnairePreviewProps {
   instrument: SurveyInstrument;
@@ -21,6 +22,7 @@ function optionRows(question: SurveyQuestion): Array<{ id: string; label: string
 }
 
 function QuestionCard({ question, index }: { question: SurveyQuestion; index: number }) {
+  const { t } = useI18n();
   const typeLabel = surveyQuestionTypeLabel(question.type);
   const options = optionRows(question);
   const isLikert = question.type === "likert";
@@ -35,14 +37,14 @@ function QuestionCard({ question, index }: { question: SurveyQuestion; index: nu
           {typeLabel}
         </span>
         {question.required === false ? (
-          <span className="hud text-[11px] text-text-dim">Optional</span>
+          <span className="hud text-[11px] text-text-dim">{t("runs.optional", "Optional")}</span>
         ) : null}
       </div>
       <p className="text-[15px] font-medium leading-snug text-text-main">{question.prompt}</p>
 
       {isLikert ? (
         <p className="mt-2 font-mono text-[13px] text-text-variant">
-          Scale {min}–{max}
+          {t("runs.scale", "Scale {min}–{max}", { min, max })}
         </p>
       ) : null}
 
@@ -63,13 +65,14 @@ function QuestionCard({ question, index }: { question: SurveyQuestion; index: nu
       ) : null}
 
       {question.type === "free_text" ? (
-        <p className="mt-2 text-[13px] text-text-dim">Free-text answer</p>
+        <p className="mt-2 text-[13px] text-text-dim">{t("runs.freeTextAnswer", "Free-text answer")}</p>
       ) : null}
     </article>
   );
 }
 
 export function QuestionnairePreview({ instrument, className = "" }: QuestionnairePreviewProps) {
+  const { t } = useI18n();
   const questions = instrument.questions ?? [];
   return (
     <div className={`space-y-3 ${className}`}>
@@ -79,11 +82,14 @@ export function QuestionnairePreview({ instrument, className = "" }: Questionnai
           <p className="mt-1 text-[14px] leading-relaxed text-text-variant">{instrument.description}</p>
         ) : null}
         <p className="mt-1 hud text-[11px] text-text-dim">
-          {questions.length} question{questions.length === 1 ? "" : "s"}
+          {t("runs.questionCount", "{count} question{suffix}", {
+            count: questions.length,
+            suffix: questions.length === 1 ? "" : "s",
+          })}
         </p>
       </div>
       {questions.length === 0 ? (
-        <p className="text-[14px] text-text-dim">This questionnaire has no questions.</p>
+        <p className="text-[14px] text-text-dim">{t("runs.noQuestions", "This questionnaire has no questions.")}</p>
       ) : (
         questions.map((question, index) => (
           <QuestionCard key={question.id || `q-${index}`} question={question} index={index} />

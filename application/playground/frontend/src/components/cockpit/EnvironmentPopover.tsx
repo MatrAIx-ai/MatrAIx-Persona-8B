@@ -15,6 +15,7 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { FOCUS_RING, Sym } from "./cockpitShared";
 import type { ApplicationId, ConfigEnvironment } from "@/lib/types";
 
@@ -43,7 +44,20 @@ const FRIENDLY_ENV: Record<string, string> = {
   recai_resources: "RecAI resource bundle",
   "self-report": "Self-report scorer",
 };
-const friendlyEnv = (value: string): string => FRIENDLY_ENV[value] ?? value;
+const friendlyEnv = (
+  value: string,
+  t: (key: string, fallback?: string) => string,
+): string => {
+  if (value === "recai_resources") return t("cockpit.environment.friendly.recaiResources", "RecAI resource bundle");
+  if (value === "self-report") return t("cockpit.environment.friendly.selfReport", "Self-report scorer");
+  return FRIENDLY_ENV[value] ?? value;
+};
+
+function appEnvironmentKey(applicationId: ApplicationId): "recai" | "finance" | "medical" {
+  if (applicationId === "finance_openbb") return "finance";
+  if (applicationId === "medical_assistant") return "medical";
+  return "recai";
+}
 
 export interface EnvironmentPanelProps {
   environment: ConfigEnvironment | null;
@@ -52,11 +66,11 @@ export interface EnvironmentPanelProps {
 }
 
 /** One label/value row of the read-only environment panel. */
-function EnvRow({ label, value }: { label: string; value: string }) {
+function EnvRow({ label, value, t }: { label: string; value: string; t: (key: string, fallback?: string) => string }) {
   return (
     <div className="flex items-start justify-between gap-2">
       <span className="hud shrink-0 text-[11px] text-text-dim">{label}</span>
-      <span className="min-w-0 break-words text-right font-mono text-[13px] text-text-variant">{friendlyEnv(value)}</span>
+      <span className="min-w-0 break-words text-right font-mono text-[13px] text-text-variant">{friendlyEnv(value, t)}</span>
     </div>
   );
 }
@@ -69,36 +83,41 @@ function EnvRow({ label, value }: { label: string; value: string }) {
  * come from `APP_ENVIRONMENT`, falling back to the `environment` block.
  */
 export function EnvironmentPanel({ environment, applicationId }: EnvironmentPanelProps) {
+  const { t } = useI18n();
   const app = APP_ENVIRONMENT[applicationId];
+  const appKey = appEnvironmentKey(applicationId);
   const promptOwnership = environment?.promptOwnership ?? {
-    personaSystemPrompt: "Persona prompt from Playground",
-    taskPrompt: "Application provides the chatbot simulation prompt",
+    personaSystemPrompt: t("cockpit.environment.default.personaPrompt", "Persona prompt from Playground"),
+    taskPrompt: t("cockpit.environment.default.taskPrompt", "Application provides the chatbot simulation prompt"),
   };
+  const appSelection = t(`cockpit.environment.app.${appKey}.selection`, app?.selection ?? "application ranking");
+  const appAgent = t(`cockpit.environment.app.${appKey}.agent`, app?.agent ?? "chatbot application adapter");
+  const appResources = t(`cockpit.environment.app.${appKey}.resources`, app?.resources ?? "adapter resources");
 
   return (
     <div className="rounded-md border border-outline bg-surface-lowest p-5">
       <div className="mb-3.5 flex items-center justify-between">
         <h3 className="hud flex items-center gap-1.5 text-[12px] text-text-dim">
           <Sym name="dns" size={14} />
-          Local runtime
+          {t("cockpit.environment.localRuntime", "Local runtime")}
         </h3>
         <span
           className="hud rounded border border-outline px-1.5 py-0.5 text-[11px] text-text-dim"
-          title="These runtime facts are fixed for this run."
+          title={t("cockpit.environment.fixedFactsTitle", "These runtime facts are fixed for this run.")}
         >
-          Read-only
+          {t("cockpit.environment.readOnly", "Read-only")}
         </span>
       </div>
       <div className="space-y-3 text-[14px]">
-        <EnvRow label="Runtime" value={environment?.runtime ?? "In-process Matraix Playground runner"} />
-        <EnvRow label="Application API" value={environment?.applicationApi ?? "direct application adapter"} />
-        <EnvRow label="Selection" value={app?.selection ?? environment?.ranker ?? "application ranking"} />
-        <EnvRow label="Agent" value={app?.agent ?? environment?.agent ?? "chatbot application adapter"} />
-        <EnvRow label="Resources" value={app?.resources ?? environment?.resources ?? "adapter resources"} />
-        <EnvRow label="Scorer" value={environment?.scorer ?? "self-report"} />
+        <EnvRow t={t} label={t("cockpit.environment.runtime", "Runtime")} value={environment?.runtime ?? t("cockpit.environment.default.runtime", "In-process Matraix Playground runner")} />
+        <EnvRow t={t} label={t("cockpit.environment.applicationApi", "Application API")} value={environment?.applicationApi ?? t("cockpit.environment.default.applicationApi", "direct application adapter")} />
+        <EnvRow t={t} label={t("cockpit.environment.selection", "Selection")} value={app ? appSelection : environment?.ranker ?? "application ranking"} />
+        <EnvRow t={t} label={t("cockpit.environment.agent", "Agent")} value={app ? appAgent : environment?.agent ?? t("cockpit.environment.default.agent", "chatbot application adapter")} />
+        <EnvRow t={t} label={t("cockpit.environment.resources", "Resources")} value={app ? appResources : environment?.resources ?? t("cockpit.environment.default.resources", "adapter resources")} />
+        <EnvRow t={t} label={t("cockpit.environment.scorer", "Scorer")} value={environment?.scorer ?? "self-report"} />
       </div>
       <div className="mt-4 border-t border-outline pt-3">
-        <div className="hud mb-1.5 text-[11px] text-text-dim">Prompt boundary</div>
+        <div className="hud mb-1.5 text-[11px] text-text-dim">{t("cockpit.environment.promptBoundary", "Prompt boundary")}</div>
         <p className="text-[13px] leading-relaxed text-text-variant">
           {promptOwnership.personaSystemPrompt} · {promptOwnership.taskPrompt}
         </p>
@@ -116,6 +135,7 @@ const ROW_TOOLTIPS: Record<string, string> = {
 };
 
 export function EnvironmentPopover({ environment }: EnvironmentPopoverProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
@@ -137,27 +157,27 @@ export function EnvironmentPopover({ environment }: EnvironmentPopoverProps) {
     };
   }, [open]);
 
-  const runtime = environment?.runtime ?? "In-process Matraix Playground runner";
+  const runtime = environment?.runtime ?? t("cockpit.environment.default.runtime", "In-process Matraix Playground runner");
   const runtimeRows: Array<{ label: string; value: string }> = [
-    { label: "Runtime", value: runtime },
-    { label: "Persona", value: environment?.personaAgent ?? "Playground simulated user" },
-    { label: "Persona default", value: environment?.personaModel ?? "anthropic/claude-haiku-4-5" },
-    { label: "Application API", value: environment?.applicationApi ?? "direct application adapter" },
-    { label: "Scorer", value: environment?.scorer ?? "Playground self-report scorer" },
-    { label: "Cache", value: environment?.cache ?? "local service and model caches" },
+    { label: t("cockpit.environment.runtime", "Runtime"), value: runtime },
+    { label: t("cockpit.environment.persona", "Persona"), value: environment?.personaAgent ?? t("cockpit.environment.default.persona", "Playground simulated user") },
+    { label: t("cockpit.environment.personaDefault", "Persona default"), value: environment?.personaModel ?? t("cockpit.environment.default.personaModel", "anthropic/claude-haiku-4-5") },
+    { label: t("cockpit.environment.applicationApi", "Application API"), value: environment?.applicationApi ?? t("cockpit.environment.default.applicationApi", "direct application adapter") },
+    { label: t("cockpit.environment.scorer", "Scorer"), value: environment?.scorer ?? t("cockpit.environment.default.scorer", "Playground self-report scorer") },
+    { label: t("cockpit.environment.cache", "Cache"), value: environment?.cache ?? t("cockpit.environment.default.cache", "local service and model caches") },
   ];
   const stackRows: Array<{ label: string; value: string }> = [
-    { label: "Selection", value: environment?.ranker ?? "application-specific ranking / tool selection" },
-    { label: "Resources", value: environment?.resources ?? "adapter-specific resources" },
-    { label: "Agent", value: environment?.agent ?? "chatbot application adapter" },
+    { label: t("cockpit.environment.selection", "Selection"), value: environment?.ranker ?? t("cockpit.environment.default.selection", "application-specific ranking / tool selection") },
+    { label: t("cockpit.environment.resources", "Resources"), value: environment?.resources ?? t("cockpit.environment.default.resources", "adapter-specific resources") },
+    { label: t("cockpit.environment.agent", "Agent"), value: environment?.agent ?? t("cockpit.environment.default.agent", "chatbot application adapter") },
   ];
   const promptOwnership = environment?.promptOwnership ?? {
-    personaSystemPrompt: "Persona prompt from Playground",
-    taskPrompt: "Application-provided chatbot simulation prompt",
+    personaSystemPrompt: t("cockpit.environment.default.personaPrompt", "Persona prompt from Playground"),
+    taskPrompt: t("cockpit.environment.default.taskPrompt", "Application-provided chatbot simulation prompt"),
   };
   const promptRows: Array<{ label: string; value: string }> = [
-    { label: "System prompt", value: promptOwnership.personaSystemPrompt },
-    { label: "Task prompt", value: promptOwnership.taskPrompt },
+    { label: t("cockpit.environment.systemPrompt", "System prompt"), value: promptOwnership.personaSystemPrompt },
+    { label: t("cockpit.environment.taskPrompt", "Task prompt"), value: promptOwnership.taskPrompt },
   ];
 
   return (
@@ -178,29 +198,34 @@ export function EnvironmentPopover({ environment }: EnvironmentPopoverProps) {
         <div
           id={panelId}
           role="region"
-          aria-label="Fixed environment"
+          aria-label={t("cockpit.environment.fixedEnvironment", "Fixed environment")}
           className="pop-in absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto custom-scrollbar rounded-md border border-outline bg-surface-lowest p-3 shadow-2xl"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="flex items-center gap-1 hud text-[12px] text-text-dim">
               <Sym name="lock" size={13} />
-              Test environment
+              {t("cockpit.environment.testEnvironment", "Test environment")}
             </p>
             <span
               className="hud rounded border border-outline px-1.5 py-0.5 text-[11px] text-text-dim"
-              title="These runtime facts are fixed for this run."
+              title={t("cockpit.environment.fixedFactsTitle", "These runtime facts are fixed for this run.")}
             >
-              Read-only
+              {t("cockpit.environment.readOnly", "Read-only")}
             </span>
           </div>
           <div className="space-y-2">
             {runtimeRows.map((r) => (
               <div key={r.label} className="flex items-start justify-between gap-3">
-                <span className="hud shrink-0 text-[11px] text-text-dim" title={ROW_TOOLTIPS[r.label]}>
+                <span className="hud shrink-0 text-[11px] text-text-dim" title={
+                  t(
+                    `cockpit.environment.tooltip.${r.label === "Selection" || r.label === "选择" ? "selection" : r.label === "Agent" || r.label === "智能体" ? "agent" : r.label === "Resources" || r.label === "资源" ? "resources" : "scorer"}`,
+                    ROW_TOOLTIPS[r.label] ?? "",
+                  )
+                }>
                   {r.label}
                 </span>
                 <span className="min-w-0 break-words text-right font-mono text-[13px] text-text-variant">
-                  {friendlyEnv(r.value)}
+                  {friendlyEnv(r.value, t)}
                 </span>
               </div>
             ))}
@@ -208,16 +233,21 @@ export function EnvironmentPopover({ environment }: EnvironmentPopoverProps) {
           <div className="mt-3 border-t border-outline-dim pt-3">
             <p className="mb-2 flex items-center gap-1 hud text-[12px] text-text-dim">
               <Sym name="storage" size={13} />
-              What&apos;s running inside the app
+              {t("cockpit.environment.whatsRunning", "What’s running inside the app")}
             </p>
             <div className="space-y-2">
               {stackRows.map((r) => (
                 <div key={r.label} className="flex items-start justify-between gap-3">
-                  <span className="hud shrink-0 text-[11px] text-text-dim" title={ROW_TOOLTIPS[r.label]}>
+                  <span className="hud shrink-0 text-[11px] text-text-dim" title={
+                    t(
+                      `cockpit.environment.tooltip.${r.label === "Selection" || r.label === "选择" ? "selection" : r.label === "Agent" || r.label === "智能体" ? "agent" : r.label === "Resources" || r.label === "资源" ? "resources" : "scorer"}`,
+                      ROW_TOOLTIPS[r.label] ?? "",
+                    )
+                  }>
                     {r.label}
                   </span>
                   <span className="min-w-0 break-words text-right font-mono text-[13px] text-text-variant">
-                    {friendlyEnv(r.value)}
+                    {friendlyEnv(r.value, t)}
                   </span>
                 </div>
               ))}
@@ -226,7 +256,7 @@ export function EnvironmentPopover({ environment }: EnvironmentPopoverProps) {
           <div className="mt-3 border-t border-outline-dim pt-3">
             <p className="mb-2 flex items-center gap-1 hud text-[12px] text-text-dim">
               <Sym name="account_tree" size={13} />
-              Who writes which prompt
+              {t("cockpit.environment.whoWritesPrompt", "Who writes which prompt")}
             </p>
             <div className="space-y-2">
               {promptRows.map((r) => (

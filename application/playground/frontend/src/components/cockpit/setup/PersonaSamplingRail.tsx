@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
+import { personaDimensionLabelKey } from "@/i18n/personaLabelKeys";
 import {
   PERSONA_BENCH_POOL,
   PERSONA_CARD_PREVIEW_LIMIT,
@@ -85,7 +87,10 @@ function strategyModeLabel(mode: string | null | undefined): string {
   return "Custom";
 }
 
-function strategyHeadline(strategy: TaskPersonaStrategy): string {
+function strategyHeadline(
+  strategy: TaskPersonaStrategy,
+  translate: (key: string, fallback?: string, values?: Record<string, string | number>) => string,
+): string {
   const stratify = (strategy.stratifyFields ?? []).filter((value) => value.trim());
   const sample =
     typeof strategy.sampleSize === "number" && strategy.sampleSize > 0
@@ -96,13 +101,32 @@ function strategyHeadline(strategy: TaskPersonaStrategy): string {
       ? strategy.sampleSizePerValueGroup
       : null;
   const isStratified = strategy.defaultMode === "stratified" || stratify.length > 0;
-  const mode = strategyModeLabel(strategy.defaultMode);
-  if (isStratified && perCell != null) return `${mode} · ${perCell} per combination`;
-  if (sample != null) return `${mode} · sample ${sample}`;
+  const mode = translate(
+    strategy.defaultMode === "stratified"
+      ? "setup.persona.stratified"
+      : strategy.defaultMode === "random"
+        ? "setup.persona.randomSample"
+        : strategy.defaultMode === "single"
+          ? "setup.persona.quickPick"
+          : strategy.defaultMode === "all"
+            ? "setup.persona.all"
+            : "setup.persona.custom",
+    strategyModeLabel(strategy.defaultMode),
+  );
+  if (isStratified && perCell != null) {
+    return translate("setup.persona.perCombination", `${mode} · ${perCell} per combination`, {
+      mode,
+      count: perCell,
+    });
+  }
+  if (sample != null) {
+    return translate("setup.persona.sample", `${mode} · sample ${sample}`, { mode, count: sample });
+  }
   return mode;
 }
 
 function TaskStrategySummary({ strategy }: { strategy: TaskPersonaStrategy }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const dimEntries = Object.entries(strategy.dimensionFilters ?? {}).filter(
     ([, values]) => Array.isArray(values) && values.length > 0,
@@ -111,6 +135,11 @@ function TaskStrategySummary({ strategy }: { strategy: TaskPersonaStrategy }) {
   const stratify = (strategy.stratifyFields ?? []).filter((value) => value.trim());
   const filterBits = dimEntries.length + (sources.length > 0 ? 1 : 0);
   const hasDetails = sources.length > 0 || dimEntries.length > 0 || stratify.length > 0;
+  const displayField = (field: string): string => {
+    const fallback = humanizeToken(field);
+    const labelKey = personaDimensionLabelKey(field, fallback);
+    return labelKey ? t(labelKey, fallback) : fallback;
+  };
 
   return (
     <div className="border-t border-outline/35 pt-1.5">
@@ -122,15 +151,25 @@ function TaskStrategySummary({ strategy }: { strategy: TaskPersonaStrategy }) {
       >
         <div className="min-w-0 flex-1">
           <p className="text-[12px] font-medium leading-snug text-text-main">
-            {strategyHeadline(strategy)}
+            {strategyHeadline(strategy, t)}
           </p>
           {!expanded && hasDetails ? (
             <p className="mt-0.5 truncate text-[11px] leading-snug text-text-dim">
               {stratify.length > 0
-                ? `Stratify ${stratify.map(humanizeToken).join(" × ")}`
+                ? t("personaDisplay.strategy.stratify", "Stratify {fields}", {
+                    fields: stratify.map(displayField).join(" × "),
+                  })
                 : null}
               {stratify.length > 0 && filterBits > 0 ? " · " : null}
-              {filterBits > 0 ? `${filterBits} filter${filterBits === 1 ? "" : "s"}` : null}
+              {filterBits > 0
+                ? t(
+                    filterBits === 1
+                      ? "personaDisplay.strategy.filterOne"
+                      : "personaDisplay.strategy.filterMany",
+                    filterBits === 1 ? "{count} filter" : "{count} filters",
+                    { count: filterBits },
+                  )
+                : null}
             </p>
           ) : null}
         </div>
@@ -146,24 +185,24 @@ function TaskStrategySummary({ strategy }: { strategy: TaskPersonaStrategy }) {
         <div className="mt-1.5 max-h-28 space-y-1 overflow-y-auto custom-scrollbar pr-0.5">
           {sources.length > 0 ? (
             <p className="text-[12px] leading-snug text-text-variant">
-              <span className="text-text-dim">Sources · </span>
+              <span className="text-text-dim">{t("setup.persona.sources", "Sources")} · </span>
               {sources.join(", ")}
             </p>
           ) : null}
           {dimEntries.map(([dim, values]) => (
             <p key={dim} className="text-[12px] leading-snug text-text-variant">
-              <span className="text-text-dim">{humanizeToken(dim)} · </span>
+              <span className="text-text-dim">{displayField(dim)} · </span>
               {values.join(", ")}
             </p>
           ))}
           {stratify.length > 0 ? (
             <p className="text-[12px] leading-snug text-text-variant">
-              <span className="text-text-dim">Stratify · </span>
-              {stratify.map(humanizeToken).join(", ")}
+              <span className="text-text-dim">{t("setup.filters.stratify", "Stratify")} · </span>
+              {stratify.map(displayField).join(", ")}
             </p>
           ) : null}
           {!hasDetails ? (
-            <p className="text-[12px] text-text-dim">No filters — full pool.</p>
+            <p className="text-[12px] text-text-dim">{t("setup.persona.noFilters", "No filters — full pool.")}</p>
           ) : null}
         </div>
       ) : null}
@@ -239,6 +278,7 @@ export function PersonaSamplingRail({
   personaPool = null,
   disabled,
 }: PersonaSamplingRailProps) {
+  const { t } = useI18n();
   const [filterOpen, setFilterOpen] = useState(false);
   const [detailPersona, setDetailPersona] = useState<PersonaPoolPersonaCard | null>(null);
   const [generatedCards, setGeneratedCards] = useState<PersonaPoolPersonaCard[]>([]);
@@ -465,9 +505,11 @@ export function PersonaSamplingRail({
         value: item.pool,
         label: item.label,
         meta: unavailable
-          ? "download HF release / set MATRIX_PERSONA_1M_DIR"
+          ? t("setup.persona.downloadHint", "download HF release / set MATRIX_PERSONA_1M_DIR")
           : item.count > 0
-            ? `${item.count.toLocaleString()} personas`
+            ? t("setup.persona.datasetPersonas", "{count} personas", {
+                count: item.count.toLocaleString(),
+              })
             : undefined,
       };
     });
@@ -482,7 +524,7 @@ export function PersonaSamplingRail({
       return [{ value: PERSONA_BENCH_POOL, label: "matraix-persona-dev-sample" }];
     }
     return options;
-  }, [datasetsQuery.data?.datasets, sourcePool]);
+  }, [datasetsQuery.data?.datasets, sourcePool, t]);
 
   const handleDatasetChange = useCallback(
     (pool: string) => {
@@ -505,7 +547,7 @@ export function PersonaSamplingRail({
     const name = saveNameDraft.trim() || `cohort-${selectedPersonaIds.length}`;
     const slug = slugifyDatasetName(name);
     if (!slug) {
-      setSaveDatasetError("Enter a name with letters or numbers.");
+      setSaveDatasetError(t("setup.persona.invalidDatasetName", "Enter a name with letters or numbers."));
       return;
     }
     setSavingDataset(true);
@@ -521,7 +563,7 @@ export function PersonaSamplingRail({
       setSaveNameDraft("");
     } catch (err) {
       setSaveDatasetError(
-        err instanceof ApiError ? err.message : "Could not save dataset.",
+        err instanceof ApiError ? err.message : t("setup.persona.saveFailed", "Could not save dataset."),
       );
     } finally {
       setSavingDataset(false);
@@ -532,6 +574,7 @@ export function PersonaSamplingRail({
     queryClient,
     saveNameDraft,
     selectedPersonaIds.length,
+    t,
   ]);
 
   const filterCount = activeFilterCount(filters);
@@ -541,7 +584,7 @@ export function PersonaSamplingRail({
   const strategyLocked = hasTaskStrategy && useTaskDefaultStrategy;
   const customSamplingUnlocked = !strategyLocked;
   const poolFooterLabel = isProduction1mCohortPool(activePool)
-    ? `${poolSlugLabel(sourcePool)} · sample ready`
+    ? `${poolSlugLabel(sourcePool)} · ${t("setup.persona.sampleReady", "sample ready")}`
     : poolSlugLabel(sourcePool);
 
   return (
@@ -558,12 +601,12 @@ export function PersonaSamplingRail({
       ) : (
       <>
       <div className="shrink-0">
-        <CockpitRailHeader label="Persona" />
+        <CockpitRailHeader label={t("setup.persona.title", "Persona")} />
 
         <div className="mb-2 space-y-1.5">
           {showModelSelector && (
             <CockpitSelect
-              label="Model"
+              label={t("setup.persona.model", "Model")}
               inlineLabel
               labelClassName="w-[4.25rem]"
               value={personaModel}
@@ -573,7 +616,7 @@ export function PersonaSamplingRail({
             />
           )}
           <CockpitSelect
-            label="Dataset"
+            label={t("setup.persona.dataset", "Dataset")}
             inlineLabel
             labelClassName="w-[4.25rem]"
             value={sourcePool}
@@ -589,12 +632,12 @@ export function PersonaSamplingRail({
             className="glass-tile mb-2 rounded-lg px-2.5 py-1.5"
             title={
               useTaskDefaultStrategy
-                ? "Filters follow persona_strategy.json"
-                : "Edit filters yourself"
+              ? t("setup.persona.followStrategy", "Filters follow persona_strategy.json")
+                : t("setup.persona.editFilters", "Edit filters yourself")
             }
           >
             <CockpitToggle
-              label="Task default persona strategy"
+              label={t("setup.persona.taskDefaultStrategy", "Task default persona strategy")}
               checked={useTaskDefaultStrategy}
               disabled={disabled}
               onChange={(checked) => onUseTaskDefaultStrategyChange?.(checked)}
@@ -612,18 +655,27 @@ export function PersonaSamplingRail({
               <button
                 key={tab}
                 type="button"
-                title={
+                title={t(
+                  allBlocked
+                    ? "setup.persona.allDisabled"
+                    : tab === "single"
+                      ? "setup.persona.quickPick"
+                      : tab === "random"
+                        ? "setup.persona.randomSample"
+                        : tab === "stratified"
+                          ? "setup.persona.stratified"
+                          : "setup.persona.allDataset",
                   allBlocked
                     ? "All is disabled on the 1M production pool — sample up to 10,000 instead"
-                    : TAB_TITLES[tab]
-                }
+                    : TAB_TITLES[tab],
+                )}
                 disabled={disabled || strategyLocked || allBlocked}
                 onClick={() => onModeChange(tab)}
                 className={`cockpit-segment__btn cockpit-segment__btn--compact w-full ${FOCUS_RING} ${
                   mode === tab ? "cockpit-segment__btn--active" : ""
                 }`}
               >
-                {TAB_LABELS[tab]}
+                {t(`setup.persona.${tab === "single" ? "quick" : tab}`, TAB_LABELS[tab])}
               </button>
             );
           })}
@@ -631,18 +683,18 @@ export function PersonaSamplingRail({
 
         {disabled && selectedPersonaIds.length > 0 ? (
           <p className="glass-tile mb-2 rounded-lg px-2.5 py-1.5 text-[12px] leading-snug text-text-variant">
-            Cohort locked for this run — use Reset to change personas or sample settings.
+            {t("setup.persona.cohortLocked", "Cohort locked for this run — use Reset to change personas or sample settings.")}
           </p>
         ) : null}
 
         {mode === "all" && (
           <div className="mb-2 space-y-1.5">
             <p className="glass-tile rounded-lg px-2.5 py-1.5 text-[12px] leading-snug text-text-variant">
-              Run the full selected dataset cohort
+              {t("setup.persona.fullDataset", "Run the full selected dataset cohort")}
               {typeof poolCount === "number" ? (
                 <>
                   {" "}
-                  · <span className="font-mono text-text-main">{poolCount}</span> personas
+                  · <span className="font-mono text-text-main">{poolCount}</span> {t("setup.persona.personas", "personas")}
                 </>
               ) : null}
               .
@@ -659,10 +711,10 @@ export function PersonaSamplingRail({
                 className={generating ? "animate-rb-spin text-primary" : "text-primary"}
               />
               {generating
-                ? "Loading cohort…"
+                ? t("setup.persona.loadingCohort", "Loading cohort…")
                 : typeof poolCount === "number"
-                  ? `Select all · ${poolCount}`
-                  : "Select all"}
+                  ? t("setup.persona.selectAll", "Select all · {count}", { count: poolCount })
+                  : t("setup.persona.selectAllPlain", "Select all")}
             </button>
             {generateError ? (
               <div className="space-y-1.5 rounded-lg border border-danger/30 bg-danger/5 px-2.5 py-2">
@@ -683,7 +735,7 @@ export function PersonaSamplingRail({
               >
                 <Sym name="tune" size={16} className="shrink-0 text-primary" />
                 <span className="min-w-0 flex-1 text-[13px] font-medium text-text-main">
-                  Persona filters
+                  {t("setup.persona.filters", "Persona filters")}
                 </span>
                 {filterCount > 0 ? (
                   <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[11px] text-primary">
@@ -699,7 +751,7 @@ export function PersonaSamplingRail({
                 <>
                   {mode === "stratified" && sampleSizePerValueGroup != null ? (
                     <label className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
-                      <span className="text-[12px] text-text-dim">Per cell</span>
+                      <span className="text-[12px] text-text-dim">{t("setup.persona.perCell", "Per cell")}</span>
                       <input
                         type="number"
                         inputMode="numeric"
@@ -736,7 +788,7 @@ export function PersonaSamplingRail({
                     </label>
                   ) : (
                     <label className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
-                      <span className="text-[12px] text-text-dim">Sample</span>
+                      <span className="text-[12px] text-text-dim">{t("setup.persona.sampleLabel", "Sample")}</span>
                       <input
                         type="number"
                         inputMode="numeric"
@@ -784,7 +836,9 @@ export function PersonaSamplingRail({
                   size={15}
                   className={generating ? "animate-rb-spin text-primary" : "text-primary"}
                 />
-                {generating ? "Generating…" : "Generate preview"}
+                {generating
+                  ? t("setup.persona.generating", "Generating…")
+                  : t("setup.persona.generatePreview", "Generate preview")}
               </button>
             </div>
             {generateError ? (
@@ -809,13 +863,13 @@ export function PersonaSamplingRail({
                     className={`flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] font-medium text-primary hover:bg-primary/5 disabled:opacity-50 ${FOCUS_RING}`}
                   >
                     <Sym name="save" size={14} />
-                    Save as dataset…
+                    {t("setup.persona.saveAsDataset", "Save as dataset…")}
                   </button>
                 ) : (
                   <div className="space-y-1.5">
                     <label className="block space-y-1">
                       <span className="text-[11px] font-medium uppercase tracking-wide text-text-dim">
-                        Dataset name
+                        {t("setup.persona.datasetName", "Dataset name")}
                       </span>
                       <input
                         type="text"
@@ -845,7 +899,7 @@ export function PersonaSamplingRail({
                       <p className="text-[11px] leading-snug text-danger">{saveDatasetError}</p>
                     ) : (
                       <p className="text-[11px] leading-snug text-text-dim">
-                        Copies this sample into Dataset for reuse across tasks.
+                        {t("setup.persona.datasetReuse", "Copies this sample into Dataset for reuse across tasks.")}
                       </p>
                     )}
                     <div className="flex gap-1.5">
@@ -858,7 +912,7 @@ export function PersonaSamplingRail({
                         }}
                         className={`h-8 flex-1 rounded-md border border-outline/50 text-[12px] text-text-variant hover:bg-surface-high/60 disabled:opacity-50 ${FOCUS_RING}`}
                       >
-                        Cancel
+                        {t("setup.persona.cancel", "Cancel")}
                       </button>
                       <button
                         type="button"
@@ -866,7 +920,7 @@ export function PersonaSamplingRail({
                         onClick={() => void handleSaveAsDataset()}
                         className={`h-8 flex-1 rounded-md bg-primary/90 text-[12px] font-medium text-white hover:bg-primary disabled:opacity-50 ${FOCUS_RING}`}
                       >
-                        {savingDataset ? "Saving…" : "Save"}
+                        {savingDataset ? t("setup.persona.saving", "Saving…") : t("setup.persona.save", "Save")}
                       </button>
                     </div>
                   </div>
@@ -881,12 +935,14 @@ export function PersonaSamplingRail({
           <div className="space-y-2">
             {mode === "single" && defaultCardsQuery.isLoading && quickPickCards.length === 0 && (
               <p className="text-[13px] text-text-variant">
-                Loading {activePool.split("/").filter(Boolean).pop() || "dataset"}…
+                {t("setup.persona.loadingDataset", "Loading {dataset}…", {
+                  dataset: activePool.split("/").filter(Boolean).pop() || "dataset",
+                })}
               </p>
             )}
             {mode === "single" && defaultCardsQuery.isError && quickPickCards.length > 0 && (
               <p className="text-[12px] text-warn">
-                Using offline persona list — restart backend for full dimensions.
+                {t("setup.persona.offlineList", "Using offline persona list — restart backend for full dimensions.")}
               </p>
             )}
             {displayCards.map((persona) => (
@@ -903,35 +959,37 @@ export function PersonaSamplingRail({
               selectedPersonaIds.length > displayCards.length &&
               displayCards.length > 0 && (
                 <p className="rounded-lg border border-dashed border-outline/40 px-3 py-2 text-center text-[12px] text-text-dim">
-                  Previewing {displayCards.length} of {selectedPersonaIds.length} selected — full
-                  cohort is ready to launch.
+                  {t("setup.persona.previewing", "Previewing {shown} of {selected} selected — full cohort is ready to launch.", {
+                    shown: displayCards.length,
+                    selected: selectedPersonaIds.length,
+                  })}
                 </p>
               )}
             {mode === "single" && !defaultCardsQuery.isLoading && displayCards.length === 0 && (
               <p className="rounded-lg border border-dashed border-outline/40 p-4 text-center text-[13px] text-text-dim">
-                No personas loaded. Check that the backend is running.
+                {t("setup.persona.noneLoaded", "No personas loaded. Check that the backend is running.")}
               </p>
             )}
             {mode !== "single" && displayCards.length === 0 && !disabled && (
               <p className="rounded-lg border border-dashed border-outline/40 p-4 text-center text-[13px] text-text-dim">
                 {strategyLocked
-                  ? "Generate a preview cohort from the task default strategy."
+                  ? t("setup.persona.emptyStrategy", "Generate a preview cohort from the task default strategy.")
                   : mode === "all"
-                    ? "Select all to load every persona from the chosen dataset."
-                    : "Set filters and generate a preview cohort."}
+                    ? t("setup.persona.emptyAll", "Select all to load every persona from the chosen dataset.")
+                    : t("setup.persona.emptyCustom", "Set filters and generate a preview cohort.")}
               </p>
             )}
             {mode !== "single" &&
               displayCards.length === 0 &&
               disabled &&
               lockedCohortQuery.isLoading && (
-                <p className="text-[13px] text-text-variant">Loading cohort personas…</p>
+                <p className="text-[13px] text-text-variant">{t("setup.persona.loading", "Loading cohort personas…")}</p>
               )}
           </div>
       </div>
 
       <p className="mt-2 shrink-0 truncate text-center font-mono text-[12px] tracking-wide text-text-dim">
-        <span className="font-semibold text-primary">{selectedPersonaIds.length}</span> selected ·{" "}
+        <span className="font-semibold text-primary">{selectedPersonaIds.length}</span> {t("setup.persona.selected", "selected")} ·{" "}
         {poolFooterLabel}
       </p>
       </>

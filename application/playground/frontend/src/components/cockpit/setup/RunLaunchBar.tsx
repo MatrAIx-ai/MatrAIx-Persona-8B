@@ -1,4 +1,5 @@
 import { FOCUS_RING, Sym } from "../cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
 import { CockpitInlineCount } from "./CockpitCountField";
 
 export type RunLaunchPhase = "idle" | "launching" | "running" | "done" | "error";
@@ -54,6 +55,7 @@ export function RunLaunchBar({
   failedCount = 0,
   retryBusy = false,
 }: RunLaunchBarProps) {
+  const { t } = useI18n();
   const active = runPhase !== "idle";
   const failed = runPhase === "error";
   const done = runPhase === "done";
@@ -87,7 +89,9 @@ export function RunLaunchBar({
               )}
               <div className="min-w-0">
                 <p className="truncate font-display text-[15px] font-semibold leading-tight text-text-main">
-                  {progressLabel ?? (isBatch ? "Batch run" : "Running simulation")}
+                  {progressLabel ?? (isBatch
+                    ? t("setup.run.batch", "Batch run")
+                    : t("setup.run.running", "Running simulation"))}
                 </p>
                 {progressSublabel && (
                   <p className="mt-0.5 truncate text-[12px] text-text-dim">{progressSublabel}</p>
@@ -104,7 +108,11 @@ export function RunLaunchBar({
                   className={`inline-flex items-center gap-1.5 rounded-lg border border-danger/35 bg-danger/8 px-3.5 py-2 text-[14px] font-medium text-danger transition hover:border-danger/50 hover:bg-danger/14 active:scale-[0.98] disabled:opacity-50 ${FOCUS_RING}`}
                 >
                   <Sym name="stop_circle" size={16} />
-                  {cancelRunBusy ? "Stopping…" : isBatch ? "Stop batch" : "Stop run"}
+                  {cancelRunBusy
+                    ? t("setup.run.stopping", "Stopping…")
+                    : isBatch
+                      ? t("setup.run.stopBatch", "Stop batch")
+                      : t("setup.run.stopRun", "Stop run")}
                 </button>
               )}
               {onRetryFailed && isBatch && (done || failed) && failedCount > 0 && (
@@ -119,7 +127,9 @@ export function RunLaunchBar({
                     size={16}
                     className={retryBusy ? "animate-rb-spin" : undefined}
                   />
-                  {retryBusy ? "Retrying…" : `Retry failed (${failedCount})`}
+                  {retryBusy
+                    ? t("setup.run.retrying", "Retrying…")
+                    : t("setup.run.retryFailed", "Retry failed ({count})", { count: failedCount })}
                 </button>
               )}
               {onDownload && (done || failed) && !onViewJob && (
@@ -130,7 +140,7 @@ export function RunLaunchBar({
                   className={`inline-flex items-center gap-1.5 rounded-lg border border-outline/60 bg-surface/40 px-3.5 py-2 text-[14px] font-medium text-text-variant backdrop-blur-sm transition hover:border-outline hover:bg-surface-high hover:text-text-main active:scale-[0.98] disabled:opacity-50 ${FOCUS_RING}`}
                 >
                   <Sym name="download" size={16} />
-                  Download
+                  {t("setup.run.download", "Download")}
                 </button>
               )}
               {onViewJob && done && (
@@ -140,7 +150,9 @@ export function RunLaunchBar({
                   className={`inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-display text-[14px] font-semibold text-on-primary shadow-[0_2px_10px_-4px_rgb(0_0_0/0.45)] transition hover:bg-primary-dim active:scale-[0.98] ${FOCUS_RING}`}
                 >
                   <Sym name="open_in_new" size={16} />
-                  {isBatch ? "View job" : "View trial"}
+                  {isBatch
+                    ? t("setup.run.viewJob", "View job")
+                    : t("setup.run.viewTrial", "View trial")}
                 </button>
               )}
               {onNewRun && (done || failed) && (
@@ -150,7 +162,7 @@ export function RunLaunchBar({
                   className={`inline-flex items-center gap-1.5 rounded-lg border border-outline/55 bg-transparent px-3.5 py-2 text-[14px] font-medium text-text-dim transition hover:border-outline hover:bg-surface-low hover:text-text-variant active:scale-[0.98] ${FOCUS_RING}`}
                 >
                   <Sym name="restart_alt" size={16} />
-                  Reset
+                  {t("setup.run.reset", "Reset")}
                 </button>
               )}
             </div>
@@ -174,24 +186,28 @@ export function RunLaunchBar({
               className={`glow inline-flex w-full min-w-[200px] items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3.5 font-display text-[16px] font-bold text-on-primary transition hover:bg-primary-dim disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${FOCUS_RING}`}
             >
               <Sym name={isBatch ? "rocket_launch" : "play_arrow"} fill={1} size={22} />
-              {isRunning ? "Launching…" : isBatch ? `Run batch (${personaCount})` : "Run simulation"}
+              {isRunning
+                ? t("setup.run.launching", "Launching…")
+                : isBatch
+                  ? t("setup.run.runBatch", "Run batch ({count})", { count: personaCount })
+                  : t("setup.run.runSimulation", "Run simulation")}
             </button>
             {isBatch && personaCount > 1 && (
               <CockpitInlineCount
-                label="Parallel"
+                label={t("setup.run.parallel", "Parallel")}
                 value={Math.min(parallelTrials, parallelMax)}
                 onChange={onParallelTrialsChange}
                 min={1}
                 max={parallelMax}
                 disabled={isRunning}
-                hint={`≤ ${parallelMax}`}
+                hint={t("setup.run.atMost", "≤ {count}", { count: parallelMax })}
               />
             )}
           </div>
           <p className="mt-2 text-center text-[12px] text-text-dim">
             {isBatch
-              ? "Trials appear in the center — status lights update as each finishes."
-              : "Live updates appear in the center frame."}
+              ? t("setup.run.batchHint", "Trials appear in the center — status lights update as each finishes.")
+              : t("setup.run.liveHint", "Live updates appear in the center frame.")}
           </p>
         </>
       )}

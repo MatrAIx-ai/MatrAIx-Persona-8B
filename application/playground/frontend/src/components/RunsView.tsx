@@ -22,6 +22,7 @@ import {
   harborJobListStatusLabel,
 } from "@/lib/trialStatus";
 import type { HarborJobListStatus, HarborJobSummary } from "@/lib/types";
+import { useI18n } from "../i18n/I18nProvider";
 
 export interface RunsViewProps {
   harborJobId: string | null;
@@ -221,16 +222,25 @@ function JobTrialProgress({
   job: HarborJobSummary;
   status: HarborJobListStatus;
 }) {
+  const { t } = useI18n();
   const completed = job.completedTrials ?? 0;
   const total = Math.max(job.trialCount ?? 0, 0);
   const ratio = total > 0 ? Math.min(1, completed / total) : 0;
   const style = JOB_PROGRESS_STYLES[status];
   const label =
     total === 0
-      ? "No trials"
+      ? t("runs.noTrials", "No trials")
       : total === 1
-        ? `${completed} of 1 trial complete`
-        : `${completed} of ${total} trials complete`;
+        ? t("runs.trialsComplete", "{completed} of {total} {trialLabel} complete", {
+            completed,
+            total,
+            trialLabel: t("runs.trial", "trial"),
+          })
+        : t("runs.trialsComplete", "{completed} of {total} {trialLabel} complete", {
+            completed,
+            total,
+            trialLabel: t("runs.trials", "trials"),
+          });
 
   return (
     <div
@@ -264,15 +274,20 @@ function JobTrialCountCell({
   status: HarborJobListStatus;
   onOpen: () => void;
 }) {
+  const { t } = useI18n();
   const completed = job.completedTrials ?? 0;
   const total = Math.max(job.trialCount ?? 0, 0);
   const inProgress = status === "running" && completed < total;
-  const countLabel = total === 1 ? "trial" : "trials";
+  const countLabel = t(total === 1 ? "runs.trial" : "runs.trials", total === 1 ? "trial" : "trials");
   const detail =
     total === 0
-      ? "No trials"
+      ? t("runs.noTrials", "No trials")
       : inProgress
-        ? `${completed} of ${total} ${countLabel} complete`
+        ? t("runs.trialsComplete", "{completed} of {total} {trialLabel} complete", {
+            completed,
+            total,
+            trialLabel: countLabel,
+          })
         : `${total} ${countLabel}`;
 
   return (
@@ -357,12 +372,17 @@ function JobListIdentity({
 }
 
 function HarborJobStatusBadge({ job }: { job: HarborJobSummary }) {
+  const { t } = useI18n();
   const status = deriveHarborJobListStatus(job);
   const style = JOB_STATUS_STYLES[status];
-  const label = harborJobListStatusLabel(status);
+  const label = t(`runs.status.${status}`, harborJobListStatusLabel(status));
   const detail =
     status === "failed" && (job.failedTrials ?? 0) > 0
-      ? `${label} · ${job.failedTrials} trial${job.failedTrials === 1 ? "" : "s"} failed`
+      ? t("runs.failedTrials", "{statusLabel} · {count} trial{suffix} failed", {
+          statusLabel: label,
+          count: job.failedTrials ?? 0,
+          suffix: job.failedTrials === 1 ? "" : "s",
+        })
       : label;
 
   return (
@@ -382,6 +402,7 @@ function HarborJobStatusBadge({ job }: { job: HarborJobSummary }) {
 }
 
 function HarborJobsList({ openHarborJob, onClose, backLabel }: HarborJobsListProps) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -420,13 +441,15 @@ function HarborJobsList({ openHarborJob, onClose, backLabel }: HarborJobsListPro
       void queryClient.invalidateQueries({ queryKey: ["harbor-jobs"] });
     },
     onError: (error) => {
-      setDeleteError(error instanceof ApiError ? error.message : "Could not delete job.");
+      setDeleteError(error instanceof ApiError ? error.message : t("runs.couldNotDelete", "Could not delete job."));
     },
   });
 
   const handleDelete = (job: HarborJobSummary) => {
     const ok = window.confirm(
-      `Delete "${job.jobName}"?\n\nThis removes the job folder under jobs/ and cannot be undone.`,
+      t("runs.deleteConfirm", "Delete \"{jobName}\"?\n\nThis removes the job folder under jobs/ and cannot be undone.", {
+        jobName: job.jobName,
+      }),
     );
     if (!ok) return;
     deleteMutation.mutate(job.jobName);
@@ -437,35 +460,39 @@ function HarborJobsList({ openHarborJob, onClose, backLabel }: HarborJobsListPro
       <StudioPageFrame>
         <StudioPageHeader
           compact
-          eyebrow="MatrAIx · Runs"
-          title="Runs"
-          subtitle={
-            <>
-              Harbor jobs in <span className="font-mono">jobs/</span> — launch from Playground, debrief
-              trials here.
-            </>
-          }
+          eyebrow={t("runs.eyebrow", "MatrAIx · Runs")}
+          title={t("runs.title", "Runs")}
+          subtitle={t("runs.subtitle", "Harbor jobs in {jobsPath} — launch from Playground, debrief trials here.", {
+            jobsPath: "jobs/",
+          })}
           meta={
             !harborQuery.isLoading && !harborQuery.isError ? (
               <span className="font-mono text-[13px] text-text-variant">
                 {filtersActive
-                  ? `${filteredJobs.length} of ${harborJobs.length}`
-                  : harborJobs.length}{" "}
-                job{harborJobs.length === 1 ? "" : "s"}
+                  ? t("runs.filteredJobCount", "{filtered} of {total} jobs", {
+                      filtered: filteredJobs.length,
+                      total: harborJobs.length,
+                    })
+                  : t("runs.jobCount", "{count} job{suffix}", {
+                      count: harborJobs.length,
+                      suffix: harborJobs.length === 1 ? "" : "s",
+                    })}
               </span>
             ) : null
           }
           actions={
             <>
               <StudioToolbarButton icon="arrow_back" onClick={onClose}>
-                {backLabel}
+                {backLabel === "Back" ? t("runs.back", "Back") : backLabel}
               </StudioToolbarButton>
               <StudioToolbarButton
                 icon="refresh"
                 onClick={() => harborQuery.refetch()}
                 disabled={harborQuery.isFetching}
               >
-                {harborQuery.isFetching ? "Refreshing…" : "Refresh"}
+                {harborQuery.isFetching
+                  ? t("runs.refreshing", "Refreshing…")
+                  : t("runs.refresh", "Refresh")}
               </StudioToolbarButton>
             </>
           }
@@ -530,6 +557,7 @@ function HarborJobsFilterBar({
   onClearFilters: () => void;
   filtersActive: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <StudioGlassPanel className="mb-3 p-3">
       <div className="flex h-8 min-w-0 items-center rounded-lg glass-tile backdrop-blur transition-colors focus-within:border-primary/50">
@@ -538,15 +566,15 @@ function HarborJobsFilterBar({
           type="search"
           value={searchQuery}
           onChange={(e) => onSearchQueryChange(e.target.value)}
-          placeholder="Search by job name, app type, or status…"
-          aria-label="Search runs"
+          placeholder={t("runs.searchPlaceholder", "Search by job name, app type, or status…")}
+          aria-label={t("runs.searchRuns", "Search runs")}
           className="h-full w-full min-w-0 bg-transparent px-3 text-[15px] text-text-main outline-none placeholder:text-text-variant"
         />
         {searchQuery && (
           <button
             type="button"
             onClick={() => onSearchQueryChange("")}
-            aria-label="Clear search"
+            aria-label={t("runs.clearSearch", "Clear search")}
             className={`mr-2 flex-none rounded p-1 text-text-dim transition-colors hover:bg-surface-high hover:text-text-main ${FOCUS_RING}`}
           >
             <Sym name="close" size={16} />
@@ -556,17 +584,17 @@ function HarborJobsFilterBar({
 
       <div className="mt-2.5 flex flex-col gap-2 border-t border-outline/20 pt-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-          <span className="cockpit-field-label shrink-0 text-[12px] text-text-dim">App type</span>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by app type">
+          <span className="cockpit-field-label shrink-0 text-[12px] text-text-dim">{t("runs.appType", "App type")}</span>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("runs.filterByAppType", "Filter by app type")}>
             <RunsFilterChip
-              label="All"
+              label={t("runs.all", "All")}
               active={appTypeFilter === "all"}
               onClick={() => onAppTypeFilterChange("all")}
             />
             {APP_TYPE_FILTER_OPTIONS.map((option) => (
               <RunsFilterChip
                 key={option.value}
-                label={option.label}
+                label={t(`runs.appType.${option.value === "os-app" ? "osApp" : option.value}`, option.label)}
                 active={appTypeFilter === option.value}
                 onClick={() => onAppTypeFilterChange(option.value)}
               />
@@ -576,17 +604,17 @@ function HarborJobsFilterBar({
 
         <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 lg:pl-4">
           <span className="hidden h-6 w-px bg-outline/30 sm:block" aria-hidden />
-          <span className="cockpit-field-label shrink-0 text-[12px] text-text-dim">Status</span>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+          <span className="cockpit-field-label shrink-0 text-[12px] text-text-dim">{t("runs.status", "Status")}</span>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("runs.filterByStatus", "Filter by status")}>
             <RunsFilterChip
-              label="All"
+              label={t("runs.all", "All")}
               active={statusFilter === "all"}
               onClick={() => onStatusFilterChange("all")}
             />
             {STATUS_FILTER_OPTIONS.map((option) => (
               <RunsFilterChip
                 key={option.value}
-                label={option.label}
+                label={t(`runs.status.${option.value}`, option.label)}
                 active={statusFilter === option.value}
                 onClick={() => onStatusFilterChange(option.value)}
               />
@@ -603,7 +631,7 @@ function HarborJobsFilterBar({
             className={`inline-flex h-8 items-center gap-1.5 rounded-md glass-tile glass-tile--hover px-3 text-[13px] font-medium text-text-variant transition-colors hover:text-text-main ${FOCUS_RING}`}
           >
             <Sym name="filter_alt_off" size={15} />
-            Clear filters
+            {t("runs.clearFilters", "Clear filters")}
           </button>
         </div>
       )}
@@ -647,17 +675,18 @@ function HarborJobsTable({
   onDelete: (job: HarborJobSummary) => void;
   deletingJobName: string | null | undefined;
 }) {
+  const { t } = useI18n();
   return (
     <StudioGlassPanel className="rounded-xl">
       <div
         className={`${HARBOR_JOBS_GRID} border-b border-outline/40 px-4 py-2.5 text-[12px] uppercase tracking-wide text-text-dim`}
       >
-        <span>Job</span>
-        <span>App type</span>
-        <span>Started</span>
-        <span className="text-center">Trials</span>
-        <span className="justify-self-end">Status</span>
-        <span className="sr-only">Actions</span>
+        <span>{t("runs.job", "Job")}</span>
+        <span>{t("runs.appType", "App type")}</span>
+        <span>{t("runs.started", "Started")}</span>
+        <span className="text-center">{t("runs.trialsHeader", "Trials")}</span>
+        <span className="justify-self-end">{t("runs.status", "Status")}</span>
+        <span className="sr-only">{t("runs.actions", "Actions")}</span>
       </div>
       <ul className="divide-y divide-outline-dim">
         {jobs.map((job) => {
@@ -688,7 +717,7 @@ function HarborJobsTable({
                 </div>
                 <button
                   type="button"
-                  aria-label={`Delete ${job.jobName}`}
+                  aria-label={t("runs.delete", "Delete {jobName}", { jobName: job.jobName })}
                   disabled={deleting}
                   onClick={() => onDelete(job)}
                   className={`grid h-8 w-8 place-items-center rounded-md text-text-dim opacity-0 transition hover:bg-danger/10 hover:text-danger group-hover:opacity-100 disabled:opacity-40 ${FOCUS_RING}`}
@@ -732,14 +761,15 @@ function ListLoading() {
 }
 
 function ListFilterEmpty({ onClearFilters }: { onClearFilters: () => void }) {
+  const { t } = useI18n();
   return (
     <StudioGlassPanel className="px-6 py-12 text-center rise-in">
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-md glass-tile">
         <Sym name="search_off" size={24} className="text-text-dim" />
       </div>
-      <h2 className="font-display text-[15px] font-semibold text-text-main">No matching runs</h2>
+      <h2 className="font-display text-[15px] font-semibold text-text-main">{t("runs.noMatchingRuns", "No matching runs")}</h2>
       <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-text-variant">
-        Try a different search term or clear the app type and status filters.
+        {t("runs.noMatchingRunsDetail", "Try a different search term or clear the app type and status filters.")}
       </p>
       <button
         type="button"
@@ -747,22 +777,24 @@ function ListFilterEmpty({ onClearFilters }: { onClearFilters: () => void }) {
         className={`mt-4 inline-flex items-center gap-1.5 rounded-md glass-tile glass-tile--hover px-4 py-2 text-[14px] text-text-variant transition hover:text-text-main ${FOCUS_RING}`}
       >
         <Sym name="filter_alt_off" size={16} />
-        Clear filters
+        {t("runs.clearFilters", "Clear filters")}
       </button>
     </StudioGlassPanel>
   );
 }
 
 function ListEmpty({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
   return (
     <StudioGlassPanel className="px-6 py-14 text-center rise-in">
       <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-md glass-tile">
         <Sym name="history" size={26} className="text-text-dim" />
       </div>
-      <h2 className="font-display text-[15px] font-semibold text-text-main">No runs yet</h2>
+      <h2 className="font-display text-[15px] font-semibold text-text-main">{t("runs.noRunsYet", "No runs yet")}</h2>
       <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-text-variant">
-        Launch a batch from Playground to run personas at scale. Results appear here under{" "}
-        <span className="font-mono">jobs/</span>.
+        {t("runs.noRunsYetDetail", "Launch a batch from Playground to run personas at scale. Results appear here under {jobsPath}.", {
+          jobsPath: "jobs/",
+        })}
       </p>
       <button
         type="button"
@@ -770,20 +802,21 @@ function ListEmpty({ onClose }: { onClose: () => void }) {
         className={`mt-4 inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[14px] text-on-primary glow transition ease-out hover:bg-primary-dim active:scale-[0.97] ${FOCUS_RING}`}
       >
         <Sym name="play_arrow" fill={1} size={16} />
-        Back to home
+        {t("runs.backHome", "Back to home")}
       </button>
     </StudioGlassPanel>
   );
 }
 
 function ListError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const { t } = useI18n();
   const message =
     error instanceof ApiError
       ? error.message
-      : "Something went wrong loading runs.";
+      : t("runs.somethingWrongLoadingRuns", "Something went wrong loading runs.");
   return (
     <StudioGlassPanel className="border-l-4 border-l-danger px-5 py-8 text-center rise-in">
-      <h2 className="font-display text-[15px] font-semibold text-text-main">Couldn&apos;t load jobs</h2>
+      <h2 className="font-display text-[15px] font-semibold text-text-main">{t("runs.couldntLoadJobs", "Couldn’t load jobs")}</h2>
       <p className="mx-auto mt-1.5 max-w-md break-words text-[15px] leading-relaxed text-text-variant">
         {message}
       </p>
@@ -793,7 +826,7 @@ function ListError({ error, onRetry }: { error: unknown; onRetry: () => void }) 
         className={`mt-4 inline-flex items-center gap-1.5 rounded-md bg-danger/10 px-4 py-2 text-[14px] text-danger ${FOCUS_RING}`}
       >
         <Sym name="refresh" size={16} />
-        Try again
+        {t("runs.tryAgain", "Try again")}
       </button>
     </StudioGlassPanel>
   );

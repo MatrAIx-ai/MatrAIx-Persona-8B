@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "@/lib/api";
 import type { PersonaCohortDetail, PersonaPoolCatalog } from "@/lib/types";
+import { useI18n } from "@/i18n/I18nProvider";
 import { FOCUS_RING } from "./cockpitShared";
 
 export interface PersonaGroupFilters {
@@ -45,6 +46,7 @@ export function PersonaGroupBuilder({
   onSampleSizeChange,
   onCohortChange,
 }: PersonaGroupBuilderProps) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -91,7 +93,7 @@ export function PersonaGroupBuilder({
       setPreviewError(null);
     } catch (err) {
       setMatchedCount(null);
-      setPreviewError(err instanceof ApiError ? err.message : "Could not preview sample.");
+      setPreviewError(err instanceof ApiError ? err.message : t("personaGroups.previewError", "Could not preview sample."));
     }
   }, [filters.dimensionFilters, filters.sources, sampleSize, seed]);
 
@@ -124,7 +126,7 @@ export function PersonaGroupBuilder({
       onCohortChange?.(cohort.cohortId);
     },
     onError: (err: unknown) => {
-      setSaveError(err instanceof ApiError ? err.message : "Could not save cohort.");
+      setSaveError(err instanceof ApiError ? err.message : t("personaGroups.saveError", "Could not save cohort."));
     },
   });
 
@@ -141,7 +143,7 @@ export function PersonaGroupBuilder({
         onSampleSizeChange?.(cohort.sampleSize);
         onCohortChange?.(cohort.cohortId);
       } catch (err) {
-        setPreviewError(err instanceof ApiError ? err.message : "Could not load cohort.");
+        setPreviewError(err instanceof ApiError ? err.message : t("personaGroups.loadError", "Could not load cohort."));
       }
     },
     [onCohortChange, onFiltersChange, onSampleSizeChange, onSeedChange],
@@ -165,25 +167,25 @@ export function PersonaGroupBuilder({
 
   const poolSummary = useMemo(() => {
     if (!catalog) return null;
-    return `${catalog.count} personas · smoke ${catalog.smokePersonaId ?? "—"}`;
-  }, [catalog]);
+    return `${catalog.count} ${t("personaGroups.personas", "personas")} · ${t("personaGroups.smoke", "smoke")} ${catalog.smokePersonaId ?? "—"}`;
+  }, [catalog, t]);
 
   return (
     <div className="mt-3 rounded-md border border-outline/70 bg-surface px-3 py-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[14px] font-medium text-text-main">Persona group</p>
+        <p className="text-[14px] font-medium text-text-main">{t("personaGroups.title", "Persona group")}</p>
         {poolSummary && <p className="font-mono text-[13px] text-text-dim">{poolSummary}</p>}
       </div>
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-[13px] text-text-variant">
-          Saved cohort
+          {t("personaGroups.savedCohort", "Saved cohort")}
           <select
             value={selectedCohortId ?? ""}
             onChange={(e) => void loadCohort(e.target.value)}
             className="h-8 rounded border border-outline bg-surface px-2 text-[14px] text-text-main"
           >
-            <option value="">(none — ad hoc filters)</option>
+            <option value="">{t("personaGroups.noneAdHoc", "(none — ad hoc filters)")}</option>
             {cohorts.map((cohort) => (
               <option key={cohort.cohortId} value={cohort.cohortId}>
                 {cohort.name} · {cohort.kind} · n={cohort.sampleSize}
@@ -199,14 +201,14 @@ export function PersonaGroupBuilder({
           }}
           className={`h-8 rounded-md border border-outline px-3 text-[13px] text-text-main hover:bg-surface-low ${FOCUS_RING}`}
         >
-          {saveOpen ? "Cancel save" : "Save cohort…"}
+          {saveOpen ? t("personaGroups.cancelSave", "Cancel save") : t("personaGroups.saveCohort", "Save cohort…")}
         </button>
       </div>
 
       {saveOpen && (
         <div className="mb-3 grid gap-2 rounded border border-outline/60 p-2 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-[13px] text-text-variant">
-            Cohort id
+            {t("personaGroups.cohortId", "Cohort ID")}
             <input
               value={saveId}
               onChange={(e) => setSaveId(e.target.value)}
@@ -215,23 +217,23 @@ export function PersonaGroupBuilder({
             />
           </label>
           <label className="flex flex-col gap-1 text-[13px] text-text-variant">
-            Display name
+            {t("personaGroups.displayName", "Display name")}
             <input
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
-              placeholder="Optional label"
+              placeholder={t("misc.optionalLabel", "Optional label")}
               className="h-8 rounded border border-outline bg-surface px-2 text-[14px]"
             />
           </label>
           <label className="flex flex-col gap-1 text-[13px] text-text-variant">
-            Kind
+            {t("personaGroups.kind", "Kind")}
             <select
               value={saveKind}
               onChange={(e) => setSaveKind(e.target.value as "recipe" | "frozen")}
               className="h-8 rounded border border-outline bg-surface px-2 text-[14px]"
             >
-              <option value="recipe">recipe (re-sample on launch)</option>
-              <option value="frozen">frozen (fixed persona list)</option>
+              <option value="recipe">recipe ({t("personaGroups.recipeDescription", "re-sample on launch")})</option>
+              <option value="frozen">frozen ({t("personaGroups.frozenDescription", "fixed persona list")})</option>
             </select>
           </label>
           <div className="flex items-end">
@@ -241,7 +243,7 @@ export function PersonaGroupBuilder({
               onClick={() => saveMutation.mutate()}
               className={`h-8 rounded-md bg-primary px-3 text-[13px] text-on-primary disabled:opacity-55 ${FOCUS_RING}`}
             >
-              {saveMutation.isPending ? "Saving…" : "Save to persona/datasets/cohorts/"}
+              {saveMutation.isPending ? t("personaGroups.saving", "Saving…") : t("personaGroups.saveToPath", "Save to persona/datasets/cohorts/")}
             </button>
           </div>
           {saveError && <p className="text-[13px] text-danger sm:col-span-2">{saveError}</p>}
@@ -249,16 +251,16 @@ export function PersonaGroupBuilder({
       )}
 
       {catalogQuery.isLoading && (
-        <p className="text-[13px] text-text-variant">Loading dev persona catalog…</p>
+        <p className="text-[13px] text-text-variant">{t("personaGroups.loadingCatalog", "Loading dev persona catalog…")}</p>
       )}
       {catalogQuery.isError && (
-        <p className="text-[13px] text-danger">Could not load persona pool catalog.</p>
+        <p className="text-[13px] text-danger">{t("personaGroups.catalogError", "Could not load persona pool catalog.")}</p>
       )}
 
       {catalog && (
         <>
           <div className="mb-3">
-            <p className="mb-1.5 text-[13px] text-text-variant">Provenance</p>
+            <p className="mb-1.5 text-[13px] text-text-variant">{t("personaGroups.provenance", "Provenance")}</p>
             <div className="flex flex-wrap gap-1.5">
               {sources.map((source) => {
                 const active = filters.sources.includes(source);
@@ -283,7 +285,7 @@ export function PersonaGroupBuilder({
           </div>
 
           <div className="space-y-2">
-            <p className="text-[13px] text-text-variant">Dimension filters (dev profile)</p>
+            <p className="text-[13px] text-text-variant">{t("personaGroups.dimensionFilters", "Dimension filters (dev profile)")}</p>
             {groups.map((group) => {
               const open = expandedGroup === group.id;
               const groupActive = group.dimensions.some(
@@ -314,7 +316,7 @@ export function PersonaGroupBuilder({
                             onChange={(e) => setDimensionFilter(dim.id, e.target.value)}
                             className="h-8 rounded border border-outline bg-surface px-2 text-[14px] text-text-main"
                           >
-                            <option value="">Any</option>
+                            <option value="">{t("personaGroups.any", "Any")}</option>
                             {dim.values.map((value) => (
                               <option key={value} value={value}>
                                 {value}
@@ -333,21 +335,20 @@ export function PersonaGroupBuilder({
           <p className="mt-3 text-[13px] text-text-variant">
             {selectedCohortId ? (
               <>
-                Using cohort <span className="font-mono text-text-main">{selectedCohortId}</span>
+                {t("personaGroups.usingCohort", "Using cohort")} <span className="font-mono text-text-main">{selectedCohortId}</span>
               </>
             ) : activeFilterCount > 0 ? (
               <>
                 {matchedCount !== null ? (
                   <>
-                    <span className="font-mono text-text-main">{matchedCount}</span> personas match
-                    filters
+                    <span className="font-mono text-text-main">{matchedCount}</span> {t("personaGroups.personasMatch", "personas match filters")}
                   </>
                 ) : (
-                  "Checking match count…"
+                  t("personaGroups.checkingMatchCount", "Checking match count…")
                 )}
               </>
             ) : (
-              <>No filters — random sample from full pool.</>
+              <>{t("personaGroups.noFilters", "No filters — random sample from full pool.")}</>
             )}
             {previewError && <span className="ml-2 text-danger">{previewError}</span>}
           </p>

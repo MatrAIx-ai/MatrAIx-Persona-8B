@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { listOsAppEvalTasks, api, ApiError, harborTrialLiveScreenshotUrl } from "@/lib/api";
 import { FALLBACK_OS_APP_TASKS } from "@/lib/fallbackTasks";
 import { mergeTaskCatalog } from "@/lib/mergeTaskCatalog";
@@ -52,6 +53,8 @@ import { osAppTaskCards } from "./setup/cockpitTaskCards";
 import { FOCUS_RING, Sym } from "./cockpitShared";
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
 
+type Translate = ReturnType<typeof useI18n>["t"];
+
 const DEFAULT_AGENT_MODEL = DEFAULT_CUA_AGENT_MODEL;
 
 function mergeOsAppTasks(apiTasks: OsAppEvalTask[] | undefined): OsAppEvalTask[] {
@@ -74,13 +77,14 @@ function cuaStatusLine(
   phase: HarborCockpitPhase,
   jobPhase: string | null | undefined,
   harborPhase?: string | null,
+  t?: Translate,
 ): string | null {
-  if (phase === "launching") return "Launching trial…";
+  if (phase === "launching") return t?.("eval.os.status.launching", "Launching trial…") ?? "Launching trial…";
   if (phase !== "running") return null;
   const raw = (harborPhase ?? jobPhase ?? "").toLowerCase();
-  if (raw.includes("harbor") || raw.includes("trial")) return "Running OS app trial…";
-  if (raw.includes("collect")) return "Saving OS app artifacts and trajectory…";
-  return "The persona agent is using the desktop…";
+  if (raw.includes("harbor") || raw.includes("trial")) return t?.("eval.os.status.trial", "Running OS app trial…") ?? "Running OS app trial…";
+  if (raw.includes("collect")) return t?.("eval.os.status.collecting", "Saving OS app artifacts and trajectory…") ?? "Saving OS app artifacts and trajectory…";
+  return t?.("eval.os.status.desktop", "The persona agent is using the desktop…") ?? "The persona agent is using the desktop…";
 }
 
 function StepRow({ step: s }: { step: { step: number; action: string; detail: string } }) {
@@ -110,6 +114,7 @@ export function OsAppEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: OsAppEvalCockpitProps) {
+  const { t } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, vncUrl, sandboxId, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<OsAppEvalJobView>({ taskKind: "os-app" });
@@ -234,8 +239,11 @@ export function OsAppEvalCockpit({
 
   useEffect(() => {
     if (!isActive) return;
-    onFooterContextChange?.(`os-app · ${task?.platform ?? "desktop"} · ${task?.title ?? "task"}`);
-  }, [isActive, onFooterContextChange, task]);
+    onFooterContextChange?.(t("eval.os.footerContext", "os-app · {platform} · {task}", {
+      platform: task?.platform ?? t("eval.os.platformFallback", "desktop"),
+      task: task?.title ?? t("eval.os.taskFallback", "task"),
+    }));
+  }, [isActive, onFooterContextChange, task, t]);
 
   const osAppResult = job?.osAppResult ?? null;
   const verifier = job?.verifier ?? null;
@@ -249,7 +257,7 @@ export function OsAppEvalCockpit({
   });
   const failed = phase === "error" || phase === "timeout" || job?.status === "error";
   const displayError = formatCockpitRunError(error ?? job?.error ?? null);
-  const status = cuaStatusLine(phase, job?.phase, harborPhase);
+  const status = cuaStatusLine(phase, job?.phase, harborPhase, t);
 
   useEffect(() => {
     if (phase === "done") {
@@ -404,17 +412,24 @@ export function OsAppEvalCockpit({
     ? formatBatchProgressLabel(
         batchCompletedTrials,
         expectedTrialCount,
+        t,
       )
     : phase === "launching"
-      ? "Launching OS app trial…"
+      ? t("eval.os.progress.launching", "Launching OS app trial…")
       : phase === "running"
         ? stepCount > 0
-          ? `Desktop agent · ${stepCount} step${stepCount === 1 ? "" : "s"}`
-          : (status ?? "Persona agent is using the desktop…")
+          ? t("eval.os.progress.trace", "Desktop agent · {count} {unit}", {
+              count: stepCount,
+              unit: t(stepCount === 1 ? "eval.common.step.one" : "eval.common.step.many", stepCount === 1 ? "step" : "steps"),
+            })
+          : (status ?? t("eval.os.progress.desktop", "Persona agent is using the desktop…"))
         : phase === "done"
-          ? `OS app complete · ${stepCount} steps`
+          ? t("eval.os.progress.complete", "OS app complete · {count} {unit}", {
+              count: stepCount,
+              unit: t(stepCount === 1 ? "eval.common.step.one" : "eval.common.step.many", stepCount === 1 ? "step" : "steps"),
+            })
           : failed
-            ? "OS app trial failed"
+            ? t("eval.os.progress.failed", "OS app trial failed")
             : undefined;
   const canExport = exportSnapshot !== null && osAppResult !== null;
 
@@ -489,7 +504,9 @@ export function OsAppEvalCockpit({
           progressPct={runProgressPct}
           progressLabel={runProgressLabel}
           progressSublabel={
-            batchJobName && batchComplete ? BATCH_RUN_COMPLETE_HINT : undefined
+            batchJobName && batchComplete
+              ? t("eval.common.batchCompleteHint", BATCH_RUN_COMPLETE_HINT)
+              : undefined
           }
           canRun={visiblePersonaIds.length > 0 && Boolean(task) && !runBusy}
           isBatch={isBatchRun}
@@ -544,12 +561,12 @@ export function OsAppEvalCockpit({
             }
             context={
               <InstructionPanel
-                label="Task context"
+                label={t("eval.os.contextLabel", "Task context")}
                 title={instructionView.title}
                 markdown={instructionView.contextMarkdown}
                 loading={instructionView.loading}
                 error={instructionView.error}
-                emptyMessage="No separate context document is available for this task."
+                emptyMessage={t("eval.os.contextEmpty", "No separate context document is available for this task.")}
                 icon="menu_book"
               />
             }
@@ -576,8 +593,8 @@ export function OsAppEvalCockpit({
           tasksError={
             tasks.length === 0
               ? tasksQuery.isError
-                ? "OS app task API unavailable — restart the Playground backend (uvicorn backend.api.app:app on :8765)."
-                : "No OS app tasks available."
+                ? t("eval.os.tasksApiUnavailable", "OS app task API unavailable — restart the Playground backend (uvicorn backend.api.app:app on :8765).")
+                : t("eval.os.tasksEmpty", "No OS app tasks available.")
               : null
           }
           disabled={setupLocked}
@@ -621,6 +638,7 @@ function OsAppResults({
   vncUrl: string | null;
   sandboxId: string | null;
 }) {
+  const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
   const recordingUrl =
@@ -751,11 +769,11 @@ function OsAppResults({
   const stepsPanel = (
     <div className="flex h-full min-h-0 flex-col rounded-md border border-outline bg-surface p-2">
       <div className="hud mb-1 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-text-dim">
-        Agent steps
+        {t("eval.os.stepsTitle", "Agent steps")}
       </div>
       <div ref={stepsPanelRef} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
         {liveSteps.length === 0 && (
-          <p className="text-[12px] italic text-text-dim">Waiting for first action…</p>
+          <p className="text-[12px] italic text-text-dim">{t("eval.os.stepsWaiting", "Waiting for first action…")}</p>
         )}
         {liveSteps.filter((s) => s.action).map((s) => (
           <StepRow key={s.step} step={s} />
@@ -768,7 +786,7 @@ function OsAppResults({
     <button
       type="button"
       onClick={toggleFullscreen}
-      aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+      aria-label={isFullscreen ? t("eval.os.fullscreen.exit", "Exit fullscreen") : t("eval.os.fullscreen.enter", "Enter fullscreen")}
       className={`absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/60 text-white/80 backdrop-blur transition hover:bg-black/80 hover:text-white ${FOCUS_RING}`}
     >
       <Sym name={isFullscreen ? "fullscreen_exit" : "fullscreen"} size={16} />
@@ -788,8 +806,10 @@ function OsAppResults({
   }, [agentDone, running]);
 
   const displayStatus = agentDone
-    ? `Collecting results${collectingElapsed > 0 ? ` (${collectingElapsed}s)` : ""}…`
-    : (status ?? "Running computer-use trial…");
+    ? t("eval.os.collecting", "Collecting results{elapsed}…", {
+        elapsed: collectingElapsed > 0 ? ` (${collectingElapsed}s)` : "",
+      })
+    : (status ?? t("eval.os.runningTrial", "Running computer-use trial…"));
 
   if (running && !osAppResult) {
     if (isIos) {
@@ -818,11 +838,11 @@ function OsAppResults({
               {screenshotSrc ? (
                 <img
                   src={screenshotSrc}
-                  alt="iOS simulator live view"
+                  alt={t("eval.os.iosLiveViewAlt", "iOS simulator live view")}
                   className="absolute inset-0 m-auto max-h-full max-w-full object-contain"
                 />
               ) : (
-                <p className="absolute inset-0 flex items-center justify-center text-[12px] text-text-dim">Connecting to iOS simulator…</p>
+                <p className="absolute inset-0 flex items-center justify-center text-[12px] text-text-dim">{t("eval.os.connectingIos", "Connecting to iOS simulator…")}</p>
               )}
             </div>
             <div className={isFullscreen ? "w-72 shrink-0" : "w-48 shrink-0"}>{stepsPanel}</div>
@@ -863,11 +883,11 @@ function OsAppResults({
                   {screenshotSrc ? (
                     <img
                       src={screenshotSrc}
-                      alt="Desktop live view"
+                  alt={t("eval.os.desktopLiveViewAlt", "Desktop live view")}
                       className="absolute inset-0 m-auto max-h-full max-w-full object-contain"
                     />
                   ) : (
-                    <p className="absolute inset-0 flex items-center justify-center text-[12px] text-text-dim">Connecting to sandbox…</p>
+                    <p className="absolute inset-0 flex items-center justify-center text-[12px] text-text-dim">{t("eval.os.connectingSandbox", "Connecting to sandbox…")}</p>
                   )}
                 </div>
                 <div className="min-h-0 flex-1">{stepsPanel}</div>
@@ -878,7 +898,7 @@ function OsAppResults({
                   {fullscreenBtn}
                   <iframe
                     src={vncUrl!}
-                    title="Live sandbox view"
+                    title={t("eval.os.liveSandboxTitle", "Live sandbox view")}
                     className="h-full w-full rounded-md border border-outline bg-black"
                     sandbox="allow-scripts allow-same-origin"
                     allow="clipboard-read; clipboard-write"
@@ -901,16 +921,16 @@ function OsAppResults({
     const useComputerHint =
       (task?.platform === "macos" || task?.platform === "ios") &&
       (error?.includes("exit code") || error?.includes("environment definition"))
-        ? " macOS and iOS tasks run on use.computer — set USE_COMPUTER_API_KEY (and ANTHROPIC_API_KEY) on the backend."
+        ? ` ${t("eval.os.errorHint", "macOS and iOS tasks run on use.computer — set USE_COMPUTER_API_KEY (and ANTHROPIC_API_KEY) on the backend.")}`
         : "";
     return (
       <section className="rounded-md border border-danger/30 bg-danger/10 p-5">
         <div className="flex items-start gap-3">
           <Sym name="error" fill={1} size={20} className="mt-0.5 text-danger" />
           <div>
-            <h2 className="font-semibold text-text-main">OS app trial failed</h2>
+            <h2 className="font-semibold text-text-main">{t("eval.os.errorTitle", "OS app trial failed")}</h2>
             <p className="mt-1 text-[15px] text-text-variant">
-              {error ?? "The trial did not finish."}
+              {error ?? t("eval.os.errorBody", "The trial did not finish.")}
               {useComputerHint}
             </p>
             <button
@@ -919,7 +939,7 @@ function OsAppResults({
               className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-3 py-1.5 text-[14px] font-medium text-danger hover:bg-danger/10 ${FOCUS_RING}`}
             >
               <Sym name="refresh" size={15} />
-              Try again
+              {t("eval.common.tryAgain", "Try again")}
             </button>
           </div>
         </div>
@@ -930,7 +950,7 @@ function OsAppResults({
   if (!osAppResult) {
     return (
       <section className="rounded-md border border-outline bg-surface-lowest p-5">
-        <p className="text-[15px] text-text-variant">Waiting for OS app artifacts…</p>
+        <p className="text-[15px] text-text-variant">{t("eval.os.waitingArtifacts", "Waiting for OS app artifacts…")}</p>
       </section>
     );
   }
@@ -941,7 +961,7 @@ function OsAppResults({
         <section className="rounded-md border border-outline bg-surface-lowest p-4">
           <div className="hud mb-2 flex items-center gap-2 text-[11px] text-primary">
             <Sym name="videocam" size={14} />
-            Session recording
+            {t("eval.os.recording", "Session recording")}
           </div>
           <video
             src={recordingUrl}
@@ -956,7 +976,9 @@ function OsAppResults({
       {osAppResult.artifact && (
         <section className="rounded-md border border-outline bg-surface-lowest p-4">
           <div className="hud mb-2 text-[11px] text-text-dim">
-            Output · {osAppResult.artifactName ?? task?.outputArtifact ?? "artifact"}
+            {t("eval.os.output", "Output · {name}", {
+              name: osAppResult.artifactName ?? task?.outputArtifact ?? t("eval.os.taskFallback", "artifact"),
+            })}
           </div>
           <pre className="custom-scrollbar max-h-80 overflow-auto rounded-md bg-surface p-3 font-mono text-[13px] text-text-main">
             {JSON.stringify(osAppResult.artifact, null, 2)}
@@ -967,12 +989,15 @@ function OsAppResults({
         <section className="rounded-md border border-outline bg-surface-lowest p-4">
           <div className="hud mb-3 flex items-center gap-2 text-[12px] text-primary">
             <Sym name="route" size={14} />
-            Desktop trace · {trace.events.length} step{trace.events.length === 1 ? "" : "s"}
+            {t("eval.os.trace", "Desktop trace · {count} {unit}", {
+              count: trace.events.length,
+              unit: t(trace.events.length === 1 ? "eval.common.step.one" : "eval.common.step.many", trace.events.length === 1 ? "step" : "steps"),
+            })}
           </div>
           <HarborTraceReplay
             trace={trace}
             autoFollowLatest={running}
-            emptyMessage="This run finished without step screenshots."
+            emptyMessage={t("eval.os.traceEmpty", "This run finished without step screenshots.")}
           />
         </section>
       )}

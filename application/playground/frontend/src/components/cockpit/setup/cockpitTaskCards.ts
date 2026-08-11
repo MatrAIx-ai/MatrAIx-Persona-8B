@@ -18,6 +18,7 @@ function transportForChatTask(
 export function chatbotEvalTaskCards(
   tasks: ChatbotEvalTask[],
   opts?: { runningTaskIds?: ReadonlySet<string> },
+  t?: (key: string, fallback?: string, values?: Record<string, string>) => string,
 ): TaskCardModel[] {
   const runningTaskIds = opts?.runningTaskIds;
   return tasks.map((task) => {
@@ -44,9 +45,11 @@ export function chatbotEvalTaskCards(
       transport,
       available,
       canStart: task.canStart ?? false,
-      statusLabel: available === null ? undefined : available ? "Available" : "Unavailable",
+      statusLabel: available === null ? undefined : available ? t ? t("eval.taskCards.available", "Available") : "Available" : t ? t("eval.taskCards.unavailable", "Unavailable") : "Unavailable",
       statusDetail: runningNow
-        ? "Sidecar started for this run."
+        ? t
+          ? t("eval.taskCards.sidecarStarted", "Sidecar started for this run.")
+          : "Sidecar started for this run."
         : task.statusDetail ?? undefined,
       capabilities: (task.capabilities ?? []).map((cap) => ({
         id: cap.id,

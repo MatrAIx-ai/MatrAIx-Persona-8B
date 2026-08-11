@@ -3,6 +3,11 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
+import {
+  personaDimensionLabelKey,
+  personaSectionLabelKey,
+} from "@/i18n/personaLabelKeys";
 import type {
   PersonaMatchedAttribute,
   PersonaPoolCatalog,
@@ -83,6 +88,7 @@ export function PersonaFilterModal({
   onClose,
   onConfirm,
 }: PersonaFilterModalProps) {
+  const { t, locale } = useI18n();
   const [draft, setDraft] = useState(filters);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [expandedSubgroup, setExpandedSubgroup] = useState<string | null>(null);
@@ -163,17 +169,29 @@ export function PersonaFilterModal({
   }, [groups, normalizedQuery]);
 
   const selectedChips = useMemo(() => {
-    const chips: Array<{ key: string; label: string; value: string }> = [];
+    const chips: Array<{ key: string; dimId: string; label: string; value: string }> = [];
     for (const source of draft.sources) {
-      chips.push({ key: `source:${source}`, label: "Source", value: source });
+      chips.push({
+        key: `source:${source}`,
+        dimId: "source",
+        label: t("setup.filters.provenance", "Source"),
+        value: source,
+      });
     }
     for (const [dimId, values] of Object.entries(draft.dimensionFilters)) {
       for (const value of values) {
-        chips.push({ key: `${dimId}:${value}`, label: dimId, value });
+        const fallback = dimId.replace(/_/g, " ");
+        const labelKey = personaDimensionLabelKey(dimId, fallback);
+        chips.push({
+          key: `${dimId}:${value}`,
+          dimId,
+          label: labelKey ? t(labelKey, fallback) : fallback,
+          value,
+        });
       }
     }
     return chips;
-  }, [draft]);
+  }, [draft, t]);
 
   if (!open) return null;
 
@@ -199,7 +217,7 @@ export function PersonaFilterModal({
     });
   };
 
-  const removeChip = (chip: { key: string; label: string; value: string }) => {
+  const removeChip = (chip: { key: string; dimId: string; label: string; value: string }) => {
     if (chip.key.startsWith("source:")) {
       setDraft((prev) => ({
         ...prev,
@@ -207,7 +225,7 @@ export function PersonaFilterModal({
       }));
       return;
     }
-    const dimId = chip.label;
+    const dimId = chip.dimId;
     setDraft((prev) => {
       const current = prev.dimensionFilters[dimId] ?? [];
       const nextValues = current.filter((item) => item !== chip.value);
@@ -231,6 +249,9 @@ export function PersonaFilterModal({
     const dimOpen = expandedDim === dim.id || (Boolean(normalizedQuery) && visibleValues.length > 0);
     const selected = draft.dimensionFilters[dim.id] ?? [];
     const stratified = stratifyFields.includes(dim.id);
+    const rawLabel = dimLabel(dim);
+    const labelKey = personaDimensionLabelKey(dim.id, rawLabel);
+    const displayLabel = labelKey ? t(labelKey, rawLabel) : rawLabel;
     return (
       <div key={dim.id} className="rounded-md border border-outline/30 bg-surface/20">
         <button
@@ -239,7 +260,7 @@ export function PersonaFilterModal({
           className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-[13px] ${FOCUS_RING}`}
         >
           <span className={selected.length ? "text-primary" : "text-text-main"}>
-            {dimLabel(dim)}
+            {displayLabel}
             {selected.length > 0 ? ` · ${selected.length}` : ""}
           </span>
           <div className="flex items-center gap-2">
@@ -256,7 +277,7 @@ export function PersonaFilterModal({
                     : "border-outline/40 text-text-dim"
                 }`}
               >
-                stratify
+                {t("setup.filters.stratify", "Stratify")}
               </button>
             )}
             <Sym name={dimOpen ? "expand_less" : "expand_more"} size={16} className="text-text-dim" />
@@ -292,13 +313,14 @@ export function PersonaFilterModal({
     visibleGroups.length === 0 &&
     suggestions.length === 0 &&
     !matchQuery.isFetching;
+  const displayedPoolLabel = poolLabel(catalog?.pool);
 
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
       <button
         type="button"
         className="absolute inset-0 bg-surface-dim/75 backdrop-blur-sm"
-        aria-label="Close filters"
+        aria-label={t("setup.filters.close", "Close filters")}
         onClick={onClose}
       />
       <div
@@ -309,13 +331,17 @@ export function PersonaFilterModal({
       >
         <div className="flex items-center justify-between border-b border-outline/40 px-5 py-4">
           <div>
-            <p className="hud text-[11px] text-primary">{poolLabel(catalog?.pool)}</p>
+            <p className="hud text-[11px] text-primary">
+              {displayedPoolLabel === "persona pool"
+                ? t("setup.filters.poolFallback", displayedPoolLabel)
+                : displayedPoolLabel}
+            </p>
             <h2 id="persona-filter-modal-title" className="font-display text-[18px] font-semibold text-text-main">
-              Persona filters
+              {t("setup.filters.title", "Persona filters")}
             </h2>
             {typeof dimensionCount === "number" && dimensionCount > 0 ? (
               <p className="mt-0.5 text-[12px] text-text-dim">
-                {dimensionCount.toLocaleString()} dimensions
+                {dimensionCount.toLocaleString()} {t("setup.filters.profileDimensions", "dimensions")}
               </p>
             ) : null}
           </div>
@@ -325,7 +351,7 @@ export function PersonaFilterModal({
         </div>
 
         <div className="custom-scrollbar flex-1 overflow-y-auto px-5 py-4">
-          <p className="mb-2 text-[13px] text-text-variant">Provenance</p>
+          <p className="mb-2 text-[13px] text-text-variant">{t("setup.filters.provenance", "Provenance")}</p>
           <div className="mb-5 flex flex-wrap gap-2">
             {sources.map((source) => {
               const active = draft.sources.includes(source);
@@ -349,7 +375,7 @@ export function PersonaFilterModal({
           </div>
 
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-[13px] text-text-variant">Profile dimensions</p>
+          <p className="text-[13px] text-text-variant">{t("setup.filters.profileDimensions", "Profile dimensions")}</p>
             <label className="relative min-w-0 flex-1 max-w-md">
               <Sym
                 name="search"
@@ -360,7 +386,7 @@ export function PersonaFilterModal({
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Describe a person, or search attributes…"
+                placeholder={t("setup.filters.searchPlaceholder", "Describe a person, or search attributes…")}
                 className={`h-8 w-full rounded-md border border-outline/50 bg-field pl-8 pr-2 text-[13px] text-text-main placeholder:text-text-dim ${FOCUS_RING}`}
               />
             </label>
@@ -370,25 +396,30 @@ export function PersonaFilterModal({
             <div className="mb-4 rounded-lg border border-outline/30 bg-surface/30 px-3 py-2.5">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[12px] text-text-variant">
-                  {suggestions.length} suggested attribute{suggestions.length === 1 ? "" : "s"}
+                  {t("setup.filters.suggestedAttributes", "{count} suggested attribute{suffix}", {
+                    count: suggestions.length,
+                    suffix: locale === "en-US" && suggestions.length !== 1 ? "s" : "",
+                  })}
                 </p>
                 <button
                   type="button"
                   onClick={() => setDraft((prev) => applyAllSuggestions(prev, suggestions))}
                   className={`rounded-md px-2 py-1 text-[11px] text-primary hover:bg-primary/10 ${FOCUS_RING}`}
                 >
-                  Select all
+                  {t("setup.filters.selectAll", "Select all")}
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {suggestions.map((attr) => {
                   const active = isSuggestionSelected(draft, attr);
-                  const label = (attr.label || attr.dimensionId).replace(/_/g, " ");
+                  const rawLabel = (attr.label || attr.dimensionId).replace(/_/g, " ");
+                  const labelKey = personaDimensionLabelKey(attr.dimensionId, rawLabel);
+                  const label = labelKey ? t(labelKey, rawLabel) : rawLabel;
                   return (
                     <button
                       key={suggestionKey(attr)}
                       type="button"
-                      title={attr.evidence ? `evidence: ${attr.evidence}` : undefined}
+                      title={attr.evidence ? t("setup.filters.evidence", "Evidence: {value}", { value: attr.evidence }) : undefined}
                       onClick={() => setDraft((prev) => toggleSuggestionInFilters(prev, attr))}
                       className={`rounded-full px-2.5 py-1 text-[12px] ${FOCUS_RING} ${
                         active
@@ -409,7 +440,7 @@ export function PersonaFilterModal({
           <div className="space-y-2">
             {showEmptyTree ? (
               <p className="rounded-lg border border-dashed border-outline/40 px-3 py-4 text-center text-[13px] text-text-dim">
-                No attributes match “{query.trim()}”.
+                {t("setup.filters.noAttributes", "No attributes match “{query}”", { query: query.trim() })}
               </p>
             ) : null}
             {visibleGroups.map((group) => {
@@ -422,7 +453,12 @@ export function PersonaFilterModal({
                     onClick={() => setExpandedGroup(groupOpen && !normalizedQuery ? null : group.id)}
                     className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] font-medium ${FOCUS_RING}`}
                   >
-                    <span>{group.label}</span>
+                    <span>
+                      {(() => {
+                        const labelKey = personaSectionLabelKey(group.id, group.label);
+                        return labelKey ? t(labelKey, group.label) : group.label;
+                      })()}
+                    </span>
                     <Sym name={groupOpen ? "expand_less" : "expand_more"} size={18} className="text-text-dim" />
                   </button>
                   {groupOpen ? (
@@ -440,7 +476,12 @@ export function PersonaFilterModal({
                                   }
                                   className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-[12px] text-text-variant ${FOCUS_RING}`}
                                 >
-                                  <span>{sub.label}</span>
+                                  <span>
+                                    {(() => {
+                                      const labelKey = personaSectionLabelKey(sub.id, sub.label);
+                                      return labelKey ? t(labelKey, sub.label) : sub.label;
+                                    })()}
+                                  </span>
                                   <Sym
                                     name={subOpen ? "expand_less" : "expand_more"}
                                     size={16}
@@ -480,15 +521,15 @@ export function PersonaFilterModal({
               ))}
             </div>
           ) : (
-            <p className="mb-3 text-[13px] text-text-dim">No filters — full pool eligible.</p>
+            <p className="mb-3 text-[13px] text-text-dim">{t("setup.filters.noFilters", "No filters — full pool eligible.")}</p>
           )}
           <div className="flex items-center justify-between gap-3">
             <p className="text-[13px] text-text-variant">
-              <span className="font-mono text-text-main">{activeFilterCount(draft)}</span> filter groups
+              <span className="font-mono text-text-main">{activeFilterCount(draft)}</span> {t("setup.filters.filterGroups", "filter groups")}
               {stratifyMode && stratifyFields.length > 0 && (
                 <span>
                   {" "}
-                  · stratify on <span className="font-mono text-text-main">{stratifyFields.join(", ")}</span>
+                  · {t("setup.filters.stratifyOn", "stratify on")} <span className="font-mono text-text-main">{stratifyFields.join(", ")}</span>
                 </span>
               )}
             </p>
@@ -498,7 +539,7 @@ export function PersonaFilterModal({
                 onClick={onClose}
                 className={`rounded-md border border-outline px-3 py-2 text-[14px] text-text-variant ${FOCUS_RING}`}
               >
-                Cancel
+                {t("setup.filters.cancel", "Cancel")}
               </button>
               <button
                 type="button"
@@ -508,7 +549,7 @@ export function PersonaFilterModal({
                 }}
                 className={`rounded-md bg-primary px-4 py-2 text-[14px] font-medium text-on-primary ${FOCUS_RING}`}
               >
-                Apply filters
+                {t("setup.filters.apply", "Apply filters")}
               </button>
             </div>
           </div>

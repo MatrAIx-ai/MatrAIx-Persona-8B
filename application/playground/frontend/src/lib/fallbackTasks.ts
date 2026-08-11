@@ -40,6 +40,7 @@ export const FALLBACK_WEB_TASKS: WebEvalTask[] = [
     description: "Browse books.toscrape.com with screenshot-based computer use in Docker and choose one book.",
     taskPath: "application/tasks/example-web-cua_bookshop-choice",
     outputArtifact: "book_interest.json",
+    submissionProfile: "book_interest",
   },
 ];
 

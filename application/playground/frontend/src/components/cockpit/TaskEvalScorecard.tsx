@@ -9,6 +9,7 @@ import { SCORE_BAND_CLASS, Sym, scoreBand } from "./cockpitShared";
 import { countSurveyQuestionTypes, surveyQuestionTypeChipClass } from "@/lib/surveyDisplay";
 import type { HarborCockpitPhase } from "@/lib/useHarborCockpitRun";
 import type { OsAppResult, SurveyResult, VerifierSummary, WebResult } from "@/lib/types";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export type TaskEvalPhase = HarborCockpitPhase;
 
@@ -32,18 +33,19 @@ function ScorecardShell({
   scored: boolean;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <div className="p-md">
       <div className="panel rise-in overflow-hidden rounded-md border border-outline bg-surface-lowest">
         <div className="flex items-center justify-between border-b border-outline bg-surface-low px-3 py-2.5">
           <div className="flex items-center gap-2">
             <Sym name="verified" fill={1} size={18} className="text-primary" />
-            <h3 className="hud text-[13px] text-primary">Scorecard</h3>
+            <h3 className="hud text-[13px] text-primary">{t("scorecards.header")}</h3>
           </div>
           {scored ? (
             <span className="flex items-center gap-1 hud text-[12px] text-text-dim">
               <span className="h-2 w-2 rounded-full bg-secondary" aria-hidden />
-              Scored
+              {t("scorecards.scored")}
             </span>
           ) : null}
         </div>
@@ -74,14 +76,13 @@ function ScorecardSkeleton() {
 }
 
 function EmptyScorecard({ phase }: { phase: TaskEvalPhase }) {
+  const { t } = useI18n();
   return (
     <div className="p-md">
       <div className="rise-in rounded-md border border-dashed border-outline-dim bg-surface-low px-4 py-10 text-center">
         <Sym name="fact_check" size={28} className="text-text-dim" />
         <p className="mt-2 text-[15px] leading-relaxed text-text-variant">
-          {failedPhase(phase)
-            ? "This run stopped before it could be scored."
-            : "Run a simulation and the scores will appear here."}
+          {failedPhase(phase) ? t("scorecards.empty.failed") : t("scorecards.empty.ready")}
         </p>
       </div>
     </div>
@@ -130,6 +131,7 @@ function CriterionRow({
 }
 
 export function VerifierStrip({ verifier }: { verifier: VerifierSummary }) {
+  const { t } = useI18n();
   const passed = verifier.passed;
   return (
     <div
@@ -140,10 +142,10 @@ export function VerifierStrip({ verifier }: { verifier: VerifierSummary }) {
       <div className="flex items-center gap-2">
         <Sym name={passed ? "task_alt" : "error"} fill={1} size={18} className={passed ? "text-secondary" : "text-danger"} />
         <span className="text-[14px] font-semibold text-text-main">
-          Verifier · {passed ? "Passed" : "Failed"}
+          {t("scorecards.verifier.label")} · {passed ? t("scorecards.status.passed") : t("scorecards.status.failed")}
         </span>
         <span className="ml-auto font-mono text-[13px] tabular-nums text-text-variant">
-          reward {verifier.reward}
+          {t("scorecards.verifier.reward")} {verifier.reward}
         </span>
       </div>
       {verifier.detail ? (
@@ -171,6 +173,7 @@ export interface WebEvalScorecardProps {
 }
 
 export function WebEvalScorecard({ webResult, verifier, phase }: WebEvalScorecardProps) {
+  const { t } = useI18n();
   if (runningPhase(phase) && !webResult) return <ScorecardSkeleton />;
   if (!webResult) return <EmptyScorecard phase={phase} />;
 
@@ -190,13 +193,13 @@ export function WebEvalScorecard({ webResult, verifier, phase }: WebEvalScorecar
     <ScorecardShell scored>
       <div className="mb-3 flex items-start gap-3">
         <div className="flex flex-shrink-0 flex-col items-center">
-          <div className="flex items-baseline gap-0.5" aria-label={`Overall UX ${overall} out of 10`}>
+          <div className="flex items-baseline gap-0.5" aria-label={t("scorecards.aria.overallUx", undefined, { overall })}>
             <span className={`font-display text-[44px] font-bold leading-none tracking-tight tabular-nums ${overallColor.text}`}>
               {overall}
             </span>
             <span className="text-[15px] text-text-dim">/ 10</span>
           </div>
-          <span className="mt-1 text-center hud text-[12px] text-text-dim">How the user rated it</span>
+          <span className="mt-1 text-center hud text-[12px] text-text-dim">{t("scorecards.rating.userRated")}</span>
         </div>
         {webResult.reason ? (
           <div className={`flex-1 border-l-2 pl-3 ${overallBorder}`}>
@@ -207,12 +210,12 @@ export function WebEvalScorecard({ webResult, verifier, phase }: WebEvalScorecar
 
       <div className="mb-3 space-y-2.5">
         <CriterionRow
-          label="Did it meet their need?"
+          label={t("scorecards.criteria.need")}
           score={webResult.needSatisfaction}
           max={10}
           rationale={webResult.reason}
         />
-        <CriterionRow label="Was it easy to use?" score={webResult.easeOfUse} max={10} />
+        <CriterionRow label={t("scorecards.criteria.ease")} score={webResult.easeOfUse} max={10} />
       </div>
 
       <div className="glass-tile flex items-start gap-3 rounded-md px-3 py-2.5">
@@ -227,7 +230,7 @@ export function WebEvalScorecard({ webResult, verifier, phase }: WebEvalScorecar
                 webResult.valid ? "bg-secondary/10 text-secondary" : "bg-danger/10 text-danger"
               }`}
             >
-              {webResult.valid ? "Complete" : "Incomplete"}
+              {webResult.valid ? t("scorecards.web.complete") : t("scorecards.web.incomplete")}
             </span>
           </div>
           <div className="mt-0.5 truncate font-mono text-[12px] text-text-variant">{webResult.selectedProductId}</div>
@@ -237,8 +240,10 @@ export function WebEvalScorecard({ webResult, verifier, phase }: WebEvalScorecar
       {verifier ? <VerifierStrip verifier={verifier} /> : null}
 
       <p className="mt-3 text-[12px] leading-relaxed text-text-dim">
-        Scores read <span className="text-secondary">green</span> when the app did well,{" "}
-        <span className="text-warn">amber</span> when so-so, <span className="text-danger">red</span> when it missed.
+        {t("scorecards.scale.start")}<span className="text-secondary">{t("scorecards.scale.green")}</span>
+        {t("scorecards.scale.middle")}<span className="text-warn">{t("scorecards.scale.amber")}</span>
+        {t("scorecards.scale.badPrefix")}<span className="text-danger">{t("scorecards.scale.red")}</span>
+        {t("scorecards.scale.end")}
       </p>
     </ScorecardShell>
   );
@@ -251,6 +256,7 @@ export interface SurveyEvalScorecardProps {
 }
 
 export function SurveyEvalScorecard({ surveyResult, verifier, phase }: SurveyEvalScorecardProps) {
+  const { t } = useI18n();
   if (runningPhase(phase) && !surveyResult) return <ScorecardSkeleton />;
   if (!surveyResult?.completion) return <EmptyScorecard phase={phase} />;
 
@@ -272,37 +278,38 @@ export function SurveyEvalScorecard({ surveyResult, verifier, phase }: SurveyEva
             </span>
             <span className="text-[15px] text-text-dim">/ 100</span>
           </div>
-          <span className="mt-1 text-center hud text-[12px] text-text-dim">Completion</span>
+          <span className="mt-1 text-center hud text-[12px] text-text-dim">{t("scorecards.survey.completion")}</span>
         </div>
         <div className="flex-1 border-l-2 border-l-outline pl-3">
           <p className="text-[14px] leading-relaxed text-text-variant">
-            {answered} of {total} questions answered
-            {completion.valid ? " · responses passed validation" : " · validation flagged issues"}
+            {t("scorecards.survey.answered", undefined, { answered, total })} · {completion.valid
+              ? t("scorecards.survey.responsesPassed")
+              : t("scorecards.survey.validationIssues")}
           </p>
         </div>
       </div>
 
       <div className="mb-3 space-y-2.5">
         <CriterionRow
-          label="Did they finish the questionnaire?"
+          label={t("scorecards.criteria.questionnaire")}
           score={total > 0 ? (answered / total) * 5 : 0}
           max={5}
         />
         <CriterionRow
-          label="Were answers valid?"
+          label={t("scorecards.criteria.validAnswers")}
           score={completion.valid ? 5 : 1}
           max={5}
         />
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-2">
-        <MetricTile value={`${answered}/${total}`} caption="Answered" />
-        <MetricTile value={completion.valid ? "Yes" : "No"} caption="Valid" />
+        <MetricTile value={`${answered}/${total}`} caption={t("scorecards.survey.answeredMetric")} />
+        <MetricTile value={completion.valid ? t("scorecards.survey.yes") : t("scorecards.survey.no")} caption={t("scorecards.survey.validMetric")} />
       </div>
 
       {typeCounts.length > 0 ? (
         <div className="mb-3 rounded border border-outline bg-surface-low px-3 py-2.5">
-          <div className="hud mb-1.5 text-[11px] text-text-dim">Question types</div>
+          <div className="hud mb-1.5 text-[11px] text-text-dim">{t("scorecards.survey.questionTypes")}</div>
           <div className="flex flex-wrap gap-1.5">
             {typeCounts.map((entry) => (
               <span
@@ -330,6 +337,7 @@ export interface OsAppEvalScorecardProps {
 }
 
 export function OsAppEvalScorecard({ osAppResult, verifier, traceStepCount = 0, phase }: OsAppEvalScorecardProps) {
+  const { t } = useI18n();
   if (runningPhase(phase) && !osAppResult) return <ScorecardSkeleton />;
   if (!osAppResult) return <EmptyScorecard phase={phase} />;
 
@@ -354,35 +362,33 @@ export function OsAppEvalScorecard({ osAppResult, verifier, traceStepCount = 0, 
               {displayReward}
             </span>
           </div>
-          <span className="mt-1 text-center hud text-[12px] text-text-dim">Verifier reward</span>
+          <span className="mt-1 text-center hud text-[12px] text-text-dim">{t("scorecards.os.reward")}</span>
         </div>
         <div className={`flex-1 border-l-2 pl-3 ${passed ? "border-l-score-high" : "border-l-score-low"}`}>
           <p className="text-[14px] leading-relaxed text-text-variant">
-            {passed
-              ? "The automated verifier accepted the desktop agent's output."
-              : "The verifier did not accept the output — check the trace and artifact in the center panel."}
+            {passed ? t("scorecards.os.successExplanation") : t("scorecards.os.failureExplanation")}
           </p>
         </div>
       </div>
 
       <div className="mb-3 space-y-2.5">
-        <CriterionRow label="Task succeeded?" score={passed ? 5 : 0} max={5} />
+        <CriterionRow label={t("scorecards.criteria.taskSucceeded")} score={passed ? 5 : 0} max={5} />
         <CriterionRow
-          label="Reward score"
+          label={t("scorecards.criteria.rewardScore")}
           score={reward <= 1 ? reward * 5 : clamp(reward, 5)}
           max={5}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <MetricTile value={passed ? "Pass" : "Fail"} caption="Verifier" />
-        <MetricTile value={String(traceStepCount)} caption="Trace steps" />
+        <MetricTile value={passed ? t("scorecards.os.pass") : t("scorecards.os.fail")} caption={t("scorecards.verifier.label")} />
+        <MetricTile value={String(traceStepCount)} caption={t("scorecards.os.traceSteps")} />
       </div>
 
       {osAppResult.artifactName ? (
         <div className="mt-3 flex items-center gap-2 rounded-md border border-outline bg-surface px-3 py-2 text-[13px] text-text-variant">
           <Sym name="description" size={16} className="text-primary" />
-          Output artifact · <span className="font-mono text-text-main">{osAppResult.artifactName}</span>
+          {t("scorecards.os.outputArtifact")} · <span className="font-mono text-text-main">{osAppResult.artifactName}</span>
         </div>
       ) : null}
 

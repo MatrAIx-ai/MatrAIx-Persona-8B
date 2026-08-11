@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
 import { api } from "@/lib/api";
 import type { PreflightResponse } from "@/lib/types";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type Tone = "ready" | "setup" | "offline" | "checking";
 
@@ -38,9 +39,9 @@ const DOT_CLASS: Record<Tone, string> = {
   checking: "bg-warn",
 };
 
-function groupChecks(checks: PreflightCheck[]) {
+function groupChecks(checks: PreflightCheck[], defaultGroup: string) {
   return checks.reduce<{ group: string; items: PreflightCheck[] }[]>((acc, c) => {
-    const g = c.group ?? "Checks";
+    const g = c.group ?? defaultGroup;
     const bucket = acc.find((x) => x.group === g);
     if (bucket) bucket.items.push(c);
     else acc.push({ group: g, items: [c] });
@@ -49,6 +50,7 @@ function groupChecks(checks: PreflightCheck[]) {
 }
 
 export function PreflightChip() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -86,23 +88,26 @@ export function PreflightChip() {
 
   if (preflight.isLoading) {
     tone = "checking";
-    label = "Checking…";
+    label = t("shell.preflight.checking", "Checking…");
   } else if (preflight.isError || !data) {
     tone = "offline";
-    label = "Backend offline";
+    label = t("shell.preflight.backendOffline", "Backend offline");
   } else if (!data.ready) {
     tone = "setup";
-    label = requiredFailing.length === 1 ? "1 issue" : `${requiredFailing.length} issues`;
+    label =
+      requiredFailing.length === 1
+        ? t("shell.preflight.issue.one", "{count} issue", { count: 1 })
+        : t("shell.preflight.issue.many", "{count} issues", { count: requiredFailing.length });
   } else if (optionalFailing.length > 0) {
     tone = "setup";
-    label = "Almost ready";
+    label = t("shell.preflight.almostReady", "Almost ready");
   } else {
     tone = "ready";
-    label = "Env ready";
+    label = t("shell.preflight.envReady", "Env ready");
   }
 
   const popoverChecks = data
-    ? groupChecks([...requiredFailing, ...optionalFailing])
+    ? groupChecks([...requiredFailing, ...optionalFailing], t("shell.preflight.checks", "Checks"))
     : [];
 
   return (
@@ -111,7 +116,7 @@ export function PreflightChip() {
         type="button"
         onClick={() => data && setOpen((v) => !v)}
         aria-expanded={data ? open : undefined}
-        aria-label={`Readiness: ${label}`}
+        aria-label={t("shell.preflight.readinessLabel", "Readiness: {label}", { label })}
         className={`flex h-9 items-center gap-2 whitespace-nowrap rounded-full px-3 text-xs font-medium transition ${TONE_CLASS[tone]} ${FOCUS_RING} ${
           data ? "cursor-pointer hover:opacity-90 active:scale-[0.98]" : "cursor-default"
         }`}
@@ -126,19 +131,28 @@ export function PreflightChip() {
       {open && data && (
         <div
           role="region"
-          aria-label="Setup checklist"
+          aria-label={t("shell.preflight.setupChecklist", "Setup checklist")}
           className="pop-in absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto custom-scrollbar rounded-xl border border-outline bg-surface-lowest p-3 shadow-2xl"
         >
-          <p className="hud mb-2.5 text-[12px] text-text-dim">System readiness</p>
+          <p className="hud mb-2.5 text-[12px] text-text-dim">
+            {t("shell.preflight.systemReadiness", "System readiness")}
+          </p>
           {allGreen ? (
-            <p className="text-[14px] text-secondary">All checks passed.</p>
+            <p className="text-[14px] text-secondary">
+              {t("shell.preflight.allChecksPassed", "All checks passed.")}
+            </p>
           ) : popoverChecks.length === 0 ? (
-            <p className="text-[14px] text-secondary">All required checks passed.</p>
+            <p className="text-[14px] text-secondary">
+              {t("shell.preflight.allRequiredChecksPassed", "All required checks passed.")}
+            </p>
           ) : (
             <div className="space-y-3.5">
               {data.ready && optionalFailing.length > 0 && (
                 <p className="text-[13px] leading-relaxed text-text-variant">
-                  Required checks passed. Optional adapters below still need attention.
+                  {t(
+                    "shell.preflight.optionalAdaptersNeedAttention",
+                    "Required checks passed. Optional adapters below still need attention.",
+                  )}
                 </p>
               )}
               {popoverChecks.map((g) => (
@@ -154,7 +168,9 @@ export function PreflightChip() {
                             <div className="text-[14px] font-medium text-text-main">
                               {check.name}
                               {check.optional && (
-                                <span className="hud ml-1.5 text-[11px] text-text-dim">optional</span>
+                                <span className="hud ml-1.5 text-[11px] text-text-dim">
+                                  {t("shell.preflight.optional", "optional")}
+                                </span>
                               )}
                             </div>
                             <div className="text-[13px] leading-relaxed text-text-variant">

@@ -17,6 +17,7 @@
  */
 import { memo } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   FOCUS_RING,
   Sym,
@@ -45,6 +46,7 @@ export interface PersonaCardProps {
 }
 
 function PersonaCardInner({ persona, selected, onSelect }: PersonaCardProps) {
+  const { t } = useI18n();
   const codename = personaCodename(persona.name, persona.id);
   const heading = personaDescriptiveTitle(null, persona.blurb, persona.source);
   const demographics = parseDemographicsFromBlurb(persona.blurb);
@@ -63,7 +65,14 @@ function PersonaCardInner({ persona, selected, onSelect }: PersonaCardProps) {
       type="button"
       onClick={() => onSelect(persona)}
       aria-pressed={selected}
-      aria-label={persona.source ? `${heading}, ${persona.source}` : heading}
+      aria-label={
+        persona.source
+          ? t("catalog.personaCard.ariaLabel", "{title}, {source}", {
+              title: heading,
+              source: persona.source,
+            })
+          : heading
+      }
       className={`panel group relative w-full rounded-md border p-4 text-left transition-[color,background-color,border-color,transform] duration-200 ease-out active:scale-[0.98] ${FOCUS_RING} ${
         selected
           ? "border-primary bg-primary/[0.06]"
@@ -84,7 +93,9 @@ function PersonaCardInner({ persona, selected, onSelect }: PersonaCardProps) {
         </span>
         {persona.source && (
           <span
-            title={`Source dataset: ${persona.source}`}
+            title={t("catalog.personaCard.sourceDataset", "Source dataset: {source}", {
+              source: persona.source,
+            })}
             className={`hud flex-none rounded px-1.5 py-0.5 text-[11px] ${tone}`}
           >
             {persona.source}
@@ -104,7 +115,10 @@ function PersonaCardInner({ persona, selected, onSelect }: PersonaCardProps) {
 
       {/* Age · Sex · id micro-label. */}
       {metaLabel && (
-        <p title="Age · sex · persona id" className="hud mt-1 truncate text-[11px] text-text-dim">
+        <p
+          title={t("catalog.personaCard.demographicsTitle", "Age · sex · persona id")}
+          className="hud mt-1 truncate text-[11px] text-text-dim"
+        >
           {metaLabel}
         </p>
       )}

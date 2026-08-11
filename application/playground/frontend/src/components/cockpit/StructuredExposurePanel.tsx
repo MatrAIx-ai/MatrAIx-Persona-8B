@@ -6,6 +6,7 @@
  * ``input/chatbot.yaml``.
  */
 import type { StructuredExposureField } from "@/lib/types";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface ExposureItem {
   itemId: string;
@@ -46,9 +47,10 @@ function formatValue(field: StructuredExposureField): string {
 }
 
 function ItemListField({ field }: { field: StructuredExposureField }) {
+  const { t } = useI18n();
   const items = exposureItems(field);
   if (items.length === 0) return null;
-  const label = field.label ?? field.key ?? "Details";
+  const label = field.label ?? field.key ?? t("structuredExposure.details", "Details");
   return (
     <div>
       <div className="hud mb-2 text-[11px] text-text-dim">{label}</div>
@@ -63,7 +65,7 @@ function ItemListField({ field }: { field: StructuredExposureField }) {
             >
               {isFirst && (
                 <div className="hud absolute right-0 top-0 rounded-bl bg-secondary/15 px-1 py-0.5 text-[10px] text-secondary">
-                  Top
+                  {t("structuredExposure.top", "Top")}
                 </div>
               )}
               <div className="mb-1 flex items-start gap-2">
@@ -92,9 +94,10 @@ function ItemListField({ field }: { field: StructuredExposureField }) {
 }
 
 function TextField({ field }: { field: StructuredExposureField }) {
+  const { t } = useI18n();
   const text = formatValue(field).trim();
   if (!text) return null;
-  const label = field.label ?? field.key ?? "Details";
+  const label = field.label ?? field.key ?? t("structuredExposure.details", "Details");
   return (
     <div>
       <div className="hud mb-2 text-[11px] text-text-dim">{label}</div>

@@ -15,6 +15,7 @@ import { StructuredExposurePanel, exposureItemLists } from "./StructuredExposure
 import { ToolPlanFold } from "./ToolPlanFold";
 import { Sym, fmtLatency } from "./cockpitShared";
 import { Markdown } from "../Markdown";
+import { useI18n } from "@/i18n/I18nProvider";
 import type { Domain, TurnView } from "@/lib/types";
 
 /** Sentinel the backend uses for a failed/empty agent turn. */
@@ -60,6 +61,7 @@ export interface RecBotBubbleProps {
 
 /** The app reply: right-aligned, with exposure + optional tool-plan fold + meta chips. */
 export function RecBotBubble({ turn, domain, appName, foldOpen, onToggleFold }: RecBotBubbleProps) {
+  const { t } = useI18n();
   void domain;
   const exposure = turn.structuredExposure ?? [];
   const items = exposureItemLists(exposure);
@@ -118,7 +120,7 @@ export function RecBotBubble({ turn, domain, appName, foldOpen, onToggleFold }: 
                     planFailed ? "bg-danger/10 text-danger" : "bg-secondary/10 text-secondary"
                   }`}
                 >
-                  {planFailed ? "Tool call failed" : "Tool call OK"}
+                  {planFailed ? t("turnBubble.toolCallFailed", "Tool call failed") : t("turnBubble.toolCallOk", "Tool call OK")}
                 </span>
               )}
               {latency && (

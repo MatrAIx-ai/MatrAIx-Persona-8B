@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 
 import type { BatchTrialCell } from "./BatchTrialGrid";
@@ -249,13 +250,14 @@ function MosaicTooltip({
   top: number;
   boxW: number;
 }) {
+  const { t } = useI18n();
   const rawId = (trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")).trim();
   const personaId = personaDisplayId(rawId || null);
   const name =
     personaPrimaryName(trial.persona?.name, rawId, trial.persona?.dimensions ?? {}) ||
     trial.label ||
     personaId;
-  const statusLabel = trial.statusLabel ?? trial.status;
+  const statusLabel = trial.statusLabel ?? t(`setup.status.${trial.status}`, trial.status);
   const flip = left > boxW - 180;
   return (
     <div

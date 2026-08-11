@@ -3,13 +3,14 @@
  * (No "Persona Cockpit" breadcrumb banner.)
  */
 import { TaskTypeSwitch, type PlaygroundTaskType } from "./TaskTypeSwitch";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface RunHeaderProps {
   taskType: PlaygroundTaskType;
   onTaskTypeChange: (value: PlaygroundTaskType) => void;
 }
 
-const SUBTITLES: Record<PlaygroundTaskType, string> = {
+const SUBTITLE_FALLBACKS: Record<PlaygroundTaskType, string> = {
   chatbot:
     "Pick personas and a chat application, then launch. Watch the simulated user converse bubble-by-bubble.",
   survey:
@@ -20,16 +21,18 @@ const SUBTITLES: Record<PlaygroundTaskType, string> = {
 
 /** Dense one-line header: title · subtitle inline · app-type switch right. */
 export function RunHeader({ taskType, onTaskTypeChange }: RunHeaderProps) {
+  const { t } = useI18n();
+  const subtitle = t(`runHeader.subtitle.${taskType}`, SUBTITLE_FALLBACKS[taskType]);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
       <h1 className="shrink-0 font-display text-[18px] font-bold leading-tight tracking-tight text-text-main">
-        Configure a simulation
+        {t("runHeader.title", "Configure a simulation")}
       </h1>
       <p
         className="min-w-0 flex-1 basis-64 truncate text-[13.5px] leading-snug text-text-variant"
-        title={SUBTITLES[taskType]}
+        title={subtitle}
       >
-        {SUBTITLES[taskType]}
+        {subtitle}
       </p>
       <TaskTypeSwitch
         value={taskType}
