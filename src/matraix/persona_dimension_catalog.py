@@ -17,6 +17,46 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CATALOG_PATH = "persona/schema/dimensions.json"
+DEFAULT_ZH_LABELS_PATH = "persona/schema/labels_zh.json"
+
+# Chinese section headings, keyed by the English _SECTIONS heading.
+_ZH_SECTIONS: dict[str, str] = {
+    "Identity": "身份",
+    "Career & education": "职业与教育",
+    "Language & communication": "语言与沟通",
+    "Personality & values": "性格与价值观",
+    "Current interaction state": "当前互动状态",
+    "Worldview": "世界观",
+    "Interests": "兴趣爱好",
+    "Skills & expertise": "技能与专长",
+    "Lifestyle & health": "生活方式与健康",
+    "Developer & AI": "开发者与人工智能",
+    "Other attributes": "其他属性",
+}
+
+_ZH_LABELS_CACHE: dict[str, dict[str, dict]] = {}
+
+
+def load_zh_labels(
+    zh_labels_path: str = DEFAULT_ZH_LABELS_PATH,
+) -> dict[str, dict]:
+    """Load Chinese label/value translations, falling back to an empty map."""
+    path = Path(zh_labels_path)
+    if not path.is_absolute():
+        path = _repo_root() / path
+    key = str(path.resolve())
+    cached = _ZH_LABELS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    labels: dict[str, dict] = {}
+    if path.is_file():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            labels = payload if isinstance(payload, dict) else {}
+        except (OSError, ValueError):
+            labels = {}
+    _ZH_LABELS_CACHE[key] = labels
+    return labels
 
 
 def resolve_persona_language(language: str | None) -> str:
@@ -259,14 +299,41 @@ def _section_for(dim_id: str, category: str) -> str:
     return "Other attributes"
 
 
-def _label_for(dim_id: str, meta: dict[str, Any] | None) -> str:
+def _label_for(
+    dim_id: str,
+    meta: dict[str, Any] | None,
+    zh_labels: dict | None = None,
+) -> str:
+    if zh_labels:
+        entry = zh_labels.get(dim_id)
+        if entry and entry.get("label"):
+            return str(entry["label"]).strip()
     if meta and meta.get("label"):
         return str(meta["label"]).strip()
     return dim_id.replace("_", " ")
 
 
-def _format_section(heading: str, items: list[tuple[str, str]]) -> str:
-    lines = [f"### {heading}"]
+def _zh_value(dim_id: str, raw: str, zh_labels: dict | None) -> str:
+    """Translate a raw dimension value when a Chinese mapping exists."""
+    if not zh_labels:
+        return raw
+    entry = zh_labels.get(dim_id)
+    if not isinstance(entry, dict):
+        return raw
+    table = entry.get("values")
+    if not isinstance(table, dict):
+        return raw
+    translated = table.get(raw)
+    return str(translated) if translated else raw
+
+
+def _format_section(
+    heading: str,
+    items: list[tuple[str, str]],
+    zh_labels: dict | None = None,
+) -> str:
+    display = _ZH_SECTIONS.get(heading, heading) if zh_labels else heading
+    lines = [f"### {display}"]
     for label, value in items:
         lines.append(f"- {label}: {value}")
     return "\n".join(lines)
@@ -292,8 +359,9 @@ def collect_dimension_items(
     dimensions: dict[str, Any],
     *,
     catalog_path: str = DEFAULT_CATALOG_PATH,
+    zh_labels: dict | None = None,
 ) -> dict[str, list[tuple[str, str, str]]]:
-    """Group keepable dims into section -> [(dim_id, label, value), ...]."""
+    """Group keepable dims, translating labels and values when requested."""
     catalog = load_dimension_catalog(catalog_path)
     by_id: dict[str, dict[str, Any]] = catalog["by_id"]
     grouped: dict[str, list[tuple[str, str, str]]] = {h: [] for h, _ in _SECTIONS}
@@ -319,8 +387,9 @@ def collect_dimension_items(
 
         category = str((meta or {}).get("category") or "")
         heading = _section_for(dim_id, category)
-        label = _label_for(dim_id, meta)
-        grouped.setdefault(heading, []).append((dim_id, label, text))
+        label = _label_for(dim_id, meta, zh_labels=zh_labels)
+        value = _zh_value(dim_id, text, zh_labels)
+        grouped.setdefault(heading, []).append((dim_id, label, value))
 
     return {key: value for key, value in grouped.items() if value}
 
@@ -330,13 +399,20 @@ def build_dimension_narrative(
     *,
     catalog_path: str = DEFAULT_CATALOG_PATH,
     max_chars: int | None = None,
+    language: str | None = None,
 ) -> list[str]:
     """Schema-driven profile sections for agent roleplay (full 1290, adaptive).
 
     Returns a list of markdown section blocks for the Jinja persona macros.
     """
+    language = resolve_persona_language(language)
+    zh_labels = load_zh_labels() if language == "zh" else None
     budget = resolve_profile_max_chars(max_chars)
-    grouped = collect_dimension_items(dimensions, catalog_path=catalog_path)
+    grouped = collect_dimension_items(
+        dimensions,
+        catalog_path=catalog_path,
+        zh_labels=zh_labels,
+    )
     if not grouped:
         return []
 
@@ -370,10 +446,12 @@ def build_dimension_narrative(
             if not fitted:
                 omitted += len(items)
                 continue
-            block = _format_section(heading, fitted)
+            block = _format_section(heading, fitted, zh_labels=zh_labels)
         else:
             block = _format_section(
-                heading, [(label, value) for _dim_id, label, value in items]
+                heading,
+                [(label, value) for _dim_id, label, value in items],
+                zh_labels=zh_labels,
             )
 
         rendered.append(block)
@@ -392,10 +470,16 @@ def build_template_context_extras(
     *,
     catalog_path: str = DEFAULT_CATALOG_PATH,
     max_chars: int | None = None,
+    language: str | None = None,
 ) -> dict[str, Any]:
+    language = resolve_persona_language(language)
     return {
         "dimension_profile_narrative": build_dimension_narrative(
-            dimensions, catalog_path=catalog_path, max_chars=max_chars
+            dimensions,
+            catalog_path=catalog_path,
+            max_chars=max_chars,
+            language=language,
         ),
         "dimension_catalog_path": catalog_path,
+        "language": language,
     }

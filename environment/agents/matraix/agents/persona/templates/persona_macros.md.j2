@@ -2,9 +2,11 @@
    Agent-facing text must read as direct identity — never mention simulation,
    persona IDs, schema versions, or "stay in character" roleplay cues. #}
 
-{% macro render_persona_narrative(paragraphs) -%}
+{% macro render_persona_narrative(paragraphs, language='en') -%}
 {% if paragraphs %}
-## Who you are
+{% if language == 'zh' %}## 你是谁
+{% else %}## Who you are
+{% endif %}
 
 {% for paragraph in paragraphs -%}
 {{ paragraph }}
