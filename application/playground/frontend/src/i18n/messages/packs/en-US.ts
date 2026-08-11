@@ -1764,5 +1764,5 @@ export default {
   "personaLanguage.label": "Persona language",
   "personaLanguage.followUi": "Follow UI",
   "personaLanguage.english": "English",
-  "personaLanguage.chinese": "简体中文",
+  "personaLanguage.chinese": "Simplified Chinese",
 };

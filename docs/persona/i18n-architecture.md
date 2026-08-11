@@ -43,14 +43,20 @@ No dual-locale tables anywhere. `messages/sections/*` and the eager
 
 ### 3.1 Locale codes and registry
 
-`types.ts` is the single source of truth for codes:
+`LOCALE_REGISTRY` in `registry.ts` is the single source of truth for locale
+codes. `Locale` is derived from the registry, while `types.ts` only imports or
+re-exports the derived type and shared locale interfaces:
 
 ```ts
-export const LOCALE_CODES = ["en-US", "zh-CN"] as const;
-export type Locale = (typeof LOCALE_CODES)[number];
+export const LOCALE_REGISTRY = [
+  { code: "en-US", label: "English", englishName: "English" },
+  { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese" },
+] as const;
+export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];
 ```
 
-Adding a language = add a code here, a pack file, and a `registry.ts` entry.
+Adding a language means adding one registry entry and one locale pack with its
+loader. `types.ts` does not contain a second locale-code list.
 
 ### 3.2 Provider behavior
 
