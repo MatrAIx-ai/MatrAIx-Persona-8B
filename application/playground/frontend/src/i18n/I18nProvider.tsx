@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import enPackModule from "./messages/packs/en-US";
 import { localePacks } from "./registry";
+import { interpolate, resolveMessage } from "./resolve";
 import type { Locale, LocaleMeta, MessagePack, MessageValues } from "./types";
 
 const enPack: MessagePack = enPackModule;
@@ -29,13 +30,6 @@ function readStoredLocale(): Locale {
   } catch {
     return DEFAULT_LOCALE;
   }
-}
-
-function interpolate(template: string, values?: MessageValues): string {
-  if (!values) return template;
-  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
-    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match,
-  );
 }
 
 /** Cache for lazily-loaded packs (en-US is always present). */
@@ -87,8 +81,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       locale,
       setLocale,
       locales: LOCALES,
-      t: (key, fallback = key, values) =>
-        interpolate(pack[key] ?? enPack[key] ?? fallback, values),
+      t: (key, fallback, values) =>
+        interpolate(resolveMessage(pack, enPack, key, fallback), values),
       formatNumber: (number) => new Intl.NumberFormat(locale).format(number),
       formatDate: (date, options) => new Intl.DateTimeFormat(locale, options).format(new Date(date)),
     }),
