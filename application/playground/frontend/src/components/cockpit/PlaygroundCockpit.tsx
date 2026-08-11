@@ -454,7 +454,7 @@ function ChatbotEvalCockpit({
         setSidecarStartingId(null);
       }
     },
-    [chatbotTasks, sidecarsQuery],
+    [chatbotTasks, sidecarsQuery, t],
   );
 
   // Live persona + controls, mirrored to a ref so the "run finished" effect can
@@ -770,7 +770,7 @@ function ChatbotEvalCockpit({
   }, [isRunning, selectedTaskId, isBatchActive, batchTaskId]);
   const chatTaskCards = useMemo<TaskCardModel[]>(
     () => chatbotEvalTaskCards(chatbotTasks, { runningTaskIds: runningChatTaskIds }, t),
-    [chatbotTasks, runningChatTaskIds],
+    [chatbotTasks, runningChatTaskIds, t],
   );
   const verifierOnlyFailure = isRewardOnlyTrialFailure(error ?? job?.error ?? null, {
     transcript: turns,

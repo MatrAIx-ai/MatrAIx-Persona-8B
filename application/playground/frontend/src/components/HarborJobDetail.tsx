@@ -2050,7 +2050,7 @@ function PersonaDistributionCard({
   const columns = personaDistributionColumns(distribution)
   const columnMeta = useMemo(
     () => buildDistributionColumnMeta(columns, { numeric, choiceOptions }, t),
-    [columns, numeric, choiceOptions],
+    [columns, numeric, choiceOptions, t],
   )
   const signalBase = reportText(t, stripSplitBySuffix(
     humanizeFacetLabel(distribution.facetLabel, distribution.facetKey, t),
@@ -3260,8 +3260,8 @@ function BatchReportTaskBrief({ meta }: { meta: BatchReportPdfMeta }) {
           detail?.metaType === "survey" ? null : detail?.outputSchemaMarkdown,
         selfReportMarkdown: detail?.selfReportMarkdown,
         hasStructuredQuestionnaire: Boolean(detail?.questionnaire?.questions?.length),
-      }),
-    [detail],
+      }, t),
+    [detail, t],
   );
 
   const structuredQuestionnaire: SurveyInstrument | null =

@@ -15,7 +15,7 @@ interface I18nContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   /** Locale registry (extensible, drives the picker). */
-  locales: LocaleMeta[];
+  locales: readonly LocaleMeta[];
   t: (key: string, fallback?: string, values?: MessageValues) => string;
   formatNumber: (value: number) => string;
   formatDate: (value: Date | number | string, options?: Intl.DateTimeFormatOptions) => string;
@@ -41,6 +41,25 @@ function readStoredLocale(): Locale {
 const inflight = new Map<Locale, Promise<MessagePack>>();
 
 const packCache = new Map<Locale, MessagePack>([["en-US", enPack]]);
+
+function persistLocale(locale: Locale): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, locale);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function resetToEnglishFallback(
+  requestedRef: { current: Locale },
+  setLocaleState: (locale: Locale) => void,
+  setPack: (pack: MessagePack) => void,
+): void {
+  requestedRef.current = DEFAULT_LOCALE;
+  setLocaleState(DEFAULT_LOCALE);
+  setPack(enPack);
+  persistLocale(DEFAULT_LOCALE);
+}
 
 /** Load a locale pack through the shared per-locale in-flight map and cache.
  * Both setLocale and the startup restore path go through here, so a locale is
@@ -82,7 +101,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        // Load failure: stay on the English fallback.
+        // A failed optional pack must not leave the picker claiming a locale
+        // whose UI is actually rendered from English.
+        if (!cancelled && requestedRef.current === stored) {
+          resetToEnglishFallback(requestedRef, setLocaleState, setPack);
+        }
       });
     return () => {
       cancelled = true;
@@ -108,16 +131,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        // Load failure: stay on English fallback.
+        // Keep the selected locale and the rendered pack truthful on failure.
         if (requestedRef.current === next) {
-          setPack(enPack);
+          resetToEnglishFallback(requestedRef, setLocaleState, setPack);
         }
       });
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* storage unavailable */
-    }
+    persistLocale(next);
   }, [locale]);
 
   const value = useMemo<I18nContextValue>(
