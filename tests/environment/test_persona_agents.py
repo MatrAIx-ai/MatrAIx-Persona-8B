@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import pathlib
 import tomllib
+
+import pytest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -88,11 +91,67 @@ def test_installed_runtime_packages_do_not_import_environment_namespace() -> Non
 def test_persona_loader_reads_sample_dataset() -> None:
     from matraix.agents.persona.loader import load_persona
 
-    persona = load_persona(ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0001.yaml")
+    persona = load_persona(
+        ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0001.yaml"
+    )
 
     assert persona.schema_version == "v2"
     assert persona.persona_id == "0001"
     assert persona.dimensions["domain"] == "Skilled Trades"
+
+
+@pytest.mark.parametrize(
+    ("persona_language", "persona_language_source", "env_language", "expected"),
+    [
+        ("en", "explicit", "zh", ("en", "explicit")),
+        (None, None, "zh", ("zh", "env")),
+        (None, None, None, ("en", "default")),
+    ],
+)
+def test_persona_meta_records_truthful_runtime_language_and_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    persona_language: str | None,
+    persona_language_source: str | None,
+    env_language: str | None,
+    expected: tuple[str, str],
+) -> None:
+    """Persist the effective language and its actual resolution source."""
+    if env_language is None:
+        monkeypatch.delenv("MATRAIX_PERSONA_LANGUAGE", raising=False)
+    else:
+        monkeypatch.setenv("MATRAIX_PERSONA_LANGUAGE", env_language)
+
+    from matraix.agents.persona.mixin import PersonaMixin
+
+    class _PersonaProbe(PersonaMixin):
+        pass
+
+    trial_dir = tmp_path / "trial"
+    logs_dir = trial_dir / "agent"
+    logs_dir.mkdir(parents=True)
+    probe = _PersonaProbe()
+    probe.logs_dir = logs_dir
+    probe._init_persona(
+        str(
+            ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0001.yaml"
+        ),
+        "persona-probe",
+        persona_language=persona_language,
+        persona_language_source=persona_language_source,
+    )
+
+    probe._write_persona_meta()
+    meta = json.loads(
+        (trial_dir / "persona_meta.json").read_text(encoding="utf-8")
+    )
+
+    assert (
+        probe.effective_persona_language,
+        probe.persona_language_source,
+    ) == expected
+    assert meta["effective_language"] == expected[0]
+    assert meta["language_source"] == expected[1]
 
 
 def test_resolve_desktop_cua_provider_from_model_and_backend() -> None:
