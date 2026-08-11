@@ -46,6 +46,18 @@ APPLICATION_TASK_METADATA: dict[str, dict[str, object]] = {
             "personalized recommendations",
         ],
     },
+    "chat_multilingual-telco-support": {
+        "type": "chatbot",
+        "domain": DOMAIN_COMMERCE,
+        "tags": [
+            "billing dispute",
+            "invoice charge",
+            "telecom operator",
+            "language adherence",
+            "reply language",
+            "locale fallback",
+        ],
+    },
     "chat_openbb-corporate-action-honesty": {
         "type": "chatbot",
         "domain": DOMAIN_FINANCE_RESEARCH,

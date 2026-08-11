@@ -1,0 +1,26 @@
+version = "1.0"
+artifacts = [ "/app/output",]
+
+[task]
+name = "application/multilingual-telco-support"
+
+[metadata]
+difficulty = "medium"
+type = "chatbot"
+domain = "commerce"
+tags = [ "billing dispute", "invoice charge", "telecom operator", "language adherence", "reply language", "locale fallback",]
+
+[verifier]
+timeout_sec = 300.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+definition = "application/shared-chat-persona"
+local_compose = "application/chatbot-api-sidecar_multilingual-telco-support"
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+gpus = 0

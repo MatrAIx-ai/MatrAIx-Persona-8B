@@ -1,0 +1,42 @@
+transport: sidecar_http
+runtimeDefaults:
+  applicationId: multilingual_telco_support
+  applicationContext: customer_support
+  domain: customer_support
+capabilities:
+  - text_chat
+connection:
+  # baseUrlEnv wins over baseUrl (chatbot_task_config.resolve_base_url). The env
+  # var is how a shared-sidecar run injects the host port; the literal baseUrl is
+  # the compose-internal fallback for per-trial runs.
+  baseUrlEnv: CHATBOT_API_URL
+  baseUrl: http://telco-support-api:8000
+  healthPath: /health
+protocol:
+  sendMessage:
+    method: POST
+    path: /v1/messages
+    # Both session fields must be declared and must be spelled "sessionId".
+    #
+    # chat_eval.py only threads a session when the task asks it to: run_turn_sync
+    # sends protocol.session_id_field, and adopts the reply's
+    # response.session_id_field. If either is left empty (as in
+    # example-chat-api_support_chatbot) no session is ever captured,
+    # fetch_conversation_artifact issues a bare GET /v1/conversation, and this
+    # task's sidecar answers HTTP 400 as soon as a cohort has more than one
+    # conversation open.
+    #
+    # The name is not free choice: fetch_conversation_artifact hardcodes the
+    # query key "sessionId", and the tool-call send path hardcodes the body key.
+    sessionIdField: sessionId
+    messageField: message
+    titleField: ""
+    botTypeField: ""
+    staticBody: {}
+  response:
+    sessionIdField: sessionId
+    replyField: reply
+artifacts:
+  transcript: transcript.json
+  applicationResult: application_result.json
+  feedback: user_feedback.json

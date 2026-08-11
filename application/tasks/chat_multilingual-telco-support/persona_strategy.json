@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0",
+  "sources": [],
+  "defaultMode": "stratified",
+  "dimensionFilters": {
+    "primary_language": [
+      "English",
+      "Spanish",
+      "German"
+    ]
+  },
+  "stratifyFields": [
+    "primary_language"
+  ],
+  "sampleSizePerValueGroup": 1
+}

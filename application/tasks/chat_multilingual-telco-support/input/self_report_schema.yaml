@@ -1,0 +1,57 @@
+artifactName: user_feedback.json
+instructions: |
+  Reflect honestly as the persona after using the Meridian Mobile support chatbot.
+  Focus on whether the answer was useful, clear, and moved you toward resolving
+  the disputed charge, and on how the exchange felt to read.
+fields:
+  - key: needConstraintSatisfaction
+    prompt: How well did the chatbot satisfy your support need or constraints?
+    kind: enum
+    choices: [yes, partially, no]
+  - key: personalPreferenceSatisfaction
+    prompt: How well did the chatbot match your communication preferences?
+    kind: enum
+    choices: [yes, partially, no]
+  - key: overallExperienceRating
+    prompt: Overall, how would you rate the experience from 1 to 10?
+    kind: integer
+    minimum: 1
+    maximum: 10
+    explanation:
+      key: reason
+      prompt: Briefly explain the rating in your own voice.
+  - key: askedUsefulClarificationQuestions
+    prompt: Did the chatbot ask useful clarification questions?
+    kind: boolean
+    explanation:
+      key: clarifyingNotes
+      prompt: Which clarification questions helped, or why they did not.
+  # Language experience, asked from the persona's side. These are deliberately
+  # retrospective: nothing in instruction.md or context.md tells the persona which
+  # language to use, because the point is to observe unprompted behaviour. Asking
+  # about it afterwards records the lived experience without steering it.
+  - key: repliesInMyLanguage
+    prompt: >-
+      Were the replies written in the language you would naturally use for
+      something like this?
+    kind: enum
+    choices: [yes, mostly, sometimes, no]
+    explanation:
+      key: languageNotes
+      prompt: >-
+        Say where the language felt right or wrong, in your own voice.
+  - key: languageCausedMisunderstanding
+    prompt: Did the language of any reply make you misunderstand something?
+    kind: boolean
+    explanation:
+      key: misunderstandingNotes
+      prompt: >-
+        If something was harder to follow because of the language it was written
+        in, say what it was.
+  - key: languageEffort
+    prompt: >-
+      How much extra effort did reading the replies cost you, from 1 (none) to 5
+      (a lot)?
+    kind: integer
+    minimum: 1
+    maximum: 5

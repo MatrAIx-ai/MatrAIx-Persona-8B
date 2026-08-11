@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "1.0",
+  "contextRules": [
+    {
+      "match": {
+        "contextType": "language_adherence"
+      },
+      "distributions": [
+        {
+          "id": "language_adherence.match_rate_by_segment",
+          "facetKey": "language_match_rate",
+          "title": "Share of replies in the persona's language"
+        },
+        {
+          "id": "language_adherence.first_reply_language_by_segment",
+          "facetKey": "first_reply_language",
+          "title": "Language of the first reply"
+        },
+        {
+          "id": "language_adherence.measurement_status_by_segment",
+          "facetKey": "measurement_status",
+          "title": "Whether language adherence was measurable"
+        }
+      ]
+    },
+    {
+      "match": {
+        "contextType": "user_feedback"
+      },
+      "distributions": [
+        {
+          "id": "user_feedback.replies_in_my_language_by_segment",
+          "facetKey": "replies_in_my_language",
+          "title": "Replies felt like the persona's own language"
+        },
+        {
+          "id": "user_feedback.rating_by_segment",
+          "facetKey": "overall_experience_rating",
+          "title": "Overall experience rating"
+        }
+      ]
+    },
+    {
+      "match": {
+        "contextType": "task_outcome"
+      },
+      "distributions": [
+        {
+          "id": "task_outcome.status_by_segment",
+          "facetKey": "outcome_status",
+          "title": "Outcome status"
+        }
+      ]
+    }
+  ]
+}
