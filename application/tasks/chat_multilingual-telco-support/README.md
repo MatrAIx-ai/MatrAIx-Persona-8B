@@ -166,8 +166,13 @@ what the computer-use tasks use.
 `example-chat-api_support_chatbot`. It runs `python3 test_state.py` directly,
 because `structured_output.json` is written by the verifier's `main()` and a bare
 `pytest` invocation never calls it — the reference task's uvx+pytest shape leaves
-the reporting layer empty. Following the real tasks also drops an `apt-get` and a
-uv download from the verifier phase, taking the oracle smoke from 3m16s to 31s.
+the reporting layer empty (issue #37). Following the real tasks also drops an
+`apt-get` and a uv download from the verifier phase, taking the oracle smoke from
+3m16s to 31s.
+
+The verifier command also sits inside the `if` condition so that a failing verifier
+still writes `reward.txt`; five tasks still carry a form where `set -e` makes that
+write unreachable (issue #35).
 
 `tests/test_state.py` keeps its `test_*` functions so the file can still be run
 under pytest by hand, but the verifier path does not depend on them.
