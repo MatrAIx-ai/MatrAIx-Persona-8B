@@ -17,9 +17,9 @@
 {% endif %}
 
 {% endif -%}
-{{ render_domains(demographics, psychology, communication, preferences, behavior) }}
+{{ render_domains(demographics, psychology, communication, preferences, behavior, language=language) }}
 {%- else -%}
-{{ render_v0_identity(display_name, summary, system_prompt) }}
+{{ render_v0_identity(display_name, summary, system_prompt, language=language) }}
 {%- endif -%}
 {% if system_prompt and (dimensions or demographics or psychology or communication or preferences or behavior) -%}
 

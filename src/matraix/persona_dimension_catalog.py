@@ -37,6 +37,14 @@ _ZH_SECTIONS: dict[str, str] = {
 _ZH_LABELS_CACHE: dict[str, dict[str, dict]] = {}
 
 
+def normalize_persona_language(language: str | None) -> str | None:
+    """Normalize a supported runtime language, or return ``None``."""
+    if language is None:
+        return None
+    normalized = str(language).strip().lower()
+    return normalized if normalized in {"en", "zh"} else None
+
+
 def load_zh_labels(
     zh_labels_path: str = DEFAULT_ZH_LABELS_PATH,
 ) -> dict[str, dict]:
@@ -61,12 +69,11 @@ def load_zh_labels(
 
 def resolve_persona_language(language: str | None) -> str:
     """Return the requested persona language, env language, or English default."""
-    if language is not None:
-        lang = str(language).strip().lower()
-        if lang in ("zh", "en"):
-            return lang
-    env = os.environ.get("MATRAIX_PERSONA_LANGUAGE", "").strip().lower()
-    return "zh" if env == "zh" else "en"
+    requested = normalize_persona_language(language)
+    if requested is not None:
+        return requested
+    env = normalize_persona_language(os.environ.get("MATRAIX_PERSONA_LANGUAGE"))
+    return env or "en"
 
 
 # Soft budget for the persona block inside agent system/instruction prompts.

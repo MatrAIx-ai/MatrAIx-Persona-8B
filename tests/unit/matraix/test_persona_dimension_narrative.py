@@ -133,13 +133,76 @@ def test_zh_unknown_dimension_falls_back_to_english():
     assert "Fake value" in text
 
 
-def test_zh_missing_labels_file_returns_empty(tmp_path):
+def test_zh_missing_labels_file_returns_empty(tmp_path, monkeypatch):
     from matraix import persona_dimension_catalog as cat
 
     assert cat.load_zh_labels(str(tmp_path / "missing.json")) == {}
     assert cat.resolve_persona_language(None) == "en"
     assert cat.resolve_persona_language("zh") == "zh"
     assert cat.resolve_persona_language("ZH ") == "zh"
+    monkeypatch.setenv("MATRAIX_PERSONA_LANGUAGE", "fr")
+    assert cat.resolve_persona_language(None) == "en"
+
+
+def test_zh_legacy_and_v0_templates_translate_structure_but_keep_raw_text(tmp_path):
+    from matraix.agents.persona.templating import (
+        PERSONA_SYSTEM_TEMPLATE,
+        render_persona_template,
+        resolve_persona_template,
+    )
+
+    legacy_path = tmp_path / "legacy.yaml"
+    legacy_path.write_text(
+        """display_name: Li Wei
+demographics:
+  age: 25-34
+  occupation: Designer
+psychology:
+  risk_tolerance: cautious
+communication:
+  tone: warm
+preferences:
+  hobbies: [reading]
+behavior:
+  shopping_frequency: weekly
+""",
+        encoding="utf-8",
+    )
+    v0_path = tmp_path / "v0.yaml"
+    v0_path.write_text(
+        """display_name: Casey Brooks
+summary: A careful shopper.
+system_prompt: Prefer practical choices.
+""",
+        encoding="utf-8",
+    )
+
+    def render(path, language=None):
+        persona = load_persona(path)
+        template = resolve_persona_template(persona, None, PERSONA_SYSTEM_TEMPLATE)
+        return render_persona_template(template, persona, language=language)
+
+    legacy_zh = render(legacy_path, language="zh")
+    assert "## 人口统计" in legacy_zh
+    assert "- 年龄: 25-34" in legacy_zh
+    assert "## 心理特征" in legacy_zh
+    assert "## 沟通方式" in legacy_zh
+    assert "## 偏好" in legacy_zh
+    assert "## 行为方式" in legacy_zh
+
+    v0_zh = render(v0_path, language="zh")
+    assert "你是 Casey Brooks。" in v0_zh
+    assert "## 个人简介" in v0_zh
+    assert "## 行为准则" in v0_zh
+    assert "A careful shopper." in v0_zh
+    assert "Prefer practical choices." in v0_zh
+
+    legacy_en = render(legacy_path)
+    assert "## Demographics" in legacy_en
+    assert "- Age: 25-34" in legacy_en
+    v0_en = render(v0_path)
+    assert "You are Casey Brooks." in v0_en
+    assert "## 个人简介" not in v0_en
 
 
 def test_zh_template_preserves_task_instruction_verbatim():

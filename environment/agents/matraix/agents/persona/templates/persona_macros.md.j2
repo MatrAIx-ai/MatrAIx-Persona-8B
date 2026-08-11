@@ -15,113 +15,129 @@
 {% endif -%}
 {% endmacro %}
 
-{% macro render_demographics(d) -%}
+{% macro render_demographics(d, language='en') -%}
 {% if d %}
-## Demographics
-{% if d.age is defined %}- Age: {{ d.age }}
+{% if language == 'zh' %}## 人口统计
+{% else %}## Demographics
+{% endif %}
+{% if d.age is defined %}- {% if language == 'zh' %}年龄{% else %}Age{% endif %}: {{ d.age }}
 {% endif -%}
-{% if d.gender is defined %}- Gender: {{ d.gender }}
+{% if d.gender is defined %}- {% if language == 'zh' %}性别{% else %}Gender{% endif %}: {{ d.gender }}
 {% endif -%}
-{% if d.location is defined %}- Location: {{ d.location }}
+{% if d.location is defined %}- {% if language == 'zh' %}所在地{% else %}Location{% endif %}: {{ d.location }}
 {% endif -%}
-{% if d.occupation is defined %}- Occupation: {{ d.occupation }}
+{% if d.occupation is defined %}- {% if language == 'zh' %}职业{% else %}Occupation{% endif %}: {{ d.occupation }}
 {% endif -%}
-{% if d.education is defined %}- Education: {{ d.education }}
+{% if d.education is defined %}- {% if language == 'zh' %}教育程度{% else %}Education{% endif %}: {{ d.education }}
 {% endif -%}
-{% if d.income_bracket is defined %}- Income: {{ d.income_bracket }}
+{% if d.income_bracket is defined %}- {% if language == 'zh' %}收入区间{% else %}Income{% endif %}: {{ d.income_bracket }}
 {% endif -%}
-{% if d.life_stage is defined %}- Life stage: {{ d.life_stage }}
+{% if d.life_stage is defined %}- {% if language == 'zh' %}人生阶段{% else %}Life stage{% endif %}: {{ d.life_stage }}
 {% endif -%}
-{% if d.cultural_background is defined %}- Background: {{ d.cultural_background }}
+{% if d.cultural_background is defined %}- {% if language == 'zh' %}文化背景{% else %}Background{% endif %}: {{ d.cultural_background }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
-{% macro render_psychology(p) -%}
+{% macro render_psychology(p, language='en') -%}
 {% if p %}
-## Psychology
+{% if language == 'zh' %}## 心理特征
+{% else %}## Psychology
+{% endif %}
 {% if p.big_five is defined and p.big_five %}
-- Big Five: openness={{ p.big_five.openness }}, conscientiousness={{ p.big_five.conscientiousness }}, extraversion={{ p.big_five.extraversion }}, agreeableness={{ p.big_five.agreeableness }}, neuroticism={{ p.big_five.neuroticism }}
+- {% if language == 'zh' %}大五人格{% else %}Big Five{% endif %}: openness={{ p.big_five.openness }}, conscientiousness={{ p.big_five.conscientiousness }}, extraversion={{ p.big_five.extraversion }}, agreeableness={{ p.big_five.agreeableness }}, neuroticism={{ p.big_five.neuroticism }}
 {% endif -%}
-{% if p.risk_tolerance is defined %}- Risk tolerance: {{ p.risk_tolerance }}
+{% if p.risk_tolerance is defined %}- {% if language == 'zh' %}风险承受度{% else %}Risk tolerance{% endif %}: {{ p.risk_tolerance }}
 {% endif -%}
-{% if p.openness_to_new_tools is defined %}- Openness to new tools: {{ p.openness_to_new_tools }}
+{% if p.openness_to_new_tools is defined %}- {% if language == 'zh' %}对新工具的开放度{% else %}Openness to new tools{% endif %}: {{ p.openness_to_new_tools }}
 {% endif -%}
-{% if p.patience is defined %}- Patience: {{ p.patience }}
+{% if p.patience is defined %}- {% if language == 'zh' %}耐心程度{% else %}Patience{% endif %}: {{ p.patience }}
 {% endif -%}
-{% if p.skepticism is defined %}- Skepticism: {{ p.skepticism }}
+{% if p.skepticism is defined %}- {% if language == 'zh' %}怀疑程度{% else %}Skepticism{% endif %}: {{ p.skepticism }}
 {% endif -%}
 {% if p.motivation_drivers is defined and p.motivation_drivers %}
-- Motivation: {{ p.motivation_drivers | join(', ') }}
+- {% if language == 'zh' %}动机{% else %}Motivation{% endif %}: {{ p.motivation_drivers | join(', ') }}
 {% endif -%}
 {% if 'values' in p and p['values'] %}
-- Values: {{ p['values'] | join(', ') }}
+- {% if language == 'zh' %}价值观{% else %}Values{% endif %}: {{ p['values'] | join(', ') }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
-{% macro render_communication(c) -%}
+{% macro render_communication(c, language='en') -%}
 {% if c %}
-## Communication
-{% if c.tone is defined %}- Tone: {{ c.tone }}
+{% if language == 'zh' %}## 沟通方式
+{% else %}## Communication
+{% endif %}
+{% if c.tone is defined %}- {% if language == 'zh' %}语气{% else %}Tone{% endif %}: {{ c.tone }}
 {% endif -%}
-{% if c.verbosity is defined %}- Verbosity: {{ c.verbosity }}
+{% if c.verbosity is defined %}- {% if language == 'zh' %}详细程度{% else %}Verbosity{% endif %}: {{ c.verbosity }}
 {% endif -%}
-{% if c.formality is defined %}- Formality: {{ c.formality }}
+{% if c.formality is defined %}- {% if language == 'zh' %}正式程度{% else %}Formality{% endif %}: {{ c.formality }}
 {% endif -%}
-{% if c.language_level is defined %}- Language: {{ c.language_level }}
+{% if c.language_level is defined %}- {% if language == 'zh' %}语言水平{% else %}Language{% endif %}: {{ c.language_level }}
 {% endif -%}
-{% if c.technical_fluency is defined %}- Technical fluency: {{ c.technical_fluency }}
+{% if c.technical_fluency is defined %}- {% if language == 'zh' %}技术熟练度{% else %}Technical fluency{% endif %}: {{ c.technical_fluency }}
 {% endif -%}
-{% if c.attention_span is defined %}- Attention span: {{ c.attention_span }}
+{% if c.attention_span is defined %}- {% if language == 'zh' %}注意力持续时间{% else %}Attention span{% endif %}: {{ c.attention_span }}
 {% endif -%}
-{% if c.learning_style is defined %}- Learning style: {{ c.learning_style }}
+{% if c.learning_style is defined %}- {% if language == 'zh' %}学习方式{% else %}Learning style{% endif %}: {{ c.learning_style }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
-{% macro render_preferences(p) -%}
+{% macro render_preferences(p, language='en') -%}
 {% if p %}
-## Preferences
+{% if language == 'zh' %}## 偏好
+{% else %}## Preferences
+{% endif %}
 {% if p.hobbies is defined and p.hobbies %}
-- Hobbies: {{ p.hobbies | join(', ') }}
+- {% if language == 'zh' %}兴趣爱好{% else %}Hobbies{% endif %}: {{ p.hobbies | join(', ') }}
 {% endif -%}
 {% if p.brand_affinities is defined and p.brand_affinities %}
-- Brands: {{ p.brand_affinities | join(', ') }}
+- {% if language == 'zh' %}品牌偏好{% else %}Brands{% endif %}: {{ p.brand_affinities | join(', ') }}
 {% endif -%}
-{% if p.price_sensitivity is defined %}- Price sensitivity: {{ p.price_sensitivity }}
+{% if p.price_sensitivity is defined %}- {% if language == 'zh' %}价格敏感度{% else %}Price sensitivity{% endif %}: {{ p.price_sensitivity }}
 {% endif -%}
-{% if p.aesthetic_taste is defined %}- Aesthetic: {{ p.aesthetic_taste }}
+{% if p.aesthetic_taste is defined %}- {% if language == 'zh' %}审美偏好{% else %}Aesthetic{% endif %}: {{ p.aesthetic_taste }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
-{% macro render_behavior(b) -%}
+{% macro render_behavior(b, language='en') -%}
 {% if b %}
-## Behavior
+{% if language == 'zh' %}## 行为方式
+{% else %}## Behavior
+{% endif %}
 {% for key, value in b.items() %}
 - {{ key | replace('_', ' ') | title }}: {% if value is iterable and value is not string %}{{ value | join(', ') }}{% else %}{{ value }}{% endif %}
 {% endfor -%}
 {% endif -%}
 {% endmacro %}
 
-{% macro render_domains(demographics, psychology, communication, preferences, behavior) -%}
-{{ render_demographics(demographics) }}
-{{ render_psychology(psychology) }}
-{{ render_communication(communication) }}
-{{ render_preferences(preferences) }}
-{{ render_behavior(behavior) }}
+{% macro render_domains(demographics, psychology, communication, preferences, behavior, language='en') -%}
+{{ render_demographics(demographics, language=language) }}
+{{ render_psychology(psychology, language=language) }}
+{{ render_communication(communication, language=language) }}
+{{ render_preferences(preferences, language=language) }}
+{{ render_behavior(behavior, language=language) }}
 {% endmacro %}
 
-{% macro render_v0_identity(display_name, summary, system_prompt) -%}
-{% if display_name %}You are {{ display_name }}.
+{% macro render_v0_identity(display_name, summary, system_prompt, language='en') -%}
+{% if display_name %}{% if language == 'zh' %}你是 {{ display_name }}。
+{% else %}You are {{ display_name }}.
+{% endif %}
 {% endif -%}
 {% if summary %}
 
+{% if language == 'zh' %}## 个人简介
+{% endif -%}
 {{ summary }}
 {% endif -%}
 {% if system_prompt %}
 
+{% if language == 'zh' %}## 行为准则
+{% endif -%}
 {{ system_prompt }}
 {% endif -%}
 {% endmacro %}

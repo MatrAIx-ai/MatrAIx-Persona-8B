@@ -106,6 +106,8 @@ def test_persona_loader_reads_sample_dataset() -> None:
         ("en", "explicit", "zh", ("en", "explicit")),
         (None, None, "zh", ("zh", "env")),
         (None, None, None, ("en", "default")),
+        (None, None, "fr", ("en", "default")),
+        ("fr", "explicit", None, ("en", "default")),
     ],
 )
 def test_persona_meta_records_truthful_runtime_language_and_source(

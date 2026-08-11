@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING
 
 from matraix.agents.persona.loader import Persona, load_persona
 from matraix.persona_job import SMOKE_PERSONA_PATH
-from matraix.persona_dimension_catalog import resolve_persona_language
+from matraix.persona_dimension_catalog import (
+    normalize_persona_language,
+    resolve_persona_language,
+)
 from matraix.agents.persona.templating import (
     PERSONA_INSTRUCTION_TEMPLATE,
     PERSONA_SYSTEM_TEMPLATE,
@@ -72,11 +75,21 @@ class PersonaMixin:
     @property
     def persona_language_source(self) -> str:
         """Where the language came from: explicit | follow_ui | env | default."""
-        if self._persona_language_source:
-            return self._persona_language_source
         import os
 
-        if os.environ.get("MATRAIX_PERSONA_LANGUAGE", "").strip():
+        requested = normalize_persona_language(self._persona_language)
+        env_language = normalize_persona_language(
+            os.environ.get("MATRAIX_PERSONA_LANGUAGE")
+        )
+
+        # An invalid env value is not provenance.  If an explicit value is
+        # valid, preserve its source; otherwise use the valid env value or
+        # the English default.
+        if requested is not None:
+            if self._persona_language_source == "env":
+                return "env" if env_language == requested else "explicit"
+            return self._persona_language_source or "explicit"
+        if env_language is not None:
             return "env"
         return "default"
 
