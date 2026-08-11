@@ -13,6 +13,7 @@ import sys
 import types
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -348,8 +349,18 @@ SIDECAR_PATH = (
 )
 
 
-def _load_sidecar() -> Any:
-    """Import the Flask app module without requiring Flask to be installed."""
+@pytest.fixture(scope="module")
+def sidecar() -> Any:
+    """Import the sidecar module with a stubbed ``flask``, restoring ``sys.modules``.
+
+    Flask is not a project dependency, so CI cannot import the sidecar directly and
+    a stub is required. It is installed inside a fixture rather than at module
+    scope on purpose: mutating ``sys.modules`` while pytest is still importing other
+    test modules is a textbook source of order-dependent pollution, and a transient
+    failure in an unrelated test (``test_persona_strategy_gate``) was observed while
+    the stub lived at module scope. ``patch.dict`` guarantees the entry is removed
+    again, and the window is now one function call wide.
+    """
     stub = types.ModuleType("flask")
 
     class _App:
@@ -368,22 +379,13 @@ def _load_sidecar() -> Any:
     stub.Flask = _App  # type: ignore[attr-defined]
     stub.jsonify = lambda *a, **k: None  # type: ignore[attr-defined]
     stub.request = None  # type: ignore[attr-defined]
-    saved = sys.modules.get("flask")
-    sys.modules["flask"] = stub
-    try:
+
+    with mock.patch.dict(sys.modules, {"flask": stub}):
         spec = importlib.util.spec_from_file_location("telco_sidecar", SIDECAR_PATH)
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        return module
-    finally:
-        if saved is not None:
-            sys.modules["flask"] = saved
-        else:
-            sys.modules.pop("flask", None)
-
-
-sidecar = _load_sidecar()
+    return module
 
 
 @pytest.mark.parametrize(
@@ -394,12 +396,12 @@ sidecar = _load_sidecar()
         "the standard plan",
     ],
 )
-def test_keywords_do_not_match_inside_longer_words(text: str) -> None:
+def test_keywords_do_not_match_inside_longer_words(sidecar: Any, text: str) -> None:
     """``stand`` used to fire on "understanding" and route to status_check."""
     assert sidecar._classify_intent(text) != "status_check"
 
 
-def test_standalone_status_word_still_routes() -> None:
+def test_standalone_status_word_still_routes(sidecar: Any) -> None:
     assert sidecar._classify_intent("Wie ist der Stand?") == "status_check"
 
 
@@ -410,7 +412,7 @@ def test_standalone_status_word_still_routes() -> None:
         "Could you tell me more about the data roaming line on my bill?",
     ],
 )
-def test_scenario_nouns_alone_do_not_open_a_dispute(text: str) -> None:
+def test_scenario_nouns_alone_do_not_open_a_dispute(sidecar: Any, text: str) -> None:
     """Every turn in a billing scenario names the invoice.
 
     Keying dispute_open on those nouns made it absorb the whole conversation: a
@@ -432,5 +434,5 @@ def test_scenario_nouns_alone_do_not_open_a_dispute(text: str) -> None:
         ("Thanks, that is all for now.", "generic"),
     ],
 )
-def test_intent_routing(text: str, intent: str) -> None:
+def test_intent_routing(sidecar: Any, text: str, intent: str) -> None:
     assert sidecar._classify_intent(text) == intent
