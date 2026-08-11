@@ -56,7 +56,6 @@ import { useCockpitSetupLock } from "./setup/useCockpitSetupLock";
 import { osAppTaskCards } from "./setup/cockpitTaskCards";
 import { FOCUS_RING, Sym } from "./cockpitShared";
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
-import { PersonaLanguagePicker } from "@/components/i18n/PersonaLanguagePicker";
 import { resolveLaunchLanguage, readPersonaLanguageSetting } from "@/lib/personaLanguage";
 
 type Translate = ReturnType<typeof useI18n>["t"];

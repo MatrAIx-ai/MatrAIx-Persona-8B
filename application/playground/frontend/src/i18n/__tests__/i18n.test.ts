@@ -105,6 +105,8 @@ describe("interpolate", () => {
 describe("pack integrity and optional locale fallback", () => {
   const enKeys = Object.keys(enPack);
   const zhKeys = Object.keys(zhPack);
+  const enMessages: Readonly<Partial<Record<string, string>>> = enPack;
+  const zhMessages: Readonly<Partial<Record<string, string>>> = zhPack;
 
   it("has no duplicate keys within each pack", () => {
     expect(new Set(enKeys).size).toBe(enKeys.length);
@@ -122,7 +124,7 @@ describe("pack integrity and optional locale fallback", () => {
 
   it("resolves every en-US key through the active zh-CN pack or English fallback", () => {
     for (const key of enKeys) {
-      expect(resolveMessage(zhPack, enPack, key)).toBe(zhPack[key] ?? enPack[key]);
+      expect(resolveMessage(zhPack, enPack, key)).toBe(zhMessages[key] ?? enMessages[key]);
     }
   });
 
