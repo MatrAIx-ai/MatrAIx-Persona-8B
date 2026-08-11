@@ -22,6 +22,7 @@ import type {
   WebTrace,
 } from "@/lib/types";
 import { useHarborCockpitRun, type HarborCockpitPhase } from "@/lib/useHarborCockpitRun";
+import { PersonaLanguagePicker } from "@/components/i18n/PersonaLanguagePicker";
 import { usePgTaskIdDeepLink } from "@/lib/usePgTaskIdDeepLink";
 import { useUrlState } from "@/lib/useUrlState";
 import { useCockpitInstruction } from "@/lib/useCockpitInstruction";
@@ -548,7 +549,11 @@ export function OsAppEvalCockpit({
         />
       }
       center={
-        <CockpitRunCenter
+        <>
+          <div className="flex items-center justify-end gap-3 pb-2">
+            <PersonaLanguagePicker />
+          </div>
+          <CockpitRunCenter
           showLive={showLiveCenter}
           pipeline={
             <CockpitPipelineDiagram
@@ -610,6 +615,7 @@ export function OsAppEvalCockpit({
           failedCount={failedTrials}
           retryBusy={retryBusy}
         />
+        </>
       }
       right={
         showInspector ? (

@@ -763,6 +763,26 @@ class HarborJobLaunchRequest(BaseModel):
             raise ValueError("languageSource must be follow_ui, explicit, env, or null")
         return normalized
 
+    @model_validator(mode="after")
+    def _validate_language_pair(self) -> "HarborJobLaunchRequest":
+        """Keep language and its recorded source consistent: an explicit
+        language must carry a real source, and a null language must not claim
+        one. This guarantees the persisted run record's language_source is
+        never fabricated or detached from the resolved language."""
+        language = self.language
+        source = self.languageSource
+        if language is not None and source is None:
+            raise ValueError(
+                "languageSource is required when language is provided "
+                "(explicit or follow_ui)"
+            )
+        if language is None and source is not None:
+            raise ValueError(
+                "languageSource must be null when language is null "
+                "(follow env/default)"
+            )
+        return self
+
     @field_validator("mode")
     @classmethod
     def _validate_mode(cls, value: str) -> str:

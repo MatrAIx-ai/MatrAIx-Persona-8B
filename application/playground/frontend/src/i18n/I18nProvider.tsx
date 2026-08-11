@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import enPackModule from "./messages/packs/en-US";
@@ -32,16 +32,39 @@ function readStoredLocale(): Locale {
   }
 }
 
-/** Cache for lazily-loaded packs (en-US is always present). */
+/** Per-locale in-flight loads, so switching locale never reuses another
+ * locale's pending request. Cleared when each load settles. */
+const inflight = new Map<Locale, Promise<MessagePack>>();
+
 const packCache = new Map<Locale, MessagePack>([["en-US", enPack]]);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(readStoredLocale);
   const [pack, setPack] = useState<MessagePack>(enPack);
-  const inflight = useRef<Promise<MessagePack> | null>(null);
   // Tracks the *requested* locale across async loads so a stale load result
   // can never overwrite the pack for a newer locale selection.
   const requestedRef = useRef<Locale>(locale);
+
+  // Startup: if the stored locale is not English, load its pack so the UI
+  // actually matches the picker instead of silently staying on en-US.
+  useEffect(() => {
+    const stored = readStoredLocale();
+    if (stored === "en-US") return;
+    let cancelled = false;
+    localePacks[stored]()
+      .then((p) => {
+        packCache.set(stored, p);
+        if (!cancelled && requestedRef.current === stored) {
+          setPack(p);
+        }
+      })
+      .catch(() => {
+        // Load failure: stay on the English fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setLocale = useCallback((next: Locale) => {
     if (next === locale && packCache.has(next)) {
@@ -56,13 +79,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const load =
       cached !== undefined
         ? Promise.resolve(cached)
-        : (inflight.current =
-            inflight.current ??
-            localePacks[next]().then((p) => {
-              packCache.set(next, p);
-              return p;
-            }));
-    inflight.current = load;
+        : (() => {
+            const pending = inflight.get(next);
+            if (pending) return pending;
+            const request = localePacks[next]()
+              .then((p) => {
+                packCache.set(next, p);
+                return p;
+              })
+              .finally(() => {
+                inflight.delete(next);
+              });
+            inflight.set(next, request);
+            return request;
+          })();
     load
       .then((p) => {
         // Only apply if this locale is still the one the user asked for

@@ -48,6 +48,19 @@ describe("resolveMessage — fallback chain (pack[key] ?? enPack[key] ?? fallbac
     const en: Record<string, string> = { "empty.key": "en value" };
     expect(resolveMessage(zh, en, "empty.key")).toBe("");
   });
+
+  it("missing zh keys fall back to en-US (community packs may be incomplete)", () => {
+    const zhMissing = Object.keys(enPack).filter((key) => !(key in zhPack));
+    // Fallback chain must return the English copy for every key zh lacks.
+    const enCopy = enPack as Record<string, string>;
+    for (const key of zhMissing.slice(0, 50)) {
+      expect(resolveMessage(zhPack, enPack, key)).toBe(enCopy[key]);
+    }
+    // Drift is allowed and documented, not enforced.
+    console.log(
+      `[drift] zh-CN missing ${zhMissing.length} of ${Object.keys(enPack).length} en keys`,
+    );
+  });
 });
 
 describe("interpolate", () => {

@@ -1,4 +1,10 @@
-export type Locale = "en-US" | "zh-CN"; // extensible: add a pack + registry entry
+/**
+ * Single source of truth for locale codes. Adding a language = add a code
+ * here, a single-locale pack under messages/packs/<code>.ts, and a registry
+ * entry (registry.ts). No dual-locale tables anywhere.
+ */
+export const LOCALE_CODES = ["en-US", "zh-CN"] as const;
+export type Locale = (typeof LOCALE_CODES)[number];
 
 export interface LocaleMeta {
   code: Locale;

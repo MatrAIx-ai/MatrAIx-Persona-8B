@@ -40,6 +40,7 @@ import type {
   WebTrace,
 } from "@/lib/types";
 import { useHarborCockpitRun, type HarborCockpitPhase } from "@/lib/useHarborCockpitRun";
+import { PersonaLanguagePicker } from "@/components/i18n/PersonaLanguagePicker";
 import { usePgTaskIdDeepLink } from "@/lib/usePgTaskIdDeepLink";
 import { useUrlState } from "@/lib/useUrlState";
 import { useCockpitInstruction } from "@/lib/useCockpitInstruction";
@@ -346,7 +347,7 @@ export function WebEvalCockpit({
           taskTitle: task.title,
         }),
     });
-  }, [persona, task, isRunning, run, personaModel, activeWebAgent]);
+  }, [persona, task, isRunning, run, personaModel, activeWebAgent, locale]);
   const handleLaunch = useCallback(async () => {
     if (
       !hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) ||
@@ -396,6 +397,7 @@ export function WebEvalCockpit({
     personaPool,
     handleRun,
     setBatchJobName,
+    locale,
   ]);
 
   const handleNewRun = useCallback(() => {
@@ -561,7 +563,11 @@ export function WebEvalCockpit({
         />
       }
       center={
-        <CockpitRunCenter
+        <>
+          <div className="flex items-center justify-end gap-3 pb-2">
+            <PersonaLanguagePicker />
+          </div>
+          <CockpitRunCenter
           showLive={showLiveCenter}
           pipeline={
             <CockpitPipelineDiagram
@@ -625,6 +631,7 @@ export function WebEvalCockpit({
           failedCount={failedTrials}
           retryBusy={retryBusy}
         />
+        </>
       }
       right={
         showInspector ? (
