@@ -5,6 +5,8 @@ import {
   normalizeSelfReportMarkdown,
   normalizeTaskInstructionMarkdown,
 } from "@/lib/taskContent";
+import type { DisplayTranslate } from "../cockpitShared";
+import { taskDocumentLabel } from "./taskCardLabels";
 
 export type TaskDocTabId =
   | "instruction"
@@ -32,14 +34,14 @@ export type TaskDocSource = {
 };
 
 /** Contributor-facing task docs for preview. */
-export function buildTaskDocSections(source: TaskDocSource): TaskDocSection[] {
+export function buildTaskDocSections(source: TaskDocSource, t?: DisplayTranslate): TaskDocSection[] {
   const sections: TaskDocSection[] = [];
 
   const instruction = normalizeTaskInstructionMarkdown(source.instructionMarkdown);
   if (instruction) {
     sections.push({
       id: "instruction",
-      label: "Instruction",
+      label: taskDocumentLabel("instruction", t),
       icon: "description",
       markdown: instruction,
     });
@@ -49,7 +51,7 @@ export function buildTaskDocSections(source: TaskDocSource): TaskDocSection[] {
   if (hasMeaningfulTaskContext(context)) {
     sections.push({
       id: "context",
-      label: "Context",
+      label: taskDocumentLabel("context", t),
       icon: "menu_book",
       markdown: context,
     });
@@ -59,7 +61,7 @@ export function buildTaskDocSections(source: TaskDocSource): TaskDocSection[] {
   if (questionnaire || source.hasStructuredQuestionnaire) {
     sections.push({
       id: "questionnaire",
-      label: "Questionnaire",
+      label: taskDocumentLabel("questionnaire", t),
       icon: "list_alt",
       // Structured preview replaces this markdown in TaskDetailModal when instrument is present.
       markdown: questionnaire || "_Structured questionnaire_",
@@ -70,7 +72,7 @@ export function buildTaskDocSections(source: TaskDocSource): TaskDocSection[] {
   if (outputSchema) {
     sections.push({
       id: "output-schema",
-      label: "Output schema",
+      label: taskDocumentLabel("output-schema", t),
       icon: "schema",
       markdown: outputSchema,
     });
@@ -80,7 +82,7 @@ export function buildTaskDocSections(source: TaskDocSource): TaskDocSection[] {
   if (selfReport) {
     sections.push({
       id: "self-report",
-      label: "Self-report",
+      label: taskDocumentLabel("self-report", t),
       icon: "rate_review",
       markdown: selfReport,
     });

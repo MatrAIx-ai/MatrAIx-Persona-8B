@@ -1,7 +1,15 @@
 import type { ChatbotEvalTask, OsAppEvalTask, SurveyHarborTask, WebEvalTask } from "@/lib/types";
 import { suggestedWebPersonaAgent, webPersonaAgentLabel } from "@/lib/personaAgentCatalog";
 import type { ChatTransport, TaskCardModel } from "./TaskSelectionRail";
-import { resolveTaskKind, taskCardTags, taskSearchTags, osChipLabel, osChipTone, type TaskCardTag } from "./taskCardLabels";
+import {
+  resolveTaskKind,
+  taskCardTags,
+  taskSearchTags,
+  osChipLabel,
+  osChipTone,
+  type DisplayTranslate,
+  type TaskCardTag,
+} from "./taskCardLabels";
 
 function transportForChatTask(
   task: Pick<ChatbotEvalTask, "transport" | "canStart">,
@@ -18,7 +26,7 @@ function transportForChatTask(
 export function chatbotEvalTaskCards(
   tasks: ChatbotEvalTask[],
   opts?: { runningTaskIds?: ReadonlySet<string> },
-  t?: (key: string, fallback?: string, values?: Record<string, string>) => string,
+  t?: DisplayTranslate,
 ): TaskCardModel[] {
   const runningTaskIds = opts?.runningTaskIds;
   return tasks.map((task) => {
@@ -32,7 +40,9 @@ export function chatbotEvalTaskCards(
         ? []
         : [
             {
-              label: available ? "Available" : "Unavailable",
+              label: available
+                ? t?.("eval.taskCards.available", "Available") ?? "Available"
+                : t?.("eval.taskCards.unavailable", "Unavailable") ?? "Unavailable",
               tone: statusTone,
             },
           ];
@@ -68,7 +78,7 @@ export function chatbotEvalTaskCards(
           metaType: task.metaType,
           domain: task.domain,
           difficulty: task.difficulty,
-        }),
+        }, t),
         ...statusTags,
       ],
       searchTags: taskSearchTags(task.tags),

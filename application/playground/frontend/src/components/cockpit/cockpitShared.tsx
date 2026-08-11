@@ -21,6 +21,12 @@
  */
 import type { CSSProperties, ReactNode } from "react";
 
+export type DisplayTranslate = (
+  key: string,
+  fallback?: string,
+  values?: Record<string, string | number>,
+) => string;
+
 /**
  * The one tokenized focus-visible ring for every interactive element in the
  * cockpit: a 2px primary ring at a 2px offset (the Executive Precision focus
@@ -98,6 +104,8 @@ export function humanizeToken(value: string | null | undefined): string {
 /** A parsed demographic chip (`label` is the value text; `key` for React). */
 export interface DemographicChip {
   key: string;
+  /** Localized fixed label for this display field. */
+  label: string;
   /** Short value text shown in the chip (e.g. `"Age 51"`, `"Fin. Manager"`). */
   text: string;
   /** Full value for the chip's `title`/tooltip (un-abbreviated). */
@@ -138,22 +146,30 @@ function abbreviateOccupation(occupation: string): string {
  * so a persona without structured demographics shows no chips rather than
  * fabricated ones.
  */
-export function parseDemographics(context: string | null | undefined): DemographicChip[] {
+export function parseDemographics(
+  context: string | null | undefined,
+  t?: DisplayTranslate,
+): DemographicChip[] {
   if (!context) return [];
   const chips: DemographicChip[] = [];
 
   const age = lineValue(context, /^age:\s*/i);
-  if (age && /^\d{1,3}$/.test(age)) chips.push({ key: "age", text: `Age ${age}`, full: `Age ${age}` });
+  if (age && /^\d{1,3}$/.test(age)) {
+    const label = t?.("cockpit.personaCard.age", "Age") ?? "Age";
+    chips.push({ key: "age", label, text: `${label} ${age}`, full: `${label} ${age}` });
+  }
 
   const gender = lineValue(context, /^gender:\s*/i);
   if (gender) {
     const short = /^f(emale)?$/i.test(gender) ? "F" : /^m(ale)?$/i.test(gender) ? "M" : humanizeToken(gender);
-    chips.push({ key: "gender", text: short, full: humanizeToken(gender) });
+    const label = t?.("cockpit.personaCard.gender", "Gender") ?? "Gender";
+    chips.push({ key: "gender", label, text: short, full: humanizeToken(gender) });
   }
 
   const occupation = lineValue(context, /^occupation:\s*/i);
   if (occupation) {
-    chips.push({ key: "occupation", text: abbreviateOccupation(occupation), full: humanizeToken(occupation) });
+    const label = t?.("cockpit.personaCard.occupation", "Occupation") ?? "Occupation";
+    chips.push({ key: "occupation", label, text: abbreviateOccupation(occupation), full: humanizeToken(occupation) });
   }
 
   // Location: prefer "City, State" if the block has them; else a single "Location:" value.
@@ -161,7 +177,8 @@ export function parseDemographics(context: string | null | undefined): Demograph
   const state = lineValue(context, /^state:\s*/i);
   if (city) {
     const full = state ? `${city}, ${state}` : city;
-    chips.push({ key: "location", text: full.length > 18 ? city : full, full });
+    const label = t?.("cockpit.personaCard.location", "Location") ?? "Location";
+    chips.push({ key: "location", label, text: full.length > 18 ? city : full, full });
   }
 
   return chips;
@@ -174,7 +191,10 @@ export function parseDemographics(context: string | null | undefined): Demograph
  * regex; returns only what genuinely appears. Used by the catalog rows, which
  * only have the blurb, not the full context.
  */
-export function parseDemographicsFromBlurb(blurb: string | null | undefined): DemographicChip[] {
+export function parseDemographicsFromBlurb(
+  blurb: string | null | undefined,
+  t?: DisplayTranslate,
+): DemographicChip[] {
   if (!blurb) return [];
   const chips: DemographicChip[] = [];
 
@@ -182,21 +202,26 @@ export function parseDemographicsFromBlurb(blurb: string | null | undefined): De
   const age = blurb.match(/\bAge:\s*(\d{1,3}(?:\s*(?:to|-|-)\s*\d{1,3})?)/i);
   if (age) {
     const value = age[1].replace(/\s+/g, " ").trim();
-    chips.push({ key: "age", text: `Age ${value}`, full: `Age ${value}` });
+    const label = t?.("cockpit.personaCard.age", "Age") ?? "Age";
+    chips.push({ key: "age", label, text: `${label} ${value}`, full: `${label} ${value}` });
   }
 
   const gender = blurb.match(/\bGender:\s*([A-Za-z]+)/i);
   if (gender) {
     const g = gender[1];
     const short = /^f(emale)?$/i.test(g) ? "F" : /^m(ale)?$/i.test(g) ? "M" : humanizeToken(g);
-    chips.push({ key: "gender", text: short, full: humanizeToken(g) });
+    const label = t?.("cockpit.personaCard.gender", "Gender") ?? "Gender";
+    chips.push({ key: "gender", label, text: short, full: humanizeToken(g) });
   }
 
   // Occupation runs until the next "Word:" label in the collapsed line.
   const occ = blurb.match(/\bOccupation:\s*([^:]+?)(?:\s+[A-Z][a-z]+:|$)/);
   if (occ) {
     const value = occ[1].trim();
-    if (value) chips.push({ key: "occupation", text: abbreviateOccupation(value), full: humanizeToken(value) });
+    if (value) {
+      const label = t?.("cockpit.personaCard.occupation", "Occupation") ?? "Occupation";
+      chips.push({ key: "occupation", label, text: abbreviateOccupation(value), full: humanizeToken(value) });
+    }
   }
 
   return chips;
