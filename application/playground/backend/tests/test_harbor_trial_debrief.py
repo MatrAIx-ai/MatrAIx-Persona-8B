@@ -175,13 +175,37 @@ def test_map_trial_debrief_chatbot_enriches_prompts_from_events(tmp_path: Path) 
     (task_dir / "task.toml").write_text('[metadata]\ntype = "chat"\n', encoding="utf-8")
     (task_dir / "instruction.md").write_text("# Task instruction\nUse the chat API.\n", encoding="utf-8")
     _write_chat_trial(repo, "job-prompts", "trial-prompts")
+    (
+        repo
+        / "persona"
+        / "datasets"
+        / "matraix-persona-dev-sample"
+        / "persona_0042.yaml"
+    ).write_text(
+        "\n".join(
+            [
+                "persona_id: '0042'",
+                "version: '1.0'",
+                "display_name: Casey Brooks",
+                "summary: A careful shopper with a detailed profile.",
+                "system_prompt: Prefer practical choices and explain tradeoffs.",
+                "dimensions: {}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     trial_dir = repo / "jobs" / "job-prompts" / "trial-prompts"
     (trial_dir / "config.json").write_text(
         json.dumps({"task": {"path": "application/tasks/chat_meal-planning-nutrition"}}),
         encoding="utf-8",
     )
+    (trial_dir / "persona_meta.json").write_text(
+        json.dumps({"effective_language": "zh", "language_source": "explicit"}),
+        encoding="utf-8",
+    )
     prompts = {
-        "personaPrompt": "You are Casey Brooks.\n\n## Who you are\n\nA detailed biography.",
+        "personaPrompt": "Actual runtime persona prompt from events.\nThis exact artifact must be preserved.",
         "harborPrompt": "You are Casey Brooks.\n\n## Who you are\n\nA detailed biography.\n\n## Task instruction\nJudge the chatbot honestly.\n\n## Task context\nThis chatbot helps people discover movies.",
         "taskPrompt": "## Task instruction\nJudge the chatbot honestly.\n\n## Application kickoff\nReveal needs gradually.",
     }
@@ -195,12 +219,76 @@ def test_map_trial_debrief_chatbot_enriches_prompts_from_events(tmp_path: Path) 
         job_name="job-prompts",
         trial_name="trial-prompts",
     )
-    assert "You are Casey Brooks." in debrief["prompts"]["personaPrompt"]
-    assert "Simulated person" not in debrief["prompts"]["personaPrompt"]
-    assert "## Persona" not in debrief["prompts"]["personaPrompt"]
+    assert debrief["prompts"]["personaPrompt"] == prompts["personaPrompt"]
     assert "Task context" in debrief["prompts"]["harborPrompt"]
     assert "Task instruction" in debrief["prompts"]["taskPrompt"]
     assert debrief["instructionMarkdown"].startswith("# Task instruction")
+
+
+def test_map_trial_debrief_rebuilds_missing_persona_prompt_in_recorded_language(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "chat_recai"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text('[metadata]\ntype = "chat"\n', encoding="utf-8")
+    (task_dir / "instruction.md").write_text(
+        "# Task instruction\nUse the chat API.\n", encoding="utf-8"
+    )
+    _write_chat_trial(repo, "job-zh-prompt", "trial-zh-prompt")
+    (
+        repo
+        / "persona"
+        / "datasets"
+        / "matraix-persona-dev-sample"
+        / "persona_0042.yaml"
+    ).write_text(
+        "\n".join(
+            [
+                "persona_id: '0042'",
+                "version: '1.0'",
+                "display_name: Casey Brooks",
+                "summary: A careful shopper with a detailed profile.",
+                "system_prompt: Prefer practical choices and explain tradeoffs.",
+                "dimensions: {}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    trial_dir = repo / "jobs" / "job-zh-prompt" / "trial-zh-prompt"
+    (trial_dir / "persona_meta.json").write_text(
+        json.dumps({"effective_language": "zh", "language_source": "explicit"}),
+        encoding="utf-8",
+    )
+    (trial_dir / "events.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "prompts",
+                "prompts": {
+                    "taskPrompt": "Original task prompt must remain unchanged.",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    debrief = map_trial_debrief(
+        repo_root=repo,
+        jobs_dir=repo / "jobs",
+        job_name="job-zh-prompt",
+        trial_name="trial-zh-prompt",
+    )
+
+    persona_prompt = debrief["prompts"]["personaPrompt"]
+    assert "你是 Casey Brooks。" in persona_prompt
+    assert "## 个人简介" in persona_prompt
+    assert "## 行为准则" in persona_prompt
+    assert (
+        "Original task prompt must remain unchanged."
+        in debrief["prompts"]["taskPrompt"]
+    )
 
 
 def test_map_trial_debrief_survey_from_events_without_output_dir(tmp_path: Path) -> None:
@@ -459,7 +547,7 @@ def test_map_trial_debrief_survey_enriches_persona_dimensions(tmp_path: Path) ->
         trial_name="trial-a",
     )
     persona_prompt = debrief["prompts"]["personaPrompt"]
-    assert "Profile dimensions" in persona_prompt
+    assert "## Who you are" in persona_prompt
     assert "Non-binary" in persona_prompt
     assert debrief["persona"]["dimensions"]["region"] == "East Asia"
 

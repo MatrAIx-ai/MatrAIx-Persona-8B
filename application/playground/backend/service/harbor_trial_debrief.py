@@ -607,15 +607,22 @@ def _humanize_dimension_key(key: str) -> str:
     return " ".join(part.capitalize() for part in str(key).replace("-", "_").split("_") if part)
 
 
-def _format_persona_dimensions_from_yaml(raw: dict[str, Any]) -> str:
+def _format_persona_dimensions_from_yaml(
+    raw: dict[str, Any], *, persona_language: str | None = None
+) -> str:
+    localized_zh = str(persona_language or "").strip().lower() == "zh"
     display_name = str(raw.get("display_name") or "").strip()
     lines: list[str] = []
     if display_name:
-        lines.append("You are {}.".format(display_name))
+        lines.append(
+            "你是 {}。".format(display_name)
+            if localized_zh
+            else "You are {}.".format(display_name)
+        )
         lines.append("")
     dims = raw.get("dimensions")
     if isinstance(dims, dict) and dims:
-        lines.append("## Who you are")
+        lines.append("## 你是谁" if localized_zh else "## Who you are")
         lines.append("")
         for key in sorted(dims.keys()):
             value = dims.get(key)
@@ -623,8 +630,17 @@ def _format_persona_dimensions_from_yaml(raw: dict[str, Any]) -> str:
                 continue
             lines.append("- {}: {}".format(_humanize_dimension_key(key), value))
     elif raw.get("system_prompt"):
+        if localized_zh and raw.get("summary"):
+            lines.append("## 个人简介")
+            lines.append("")
+        if localized_zh:
+            lines.append("## 行为准则")
+            lines.append("")
         lines.append(str(raw.get("system_prompt")).strip())
     elif raw.get("summary"):
+        if localized_zh:
+            lines.append("## 个人简介")
+            lines.append("")
         lines.append(str(raw.get("summary")).strip())
     return "\n".join(lines).strip()
 
@@ -640,18 +656,59 @@ def _read_persona_yaml_raw(repo_root: Path, persona_rel: str | None) -> dict[str
     return raw if isinstance(raw, dict) else None
 
 
+def _recorded_persona_language(trial_dir: Path) -> str | None:
+    """Return the effective runtime language recorded for this trial."""
+    try:
+        meta = _read_json(trial_dir / "persona_meta.json")
+    except (OSError, ValueError):
+        return None
+    language = str(meta.get("effective_language") or "").strip().lower()
+    return language if language in {"en", "zh"} else None
+
+
 def _render_persona_prompt(
-    repo_root: Path, persona_rel: str | None, persona: Persona
+    repo_root: Path,
+    persona_rel: str | None,
+    persona: Persona,
+    *,
+    persona_language: str | None = None,
 ) -> str:
     from playground.user_sim.prompt import render_persona_block
 
     yaml_path = _persona_prompt_abs_path(repo_root, persona_rel)
-    block = render_persona_block(persona, persona_yaml_path=yaml_path).strip()
+    raw = _read_persona_yaml_raw(repo_root, persona_rel)
+    if (
+        persona_language is not None
+        and persona_language.strip().lower() == "zh"
+        and raw
+        and not any(
+            raw.get(key)
+            for key in (
+                "dimensions",
+                "demographics",
+                "psychology",
+                "communication",
+                "preferences",
+                "behavior",
+            )
+        )
+    ):
+        localized_v0 = _format_persona_dimensions_from_yaml(
+            raw, persona_language=persona_language
+        )
+        if localized_v0 and not _is_thin_persona_prompt(localized_v0, persona=persona):
+            return localized_v0
+    block = render_persona_block(
+        persona,
+        persona_yaml_path=yaml_path,
+        persona_language=persona_language,
+    ).strip()
     if block and not _is_thin_persona_prompt(block, persona=persona):
         return block
-    raw = _read_persona_yaml_raw(repo_root, persona_rel)
     if raw:
-        fallback = _format_persona_dimensions_from_yaml(raw)
+        fallback = _format_persona_dimensions_from_yaml(
+            raw, persona_language=persona_language
+        )
         if fallback and not _is_thin_persona_prompt(fallback, persona=persona):
             return fallback
     return block
@@ -726,19 +783,44 @@ def _enrich_debrief_prompts(
     prompts = _merge_prompt_dicts(prompts, done_prompts)
     prompts = _merge_prompt_dicts(prompts, event_prompts)
 
-    persona_prompt = str(prompts.get("personaPrompt") or "").strip()
-    harbor_prompt = str(prompts.get("harborPrompt") or "").strip()
-    rendered = _render_persona_prompt(repo_root, persona_rel, persona)
-    if rendered and not _is_thin_persona_prompt(rendered, persona=persona):
-        persona_prompt = rendered
-        prompts["personaPrompt"] = persona_prompt
-    elif not persona_prompt or _is_thin_persona_prompt(persona_prompt, persona=persona):
-        if harbor_prompt and not _is_thin_persona_prompt(harbor_prompt, persona=persona):
-            persona_prompt = harbor_prompt
-        elif rendered and not _is_thin_persona_prompt(rendered, persona=persona):
-            persona_prompt = rendered
-        if persona_prompt:
-            prompts["personaPrompt"] = persona_prompt
+    # Prompts already produced by the debrief mapper can be derived from the
+    # lightweight Persona object. Runtime event prompts are the authoritative
+    # artifact, so only those can suppress a language-aware reconstruction.
+    runtime_persona_prompt = ""
+    runtime_harbor_prompt = ""
+    for runtime_prompts in (event_prompts, done_prompts):
+        if not isinstance(runtime_prompts, dict):
+            continue
+        candidate = str(runtime_prompts.get("personaPrompt") or "").strip()
+        if (
+            candidate
+            and not runtime_persona_prompt
+            and not _is_thin_persona_prompt(candidate, persona=persona)
+        ):
+            runtime_persona_prompt = candidate
+        candidate = str(runtime_prompts.get("harborPrompt") or "").strip()
+        if (
+            candidate
+            and not runtime_harbor_prompt
+            and not _is_thin_persona_prompt(candidate, persona=persona)
+        ):
+            runtime_harbor_prompt = candidate
+
+    if runtime_persona_prompt:
+        prompts["personaPrompt"] = runtime_persona_prompt
+    elif runtime_harbor_prompt:
+        prompts["personaPrompt"] = runtime_harbor_prompt
+    else:
+        # Reconstruct only when runtime artifacts did not carry a usable
+        # persona prompt, using the language persisted for this exact trial.
+        rendered = _render_persona_prompt(
+            repo_root,
+            persona_rel,
+            persona,
+            persona_language=_recorded_persona_language(trial_dir),
+        )
+        if rendered and not _is_thin_persona_prompt(rendered, persona=persona):
+            prompts["personaPrompt"] = rendered
 
     task_prompt = str(prompts.get("taskPrompt") or "").strip()
     instruction = _read_trial_instruction_markdown(trial_dir, repo_root)
