@@ -39,11 +39,15 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(readStoredLocale);
   const [pack, setPack] = useState<MessagePack>(enPack);
   const inflight = useRef<Promise<MessagePack> | null>(null);
+  // Tracks the *requested* locale across async loads so a stale load result
+  // can never overwrite the pack for a newer locale selection.
+  const requestedRef = useRef<Locale>(locale);
 
   const setLocale = useCallback((next: Locale) => {
     if (next === locale && packCache.has(next)) {
       return;
     }
+    requestedRef.current = next;
     setLocaleState(next);
     // Keep the UI consistent instantly: fall back to the always-present en-US
     // pack while the target locale loads.
@@ -61,13 +65,17 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     inflight.current = load;
     load
       .then((p) => {
-        if (localePacks[next]) {
+        // Only apply if this locale is still the one the user asked for
+        // (guards against rapid en -> zh -> en switching).
+        if (requestedRef.current === next) {
           setPack(p);
         }
       })
       .catch(() => {
         // Load failure: stay on English fallback.
-        setPack(enPack);
+        if (requestedRef.current === next) {
+          setPack(enPack);
+        }
       });
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
