@@ -8,6 +8,7 @@ import {
 } from "../personaLabelKeys";
 import { LOCALE_REGISTRY, localePacks } from "../registry";
 import { interpolate, resolveMessage } from "../resolve";
+import { taskDisplayTitle } from "../../components/cockpit/setup/taskCardLabels";
 
 describe("resolveMessage — fallback chain (pack[key] ?? enPack[key] ?? fallback ?? key)", () => {
   it("returns the zh-CN value when the key exists in the active pack", () => {
@@ -133,8 +134,21 @@ describe("pack integrity and optional locale fallback", () => {
     expect(enMissingZhKeys).toEqual([
       "shell.home.subtitle",
       "shell.preflight.optionalAdaptersNeedAttention",
-      "taskDisplay.title.harborPriceSensitivityHasbroGamingCandyLand",
     ]);
+  });
+});
+
+describe("task-owned display content", () => {
+  it("keeps task titles from the task regardless of the active UI translator", () => {
+    const translate = () => "翻译后的任务标题";
+
+    expect(
+      taskDisplayTitle(
+        "Product Feedback",
+        { id: "harbor-product-feedback" },
+        translate,
+      ),
+    ).toBe("Product Feedback");
   });
 });
 

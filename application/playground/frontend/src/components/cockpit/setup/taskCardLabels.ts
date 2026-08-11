@@ -11,100 +11,13 @@ type TaskDisplayIdentity = {
   taskPath?: string;
 };
 
-type TaskTitleEntry = {
-  key: string;
-  fallback: string;
-};
-
-/** Allowlisted task-title translations keyed by stable task id. */
-const TASK_TITLE_ENTRIES: Record<string, TaskTitleEntry> = {
-  "chat-meal-planning-nutrition": {
-    key: "taskDisplay.title.chatMealPlanningNutrition",
-    fallback: "Meal Planning Nutrition",
-  },
-  "chat-openbb-corporate-action-honesty": {
-    key: "taskDisplay.title.chatOpenbbCorporateActionHonesty",
-    fallback: "OpenBB Corporate Action Honesty",
-  },
-  "chat-api-support-chatbot": {
-    key: "taskDisplay.title.chatApiSupportChatbot",
-    fallback: "API Support Chatbot",
-  },
-  "chat-mcp-support-chatbot": {
-    key: "taskDisplay.title.chatMcpSupportChatbot",
-    fallback: "MCP Support Chatbot",
-  },
-  "harbor-product-feedback": {
-    key: "taskDisplay.title.harborProductFeedback",
-    fallback: "Product Feedback",
-  },
-  "harbor-survey-product-feedback": {
-    key: "taskDisplay.title.harborProductFeedback",
-    fallback: "Survey Product Feedback",
-  },
-  "harbor-annual-checkup-habits": {
-    key: "taskDisplay.title.harborAnnualCheckupHabits",
-    fallback: "Annual Checkup Habits",
-  },
-  "harbor-price-sensitivity-hasbro-gaming-candy-land": {
-    key: "taskDisplay.title.harborPriceSensitivityHasbroGamingCandyLand",
-    fallback: "Price Sensitivity Hasbro Gaming Candy Land",
-  },
-  "web-browser-use-laptop-choice": {
-    key: "taskDisplay.title.webBrowserUseLaptopChoice",
-    fallback: "Browser Use Laptop Choice",
-  },
-  "web-cocoa-plan-choice": {
-    key: "taskDisplay.title.webCocoaPlanChoice",
-    fallback: "Cocoa Plan Choice",
-  },
-  "web-cua-bookshop-choice": {
-    key: "taskDisplay.title.webCuaBookshopChoice",
-    fallback: "Cua Bookshop Choice",
-  },
-  "web-playwright-quote-choice": {
-    key: "taskDisplay.title.webPlaywrightQuoteChoice",
-    fallback: "Playwright Quote Choice",
-  },
-  "web-mit-ocw-course-choice": {
-    key: "taskDisplay.title.webMitOcwCourseChoice",
-    fallback: "Mit Ocw Course Choice",
-  },
-  "web-notion-plan-comparison": {
-    key: "taskDisplay.title.webNotionPlanComparison",
-    fallback: "Notion Plan Comparison",
-  },
-  "computer-use-ios-photo-access-review": {
-    key: "taskDisplay.title.computerUseIosPhotoAccessReview",
-    fallback: "Photo Access Review",
-  },
-  "computer-use-linux-note-to-csv": {
-    key: "taskDisplay.title.computerUseLinuxNoteToCsv",
-    fallback: "Note To CSV",
-  },
-  "computer-use-macos-calendar-reminder-handoff": {
-    key: "taskDisplay.title.computerUseMacosCalendarReminderHandoff",
-    fallback: "Calendar Reminder Handoff",
-  },
-  "os-app-ios-news-subscription-decision": {
-    key: "taskDisplay.title.osAppIosNewsSubscriptionDecision",
-    fallback: "News Subscription Decision",
-  },
-  "os-app-macos-stocks-mu-sentiment": {
-    key: "taskDisplay.title.osAppMacosStocksMuSentiment",
-    fallback: "Stocks MU Sentiment",
-  },
-};
-
-/** Translate only an allowlisted task title; unknown titles stay untouched. */
+/** Task titles are task-owned content and must not depend on the UI locale. */
 export function taskDisplayTitle(
   title: string | undefined,
-  identity: TaskDisplayIdentity,
-  t?: DisplayTranslate,
+  _identity: TaskDisplayIdentity,
+  _t?: DisplayTranslate,
 ): string {
-  const original = title?.trim() ?? "";
-  const entry = identity.id ? TASK_TITLE_ENTRIES[identity.id.trim()] : undefined;
-  return entry && t ? t(entry.key, entry.fallback) : entry?.fallback ?? original;
+  return title ?? "";
 }
 
 export function taskKindLabel(taskKind: "example" | "task", t?: DisplayTranslate): string {
