@@ -25,6 +25,7 @@ measure. See README.md for the full behaviour matrix.
 
 from __future__ import annotations
 
+import re
 import threading
 
 from flask import Flask, jsonify, request
@@ -171,6 +172,15 @@ _INTENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
+        # Keyed on an actual dispute signal, never on the scenario's own nouns.
+        #
+        # This list used to include invoice / bill / charge / roaming (and their
+        # translations). In a billing-dispute scenario every single turn mentions
+        # those, so this intent absorbed the whole conversation: a cohort run
+        # classified 30 of 30 customer turns as dispute_open and never reached any
+        # other intent, leaving the localization tiers untested. Matching on words
+        # that are present regardless of intent is broken independently of what a
+        # run happens to show.
         "dispute_open",
         (
             "dispute",
@@ -178,25 +188,22 @@ _INTENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "incorrect",
             "too high",
             "overcharge",
-            "invoice",
-            "bill",
-            "charge",
-            "roaming",
+            "unexpected",
             "itiraz",
             "yanlış",
             "hatalı",
             "yüksek",
-            "fatura",
+            "beklenmedik",
             "reclamación",
             "reclamo",
             "incorrecto",
+            "incorrecta",
             "erróneo",
-            "factura",
-            "cobro",
+            "inesperado",
             "widerspruch",
             "falsch",
             "zu hoch",
-            "rechnung",
+            "unerwartet",
         ),
     ),
     (
@@ -353,11 +360,34 @@ def _detect_language(text: str) -> str:
     return best_language
 
 
+def _words(text: str) -> list[str]:
+    """Word tokens, keeping accented letters so the non-English keywords match."""
+    return re.findall(r"[^\W_]+", _normalize(text), flags=re.UNICODE)
+
+
+def _matches_keyword(tokens: list[str], keyword: str) -> bool:
+    """Match on word boundaries, never inside a longer word.
+
+    A plain substring test made ``stand`` (a status_check keyword) fire on
+    "understand", "outstanding", and "misunderstanding", which routed ordinary
+    dispute messages to the status intent -- and therefore to a reply in the wrong
+    language. The bug was invisible to scripted fixtures and only surfaced once a
+    real persona wrote "I believe there might be a misunderstanding".
+
+    Multi-word keywords are matched as a contiguous token run.
+    """
+    parts = keyword.split()
+    if len(parts) == 1:
+        return parts[0] in tokens
+    span = len(parts)
+    return any(tokens[i : i + span] == parts for i in range(len(tokens) - span + 1))
+
+
 def _classify_intent(text: str) -> str:
     """First matching intent wins; specific intents precede broad ones."""
-    lowered = _normalize(text)
+    tokens = _words(text)
     for intent, keywords in _INTENT_KEYWORDS:
-        if any(keyword in lowered for keyword in keywords):
+        if any(_matches_keyword(tokens, keyword) for keyword in keywords):
             return intent
     return "generic"
 

@@ -31,12 +31,26 @@ in-language reply and a fallback rather than a degenerate all-or-nothing score.
 ## What is measured, and what is not
 
 **Measured** — which language each assistant reply is written in, compared with the
-persona's declared `primary_language`:
+language **the customer actually wrote in**:
 
-- the share of replies in the persona's language
+- the share of replies in the customer's language
 - the language of the first reply
 - how many times the reply language changed mid-conversation
 - whether the measurement was possible at all
+- whether the persona wrote in the language its record declares
+
+That last one matters more than it looks. The comparison target is the customer's
+observed language, not `primary_language`, because the sidecar only ever receives
+the incoming message — scoring a system against a field it cannot see would not be
+a measurement of that system. In the first real cohort run a persona declaring
+German conducted the whole conversation in English, and the bot answered in
+English: correct behaviour that a declared-language comparison would have scored
+as 0% adherence.
+
+`primary_language` therefore does two jobs here: it selects the cohort, and via
+`persona_language_adherence` it tells you whether a trial exercised cross-language
+behaviour at all. A German-declared persona writing English tested
+English-to-English, whatever the filter selected for.
 
 **Not measured:**
 
@@ -67,11 +81,52 @@ non-deterministic detector would flake in CI. That buys reproducibility at a cos
   undetermined rather than forced into the nearest match.
 
 Replies below the confidence threshold are reported as `undetermined` rather than
-being silently assigned. When the persona has no `primary_language` at all —
-which is true of roughly half the checked-in dev sample, including the default
-smoke persona `0042` — the verifier emits
-`measurement_status: persona_language_unknown` and omits the match-rate facet
-instead of contributing a misleading number to the batch average.
+being silently assigned. When no customer turn carries enough signal to attribute
+a language, the verifier emits `measurement_status: customer_language_undetermined`
+and omits the match-rate facet instead of contributing a misleading number to the
+batch average.
+
+A persona with no `primary_language` at all — true of roughly half the dev sample,
+including the default smoke persona `0042` — no longer blocks the measurement,
+since the rate targets the customer's observed language. It surfaces as
+`persona_language_adherence: persona_language_unknown`, meaning the trial measured
+the bot but could not be checked for cross-language validity.
+
+### What the first cohort run showed
+
+Eleven trials over every non-English persona in the dev sample that this detector
+models (Spanish ×8, German ×2, Turkish ×1). All eleven produced valid artifacts.
+
+| Result | Value |
+|---|---|
+| `persona_language_adherence: yes` | **1 of 11** |
+| `language_match_rate` | 1.000 in all 11 (min 1.0, max 1.0) |
+| Customer-side language | English ×10, Spanish ×1 |
+
+Ten of eleven personas conducted the conversation in **English** despite their
+record declaring German, Spanish, or Turkish, and despite the rendered persona
+prompt stating it plainly (`Primary language: German`, `Multilingualism:
+Monolingual`, `Language: German: Native`). One German persona's own debrief said
+`repliesInMyLanguage: no` and *"the conversation was conducted in English, but I
+would have preferred if it was in German"* — the dimension reaches the prompt and
+the self-report, but not the conversation.
+
+The consequence is that the SUT's localization tiers were never exercised. The bot
+matched the customer's language in every trial, so the measurement is **correct but
+degenerate**: it reports 1.0 because the customer wrote English and the bot
+answered in English. `persona_language_adherence` is what makes that visible
+instead of flattering — a naive implementation would have printed "0% adherence"
+for those ten trials and left a reader believing the bot was broken.
+
+Two independent causes, both only visible from a real run:
+
+1. **Personas write English regardless of the declared dimension** (10 of 11).
+2. **The conversation stayed on one intent.** In the first run 30 of 30 customer
+   turns classified as `dispute_open`, because that intent keyed on the scenario's
+   own nouns (invoice, bill, charge, roaming) which appear in every turn of a
+   billing dispute. That was a fixture bug and is fixed; routing now spreads across
+   greeting and dispute. It does not change the cohort result, because the bot
+   answers English either way.
 
 ## Persona cohort
 
@@ -176,6 +231,26 @@ write unreachable (issue #35).
 
 `tests/test_state.py` keeps its `test_*` functions so the file can still be run
 under pytest by hand, but the verifier path does not depend on them.
+
+## Tear the sidecar down after editing it
+
+Playground registers this service as a **shared** sidecar, so a cohort reuses one
+fixed-port container (`127.0.0.1:8907`). `start_shared_sidecar` probes that port and
+reuses whatever answers — it does **not** rebuild when the source changes. Editing
+`server.py` and re-running therefore silently exercises the old image, which cost
+one debugging cycle here: a corrected intent classifier appeared not to work
+because a seven-hour-old container was still serving.
+
+Before re-running after a sidecar edit:
+
+```bash
+docker rm -f playground-multilingual-telco-support-telco-support-api-1
+docker rmi -f playground-multilingual-telco-support-telco-support-api:latest
+```
+
+This is how the shared-sidecar path is designed to behave, not a defect — it exists
+so a batch does not start one container per trial. It is just undocumented, so it
+is written down here.
 
 ## Suggested setup (non-binding)
 

@@ -9,12 +9,17 @@
         {
           "id": "language_adherence.match_rate_by_segment",
           "facetKey": "language_match_rate",
-          "title": "Share of replies in the persona's language"
+          "title": "Share of replies in the customer's language"
         },
         {
-          "id": "language_adherence.first_reply_language_by_segment",
-          "facetKey": "first_reply_language",
-          "title": "Language of the first reply"
+          "id": "language_adherence.customer_language_by_segment",
+          "facetKey": "customer_language",
+          "title": "Language the customer wrote in"
+        },
+        {
+          "id": "language_adherence.persona_adherence_by_segment",
+          "facetKey": "persona_language_adherence",
+          "title": "Persona wrote in its declared language"
         },
         {
           "id": "language_adherence.measurement_status_by_segment",

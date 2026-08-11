@@ -17,6 +17,29 @@ facet code by hand for every self-report field, with the usual drift between
 schema and code. The feedback artifact is still *read* below, as evidence for
 ``task_outcome``.
 
+What the rate compares against
+------------------------------
+``language_match_rate`` scores the bot's replies against the language the
+**customer actually wrote in**, not against the persona's declared
+``primary_language``.
+
+The sidecar receives only the incoming message; it cannot see a persona field, so
+scoring it against one would not measure the bot. This is not hypothetical: in the
+first real cohort run a persona declaring ``primary_language: German`` conducted
+the whole conversation in English. Nothing forces a persona agent to write in its
+declared language — the prompt is English, ``instruction.md`` is English, and the
+task deliberately does not instruct a language, because instructing one would
+measure compliance with our instruction instead of natural behaviour.
+
+The declared language is still reported, in two facets that make the distinction
+explicit:
+
+- ``customer_language`` — what the customer actually used, the rate's target
+- ``persona_expected_language`` — what the record declares
+- ``persona_language_adherence`` — whether those two agree, which is the validity
+  check on the trial. A German-declared persona writing English tested
+  English-to-English, whatever the cohort filter selected for.
+
 Language detection
 ------------------
 Detection is deterministic and offline: language-exclusive characters plus
@@ -336,17 +359,51 @@ def _count_support_questions(messages: list[dict[str, Any]]) -> int:
     )
 
 
+def _customer_messages(messages: list[dict[str, Any]]) -> list[str]:
+    return [
+        entry["content"].strip()
+        for entry in messages
+        if entry.get("role") == "customer"
+        and isinstance(entry.get("content"), str)
+        and entry["content"].strip()
+    ]
+
+
+def detect_customer_language(messages: list[dict[str, Any]]) -> str:
+    """The language the customer actually wrote in, or ``undetermined``.
+
+    Detected per message and resolved by majority so a single long turn cannot
+    outvote the rest, with ties falling to ``undetermined`` rather than to
+    whichever language happened to sort first.
+    """
+    attributed = [
+        language
+        for language, _ in (detect_language(text) for text in _customer_messages(messages))
+        if language != UNDETERMINED
+    ]
+    if not attributed:
+        return UNDETERMINED
+    counts: dict[str, int] = {}
+    for language in attributed:
+        counts[language] = counts.get(language, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: -item[1])
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        return UNDETERMINED
+    return ranked[0][0]
+
+
 def analyze_language(
     messages: list[dict[str, Any]],
-    expected_code: str,
-    status: str,
+    customer_language: str,
 ) -> dict[str, Any]:
     """Per-reply language attribution plus the trial-level rollup.
 
-    Facets that need the persona's language (the match rate) are omitted when it
-    is unknown or unsupported. Facets derived from the replies alone (first reply
-    language, switch count, confidence) are always reported, because they stay
-    meaningful without it.
+    The match rate compares the bot's replies against the language the customer
+    **actually wrote in**, not against the persona's declared ``primary_language``.
+    The sidecar only ever sees the incoming message; scoring it against a persona
+    field it cannot observe would not be a measurement of the bot. The declared
+    language is still reported, as a validity check on the trial rather than as
+    the target.
     """
     replies = _support_messages(messages)
     detections = [detect_language(reply) for reply in replies]
@@ -370,42 +427,66 @@ def analyze_language(
         "undetermined_reply_count": languages.count(UNDETERMINED),
         "match_rate": None,
     }
-    if status == "measured" and attributed:
-        matches = sum(1 for language in attributed if language == expected_code)
+    if customer_language != UNDETERMINED and attributed:
+        matches = sum(1 for language in attributed if language == customer_language)
         result["match_rate"] = round(matches / len(attributed), 3)
     return result
 
 
-def _language_notes(language: dict[str, Any], expected_code: str, status: str) -> str:
-    if status == "persona_language_unknown":
+def resolve_persona_adherence(customer_language: str, expected_code: str, persona_status: str) -> str:
+    """Did the persona write in the language its record declares?
+
+    This is the validity check that tells an analyst whether a trial exercised
+    cross-language behaviour at all. A German-declared persona that writes English
+    tested English-to-English, whatever the cohort filter said.
+    """
+    if persona_status != "measured":
+        return persona_status
+    if customer_language == UNDETERMINED:
+        return "customer_language_undetermined"
+    return "yes" if customer_language == expected_code else "no"
+
+
+def _language_notes(
+    language: dict[str, Any],
+    customer_language: str,
+    expected_code: str,
+    adherence: str,
+) -> str:
+    observed = ", ".join(language["reply_languages"]) or "none"
+    if customer_language == UNDETERMINED:
         return (
-            "The persona record carries no primary_language, so reply language "
-            "could not be compared against an expected language. Reply languages "
-            "observed: {}.".format(", ".join(language["reply_languages"]) or "none")
+            "No customer message carried enough signal to attribute a language, so "
+            "no adherence rate was computed. Reply languages observed: {}.".format(
+                observed
+            )
         )
-    if status == "persona_language_unsupported":
-        return (
-            "The persona's primary_language is outside the four languages this "
-            "detector models, so no adherence rate was computed. Reply languages "
-            "observed: {}.".format(", ".join(language["reply_languages"]) or "none")
-        )
-    rate = language["match_rate"]
-    if rate is None:
+    if language["match_rate"] is None:
         return (
             "No support reply carried enough signal to attribute a language, so "
-            "no adherence rate was computed."
+            "no adherence rate was computed. The customer wrote in {}.".format(
+                customer_language
+            )
         )
-    return (
-        "{} of the attributed support replies were in the persona's language "
-        "({}). First reply was {}; the reply language changed {} time(s); {} "
-        "reply(ies) were left undetermined.".format(
-            "{:.0%}".format(rate),
-            expected_code,
+    note = (
+        "{} of the attributed support replies were in the language the customer "
+        "wrote in ({}). First reply was {}; the reply language changed {} time(s); "
+        "{} reply(ies) were left undetermined.".format(
+            "{:.0%}".format(language["match_rate"]),
+            customer_language,
             language["first_reply_language"],
             language["language_switch_count"],
             language["undetermined_reply_count"],
         )
     )
+    if adherence == "no":
+        note += (
+            " Note: the persona record declares {}, so this trial did not exercise "
+            "that language and says nothing about how the bot handles it.".format(
+                expected_code
+            )
+        )
+    return note
 
 
 def _derive_outcome(
@@ -483,8 +564,13 @@ def build_evaluation_payload(
     if feedback is not None:
         validate_feedback(feedback)
 
-    expected_code, status = resolve_expected_language(persona_language)
-    language = analyze_language(messages, expected_code, status)
+    expected_code, persona_status = resolve_expected_language(persona_language)
+    customer_language = detect_customer_language(messages)
+    language = analyze_language(messages, customer_language)
+    adherence = resolve_persona_adherence(customer_language, expected_code, persona_status)
+    status = (
+        "measured" if customer_language != UNDETERMINED else "customer_language_undetermined"
+    )
     outcome = _derive_outcome(combined_lower, support_count, feedback)
     conversation_path = _derive_conversation_path(
         clarification_question_count,
@@ -497,8 +583,8 @@ def build_evaluation_payload(
         language_facets.append(
             {
                 "key": "language_match_rate",
-                "label": "Share of replies in the persona's language",
-                "role": "primary",
+                "label": "Share of replies in the customer's language",
+                "role": "score",
                 "kind": "numerical",
                 "value": language["match_rate"],
             }
@@ -506,11 +592,27 @@ def build_evaluation_payload(
     language_facets.extend(
         [
             {
+                # Primary because it is the one facet always present, and it says
+                # whether the rest of the context means anything.
                 "key": "measurement_status",
                 "label": "Language measurement status",
-                "role": "evidence",
+                "role": "primary",
                 "kind": "categorical",
                 "value": status,
+            },
+            {
+                "key": "customer_language",
+                "label": "Language the customer wrote in",
+                "role": "evidence",
+                "kind": "categorical",
+                "value": customer_language,
+            },
+            {
+                "key": "persona_language_adherence",
+                "label": "Persona wrote in its declared language",
+                "role": "evidence",
+                "kind": "categorical",
+                "value": adherence,
             },
             {
                 "key": "first_reply_language",
@@ -521,7 +623,7 @@ def build_evaluation_payload(
             },
             {
                 "key": "persona_expected_language",
-                "label": "Persona's expected language",
+                "label": "Persona's declared language",
                 "role": "evidence",
                 "kind": "categorical",
                 "value": expected_code,
@@ -559,7 +661,9 @@ def build_evaluation_payload(
                     if language["match_rate"] is not None
                     else "measurement_status"
                 ),
-                "value": _language_notes(language, expected_code, status),
+                "value": _language_notes(
+                    language, customer_language, expected_code, adherence
+                ),
             },
         ]
     )

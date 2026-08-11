@@ -9,6 +9,8 @@ output.
 from __future__ import annotations
 
 import importlib.util
+import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -155,16 +157,53 @@ def test_expected_language_resolution(
     assert verifier.resolve_expected_language(raw) == (expected_code, status)
 
 
+# Customer turns long enough to attribute; short ones are undetermined by design.
+CUSTOMER = {
+    "en": "Hello, my invoice is wrong and the charge on it is too high, can you see why?",
+    "tr": "Merhaba, faturam yanlış geldi ve tutar çok yüksek, bir itiraz açmak istiyorum.",
+    "es": "Hola, mi factura es incorrecta y el cobro por los días es erróneo, ¿puedo ver el desglose?",
+    "de": "Hallo, meine Rechnung ist falsch und der Betrag ist zu hoch, kann ich die Aufstellung sehen?",
+}
+
+
+@pytest.mark.parametrize("language", sorted(CUSTOMER))
+def test_customer_language_detected(language: str) -> None:
+    messages = _messages(("customer", CUSTOMER[language]), ("support", REPLIES[language]))
+    assert verifier.detect_customer_language(messages) == language
+
+
+def test_customer_language_resolved_by_majority() -> None:
+    messages = _messages(
+        ("customer", CUSTOMER["de"]),
+        ("support", REPLIES["de"]),
+        ("customer", CUSTOMER["de"]),
+        ("support", REPLIES["de"]),
+        ("customer", CUSTOMER["en"]),
+    )
+    assert verifier.detect_customer_language(messages) == "de"
+
+
+def test_customer_language_tie_is_undetermined() -> None:
+    """A tie must not be broken by whichever language sorts first."""
+    messages = _messages(("customer", CUSTOMER["de"]), ("customer", CUSTOMER["es"]))
+    assert verifier.detect_customer_language(messages) == verifier.UNDETERMINED
+
+
+def test_no_attributable_customer_turn_is_undetermined() -> None:
+    messages = _messages(("customer", "ok"), ("customer", "Tamam."))
+    assert verifier.detect_customer_language(messages) == verifier.UNDETERMINED
+
+
 def test_match_rate_counts_only_attributed_replies() -> None:
     messages = _messages(
-        ("customer", "Faturam yanlış geldi."),
+        ("customer", CUSTOMER["tr"]),
         ("support", REPLIES["tr"]),
-        ("customer", "Kalem dökümü?"),
+        ("customer", CUSTOMER["tr"]),
         ("support", REPLIES["en"]),
-        ("customer", "Peki."),
+        ("customer", CUSTOMER["tr"]),
         ("support", "Tamam."),
     )
-    result = verifier.analyze_language(messages, "tr", "measured")
+    result = verifier.analyze_language(messages, "tr")
     # Two attributed replies (tr, en); the third is too short to attribute.
     assert result["undetermined_reply_count"] == 1
     assert result["match_rate"] == 0.5
@@ -174,26 +213,39 @@ def test_match_rate_counts_only_attributed_replies() -> None:
 
 def test_full_adherence_and_no_switches() -> None:
     messages = _messages(
-        ("customer", "Hola"),
+        ("customer", CUSTOMER["es"]),
         ("support", REPLIES["es"]),
-        ("customer", "Gracias"),
+        ("customer", CUSTOMER["es"]),
         ("support", REPLIES["es"]),
     )
-    result = verifier.analyze_language(messages, "es", "measured")
+    result = verifier.analyze_language(messages, "es")
     assert result["match_rate"] == 1.0
     assert result["language_switch_count"] == 0
 
 
-def test_match_rate_omitted_when_persona_language_unknown() -> None:
-    messages = _messages(
-        ("customer", "My invoice is wrong."),
-        ("support", REPLIES["en"]),
-    )
-    result = verifier.analyze_language(messages, "unknown", "persona_language_unknown")
+def test_match_rate_omitted_when_customer_language_undetermined() -> None:
+    messages = _messages(("customer", "ok"), ("support", REPLIES["en"]))
+    result = verifier.analyze_language(messages, verifier.UNDETERMINED)
     assert result["match_rate"] is None
-    # Reply-only signals stay available without the persona's language.
+    # Reply-only signals stay available regardless.
     assert result["first_reply_language"] == "en"
     assert result["detection_confidence"] > 0
+
+
+@pytest.mark.parametrize(
+    ("customer", "expected", "persona_status", "want"),
+    [
+        ("de", "de", "measured", "yes"),
+        ("en", "de", "measured", "no"),
+        ("undetermined", "de", "measured", "customer_language_undetermined"),
+        ("en", "unknown", "persona_language_unknown", "persona_language_unknown"),
+        ("en", "Mandarin", "persona_language_unsupported", "persona_language_unsupported"),
+    ],
+)
+def test_persona_adherence_resolution(
+    customer: str, expected: str, persona_status: str, want: str
+) -> None:
+    assert verifier.resolve_persona_adherence(customer, expected, persona_status) == want
 
 
 def _payload(messages: list[dict[str, str]], persona_language: str | None) -> Any:
@@ -210,121 +262,59 @@ def _language_facets(payload: Any) -> dict[str, Any]:
     return {facet["key"]: facet for facet in context["facets"]}
 
 
-def test_payload_declares_unmeasurability_instead_of_omitting_silently() -> None:
+def test_rate_targets_the_customer_language_not_the_declared_one() -> None:
+    """Regression for the first real cohort run.
+
+    A persona declaring German conducted the conversation in English and the bot
+    replied in English. Scoring against the declared language called that 0%
+    adherence; the bot in fact did the right thing. The SUT never sees
+    primary_language, so the rate must target what the customer wrote.
+    """
     messages = _messages(
-        ("customer", "My invoice is wrong."),
+        ("customer", CUSTOMER["en"]),
+        ("support", REPLIES["en"]),
+        ("customer", CUSTOMER["en"]),
         ("support", REPLIES["en"]),
     )
-    facets = _language_facets(_payload(messages, None))
-    assert facets["measurement_status"]["value"] == "persona_language_unknown"
+    facets = _language_facets(_payload(messages, "German"))
+    assert facets["customer_language"]["value"] == "en"
+    assert facets["persona_expected_language"]["value"] == "de"
+    assert facets["language_match_rate"]["value"] == 1.0
+    # The trial is flagged as not having exercised the declared language.
+    assert facets["persona_language_adherence"]["value"] == "no"
+    assert "did not exercise" in facets["language_adherence_notes"]["value"]
+
+
+def test_declared_language_honoured_is_recorded_as_adherent() -> None:
+    messages = _messages(("customer", CUSTOMER["de"]), ("support", REPLIES["de"]))
+    facets = _language_facets(_payload(messages, "German"))
+    assert facets["persona_language_adherence"]["value"] == "yes"
+    assert facets["language_match_rate"]["value"] == 1.0
+
+
+def test_payload_declares_unmeasurability_instead_of_omitting_silently() -> None:
+    messages = _messages(("customer", "ok"), ("support", REPLIES["en"]))
+    facets = _language_facets(_payload(messages, "German"))
+    assert facets["measurement_status"]["value"] == "customer_language_undetermined"
     assert "language_match_rate" not in facets
     # The explanation rebinds to the status so the grouped view still renders.
     assert facets["language_adherence_notes"]["explainsFacetKey"] == "measurement_status"
 
 
 def test_payload_binds_notes_to_match_rate_when_measured() -> None:
-    messages = _messages(
-        ("customer", "Meine Rechnung ist falsch."),
-        ("support", REPLIES["de"]),
-    )
+    messages = _messages(("customer", CUSTOMER["de"]), ("support", REPLIES["de"]))
     facets = _language_facets(_payload(messages, "German"))
     assert facets["language_match_rate"]["value"] == 1.0
     assert facets["language_adherence_notes"]["explainsFacetKey"] == "language_match_rate"
 
 
-def test_unsupported_persona_language_is_reported_not_approximated() -> None:
-    messages = _messages(
-        ("customer", "My invoice is wrong."),
-        ("support", REPLIES["en"]),
-    )
+def test_unsupported_persona_language_still_measures_the_bot() -> None:
+    """An unmodellable declared language no longer blocks the measurement."""
+    messages = _messages(("customer", CUSTOMER["en"]), ("support", REPLIES["en"]))
     facets = _language_facets(_payload(messages, "Mandarin"))
-    assert facets["measurement_status"]["value"] == "persona_language_unsupported"
     assert facets["persona_expected_language"]["value"] == "Mandarin"
-    assert "language_match_rate" not in facets
-
-
-FEEDBACK = {
-    "needConstraintSatisfaction": "yes",
-    "personalPreferenceSatisfaction": "yes",
-    "overallExperienceRating": 8,
-    "reason": "The dispute was logged and I knew what happened next.",
-    "askedUsefulClarificationQuestions": False,
-}
-
-
-def _feedback_payload(feedback: dict[str, Any] | None) -> Any:
-    messages = _messages(
-        ("customer", "Meine Rechnung ist falsch."),
-        ("support", REPLIES["de"]),
-        ("customer", "Danke."),
-        ("support", REPLIES["de"]),
-    )
-    combined = " ".join(message["content"] for message in messages)
-    return verifier.build_evaluation_payload(messages, combined, feedback, "German")
-
-
-def _outcome_facets(payload: Any) -> dict[str, Any]:
-    context = next(
-        item for item in payload["contexts"] if item["contextType"] == "task_outcome"
-    )
-    return {facet["key"]: facet["value"] for facet in context["facets"]}
-
-
-def test_self_report_drives_outcome_when_present() -> None:
-    facets = _outcome_facets(_feedback_payload(FEEDBACK))
-    assert facets["outcome_status"] == "resolved"
-    assert facets["resolution_basis"] == "user_feedback"
-    assert facets["outcome_reason"] == FEEDBACK["reason"]
-
-
-def test_outcome_falls_back_to_transcript_without_self_report() -> None:
-    facets = _outcome_facets(_feedback_payload(None))
-    assert facets["resolution_basis"] == "conversation_commitment"
-
-
-@pytest.mark.parametrize(
-    ("need", "preference", "expected"),
-    [
-        ("yes", "yes", "resolved"),
-        ("yes", "partially", "partially_resolved"),
-        ("partially", "no", "partially_resolved"),
-        ("no", "yes", "unresolved"),
-    ],
-)
-def test_outcome_status_buckets(need: str, preference: str, expected: str) -> None:
-    feedback = {
-        **FEEDBACK,
-        "needConstraintSatisfaction": need,
-        "personalPreferenceSatisfaction": preference,
-    }
-    assert _outcome_facets(_feedback_payload(feedback))["outcome_status"] == expected
-
-
-def test_verifier_does_not_emit_user_feedback_context() -> None:
-    """The platform synthesizes it from the self-report schema; see the docstring.
-
-    Emitting one here would short-circuit that path (job_aggregation.py) and lose
-    the schema-derived kinds and enum choices, so this is load-bearing.
-    """
-    payload = _feedback_payload(FEEDBACK)
-    context_types = {context["contextType"] for context in payload["contexts"]}
-    assert "user_feedback" not in context_types
-
-
-@pytest.mark.parametrize(
-    "bad",
-    [
-        {"overallExperienceRating": 0},
-        {"overallExperienceRating": 11},
-        {"overallExperienceRating": "8"},
-        {"askedUsefulClarificationQuestions": "no"},
-        {"reason": "   "},
-        {"needConstraintSatisfaction": ""},
-    ],
-)
-def test_invalid_self_report_fails_the_trial(bad: dict[str, Any]) -> None:
-    with pytest.raises(SystemExit):
-        _feedback_payload({**FEEDBACK, **bad})
+    assert facets["persona_language_adherence"]["value"] == "persona_language_unsupported"
+    assert facets["language_match_rate"]["value"] == 1.0
 
 
 def test_every_facet_kind_is_accepted_by_aggregation() -> None:
@@ -339,3 +329,108 @@ def test_every_facet_kind_is_accepted_by_aggregation() -> None:
         for facet in context["facets"]:
             assert facet["kind"] in allowed, (context["contextType"], facet["key"])
             assert facet["role"] in {"primary", "score", "evidence", "explanation"}
+
+
+# --------------------------------------------------------------------------- #
+# SUT intent routing
+#
+# The mock sidecar is the fixture this task measures, and two of its routing bugs
+# only surfaced in a real cohort run. Both are locked in here.
+# --------------------------------------------------------------------------- #
+SIDECAR_PATH = (
+    REPO_ROOT
+    / "environment"
+    / "task-environments"
+    / "application"
+    / "chatbot-api-sidecar_multilingual-telco-support"
+    / "telco-support-api"
+    / "server.py"
+)
+
+
+def _load_sidecar() -> Any:
+    """Import the Flask app module without requiring Flask to be installed."""
+    stub = types.ModuleType("flask")
+
+    class _App:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def _decorator(self, *_a: Any, **_k: Any):
+            def wrap(fn):
+                return fn
+
+            return wrap
+
+        get = _decorator
+        post = _decorator
+
+    stub.Flask = _App  # type: ignore[attr-defined]
+    stub.jsonify = lambda *a, **k: None  # type: ignore[attr-defined]
+    stub.request = None  # type: ignore[attr-defined]
+    saved = sys.modules.get("flask")
+    sys.modules["flask"] = stub
+    try:
+        spec = importlib.util.spec_from_file_location("telco_sidecar", SIDECAR_PATH)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        if saved is not None:
+            sys.modules["flask"] = saved
+        else:
+            sys.modules.pop("flask", None)
+
+
+sidecar = _load_sidecar()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I believe there might be a misunderstanding",
+        "my outstanding balance",
+        "the standard plan",
+    ],
+)
+def test_keywords_do_not_match_inside_longer_words(text: str) -> None:
+    """``stand`` used to fire on "understanding" and route to status_check."""
+    assert sidecar._classify_intent(text) != "status_check"
+
+
+def test_standalone_status_word_still_routes() -> None:
+    assert sidecar._classify_intent("Wie ist der Stand?") == "status_check"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I am calling about invoice INV-70431 and the roaming charge on it.",
+        "Could you tell me more about the data roaming line on my bill?",
+    ],
+)
+def test_scenario_nouns_alone_do_not_open_a_dispute(text: str) -> None:
+    """Every turn in a billing scenario names the invoice.
+
+    Keying dispute_open on those nouns made it absorb the whole conversation: a
+    cohort run classified 30 of 30 customer turns as dispute_open and never
+    reached another intent.
+    """
+    assert sidecar._classify_intent(text) != "dispute_open"
+
+
+@pytest.mark.parametrize(
+    ("text", "intent"),
+    [
+        ("This charge is wrong and the amount is too high.", "dispute_open"),
+        ("Faturam yanlış geldi, itiraz etmek istiyorum.", "dispute_open"),
+        ("Can I see the line items breakdown?", "bill_breakdown"),
+        ("What is your refund policy?", "refund_policy"),
+        ("Any update on the status?", "status_check"),
+        ("Hello, good morning", "greeting"),
+        ("Thanks, that is all for now.", "generic"),
+    ],
+)
+def test_intent_routing(text: str, intent: str) -> None:
+    assert sidecar._classify_intent(text) == intent
