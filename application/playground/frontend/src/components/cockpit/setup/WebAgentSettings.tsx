@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { FOCUS_RING } from "../cockpitShared";
 import { CockpitSelect } from "./CockpitSelect";
 import {
@@ -45,6 +46,7 @@ function FamilyChip({
 }
 
 export function WebAgentSettings({ taskId, agentId, disabled, onAgentChange }: WebAgentSettingsProps) {
+  const { t } = useI18n();
   const family = webAgentFamily(agentId);
   const [cliConfirmDismissed, setCliConfirmDismissed] = useState(false);
   const harnessOptions = useMemo(() => webPersonaAgentSelectOptions(family), [family]);
@@ -53,7 +55,10 @@ export function WebAgentSettings({ taskId, agentId, disabled, onAgentChange }: W
     if (nextFamily === family) return;
     if (nextFamily === "cli" && !cliConfirmDismissed) {
       const ok = window.confirm(
-        "CLI agents are general-purpose terminal harnesses. Web tasks usually work better with Browser agents. Continue with CLI?",
+        t(
+          "setup.web.cliConfirm",
+          "CLI agents are general-purpose terminal harnesses. Web tasks usually work better with Browser agents. Continue with CLI?",
+        ),
       );
       if (!ok) return;
       setCliConfirmDismissed(true);
@@ -64,19 +69,19 @@ export function WebAgentSettings({ taskId, agentId, disabled, onAgentChange }: W
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-text-dim">Agent family</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-text-dim">{t("setup.web.agentFamily", "Agent family")}</p>
         <div className="mt-2 flex gap-2">
           <FamilyChip
             active={family === "browser"}
-            label="Browser"
-            description="Playwright, browser-use, Cocoa, CUA"
+            label={t("setup.web.browser", "Browser")}
+            description={t("setup.web.browserDescription", "Playwright, browser-use, Cocoa, CUA")}
             disabled={disabled}
             onClick={() => setFamily("browser")}
           />
           <FamilyChip
             active={family === "cli"}
-            label="CLI"
-            description="Claude Code, Codex, Gemini CLI"
+            label={t("setup.web.cli", "CLI")}
+            description={t("setup.web.cliDescription", "Claude Code, Codex, Gemini CLI")}
             disabled={disabled}
             onClick={() => setFamily("cli")}
           />
@@ -84,15 +89,15 @@ export function WebAgentSettings({ taskId, agentId, disabled, onAgentChange }: W
       </div>
 
       <CockpitSelect
-        label="Harness"
+        label={t("setup.web.harness", "Harness")}
         value={agentId}
         options={harnessOptions}
         disabled={disabled}
         onChange={(next) => onAgentChange(taskId, next)}
         hint={
           family === "browser"
-            ? "Task default is a recommendation — pick any browser harness."
-            : "Experimental for web — terminal agent, not browser-native."
+            ? t("setup.web.browserHint", "Task default is a recommendation — pick any browser harness.")
+            : t("setup.web.cliHint", "Experimental for web — terminal agent, not browser-native.")
         }
       />
     </div>

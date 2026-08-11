@@ -345,12 +345,35 @@ export function batchProgressPct(
 }
 
 /** Batch footer progress — counts simulated people, not job re-runs. */
-export function formatBatchProgressLabel(completed: number, total: number): string {
+export function formatBatchProgressLabel(
+  completed: number,
+  total: number,
+  t?: (key: string, fallback?: string, values?: Record<string, string>) => string,
+): string {
   const done = Math.max(0, Math.min(completed, total));
-  const noun = total === 1 ? "person" : "people";
-  if (total <= 0) return "Batch run";
-  if (done >= total) return `All ${total} ${noun} finished`;
-  return `${done} of ${total} ${noun} finished`;
+  const noun =
+    total === 1
+      ? t
+        ? t("eval.progress.person", "person")
+        : "person"
+      : t
+        ? t("eval.progress.people", "people")
+        : "people";
+  if (total <= 0) return t ? t("eval.progress.batchRun", "Batch run") : "Batch run";
+  if (done >= total)
+    return t
+      ? t("eval.progress.allFinished", `All ${total} ${noun} finished`, {
+          total: String(total),
+          noun,
+        })
+      : `All ${total} ${noun} finished`;
+  return t
+    ? t("eval.progress.partialFinished", `${done} of ${total} ${noun} finished`, {
+        done: String(done),
+        total: String(total),
+        noun,
+      })
+    : `${done} of ${total} ${noun} finished`;
 }
 
 export const BATCH_RUN_COMPLETE_HINT =

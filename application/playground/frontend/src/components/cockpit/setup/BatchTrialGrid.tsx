@@ -1,5 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { formatBatchCellStatusLabel } from "@/lib/trialStatus";
 import { isMachinePersonaName, personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import type { PersonaPoolPersonaCard } from "@/lib/types";
@@ -59,10 +60,13 @@ export interface BatchTrialGridProps {
   className?: string;
 }
 
-function statusBadgeLabel(trial: BatchTrialCell): string {
+function statusBadgeLabel(
+  trial: BatchTrialCell,
+  translate: (key: string, fallback?: string) => string,
+): string {
   return (
     trial.statusLabel ??
-    formatBatchCellStatusLabel(trial.status, null, null)
+    translate(`setup.status.${trial.status}`, formatBatchCellStatusLabel(trial.status, null, null))
   );
 }
 
@@ -80,11 +84,12 @@ function BatchTrialCellView({
   trial: BatchTrialCell;
   rowHeight: number;
 }) {
+  const { t } = useI18n();
   const style = STATUS_STYLES[trial.status];
   const dimensions = trial.persona?.dimensions ?? {};
   const rawPersonaId = (trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")).trim();
   const personaId = personaDisplayId(rawPersonaId || null);
-  const statusLabel = statusBadgeLabel(trial);
+  const statusLabel = statusBadgeLabel(trial, t);
   const displayName = personaPrimaryName(trial.persona?.name, rawPersonaId, dimensions) || trial.label || personaId;
   const avatarMuted = trial.status === "pending";
   const portrait = rowHeight >= 96;
@@ -187,11 +192,12 @@ function chipDotClass(status: BatchTrialStatus): string {
 
 /** Compact fixed-height chip — used for mid-size cohorts (virtualized rows). */
 function BatchTrialChipView({ trial }: { trial: BatchTrialCell }) {
+  const { t } = useI18n();
   const style = STATUS_STYLES[trial.status];
   const dimensions = trial.persona?.dimensions ?? {};
   const rawPersonaId = (trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")).trim();
   const personaId = personaDisplayId(rawPersonaId || null);
-  const statusLabel = statusBadgeLabel(trial);
+  const statusLabel = statusBadgeLabel(trial, t);
   const displayName =
     personaPrimaryName(trial.persona?.name, rawPersonaId, dimensions) || trial.label || personaId;
 
@@ -294,6 +300,7 @@ function BatchChipGrid({
 
 /** Adaptive roster: full portraits → compact chips → aggregate pixel-wall as cohort grows. */
 export function BatchTrialGrid({ trials, jobLabel, className = "" }: BatchTrialGridProps) {
+  const { t } = useI18n();
   const counts: CohortCounts = {
     done: trials.filter((t) => t.status === "done").length,
     running: trials.filter((t) => t.status === "running").length,
@@ -306,9 +313,12 @@ export function BatchTrialGrid({ trials, jobLabel, className = "" }: BatchTrialG
   return (
     <div className={`flex h-full min-h-0 w-full flex-col overflow-hidden ${className}`}>
       <header className="mb-2 flex shrink-0 flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-outline/25 pb-2">
-        <p className="hud text-[11px] text-primary">Simulated cohort</p>
+        <p className="hud text-[11px] text-primary">{t("setup.batch.simulatedCohort", "Simulated cohort")}</p>
         <p className="font-display text-[15px] font-bold tracking-tight text-text-main">
-          {trials.length.toLocaleString()} {trials.length === 1 ? "person" : "people"}
+          {trials.length.toLocaleString()} {t(
+            trials.length === 1 ? "setup.batch.person" : "setup.batch.people",
+            trials.length === 1 ? "person" : "people",
+          )}
         </p>
         {jobLabel ? (
           <p className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-dim" title={jobLabel}>
@@ -316,12 +326,12 @@ export function BatchTrialGrid({ trials, jobLabel, className = "" }: BatchTrialG
           </p>
         ) : null}
         <div className="ml-auto flex flex-wrap justify-end gap-1">
-          {counts.pending > 0 && <CohortStat tone="dim" label={`${counts.pending.toLocaleString()} waiting`} />}
+          {counts.pending > 0 && <CohortStat tone="dim" label={`${counts.pending.toLocaleString()} ${t("setup.batch.waiting", "waiting")}`} />}
           {counts.running > 0 && (
-            <CohortStat tone="amber" label={`${counts.running.toLocaleString()} active`} pulse />
+            <CohortStat tone="amber" label={`${counts.running.toLocaleString()} ${t("setup.batch.active", "active")}`} pulse />
           )}
-          {counts.done > 0 && <CohortStat tone="secondary" label={`${counts.done.toLocaleString()} finished`} />}
-          {counts.failed > 0 && <CohortStat tone="danger" label={`${counts.failed.toLocaleString()} failed`} />}
+          {counts.done > 0 && <CohortStat tone="secondary" label={`${counts.done.toLocaleString()} ${t("setup.batch.finished", "finished")}`} />}
+          {counts.failed > 0 && <CohortStat tone="danger" label={`${counts.failed.toLocaleString()} ${t("setup.batch.failed", "failed")}`} />}
         </div>
       </header>
 

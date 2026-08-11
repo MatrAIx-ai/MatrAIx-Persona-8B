@@ -13,6 +13,7 @@
  */
 import { useId } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import type { ExposureItem } from "./StructuredExposurePanel";
 import { Sym, FOCUS_RING } from "./cockpitShared";
 import type { PlanStep } from "@/lib/types";
@@ -46,6 +47,7 @@ export interface ToolPlanFoldProps {
 }
 
 export function ToolPlanFold({ plan, items, nativeRaw, open, onToggle }: ToolPlanFoldProps) {
+  const { t } = useI18n();
   const panelId = useId();
   const scored = items.filter((i) => i.score !== null && i.score !== undefined);
   const hasPlan = plan.length > 0;
@@ -71,7 +73,7 @@ export function ToolPlanFold({ plan, items, nativeRaw, open, onToggle }: ToolPla
       >
         <span className="flex items-center gap-2">
           <Sym name="code" size={16} />
-          How the app decided (tools &amp; raw output)
+          {t("cockpit.toolPlan.toggle", "How the app decided (tools & raw output)")}
         </span>
         <Sym name={open ? "expand_less" : "expand_more"} size={16} />
       </button>
@@ -80,7 +82,9 @@ export function ToolPlanFold({ plan, items, nativeRaw, open, onToggle }: ToolPla
         <div id={panelId} className="rise-in">
           {hasPlan && (
             <div className="border-b border-outline p-3">
-              <p className="mb-2 hud text-[12px] text-text-dim">Steps the app took</p>
+              <p className="mb-2 hud text-[12px] text-text-dim">
+                {t("cockpit.toolPlan.steps", "Steps the app took")}
+              </p>
               <ol className="space-y-1.5">
                 {plan.map((step, i) => (
                   <li key={i} className="flex items-start gap-2 font-mono text-[13px] text-text-variant">
@@ -97,7 +101,7 @@ export function ToolPlanFold({ plan, items, nativeRaw, open, onToggle }: ToolPla
           {hasScores && (
             <div className="border-b border-outline p-3">
               <p className="mb-2 hud text-[12px] text-text-dim">
-                Candidates it ranked, with scores
+                {t("cockpit.toolPlan.candidates", "Candidates it ranked, with scores")}
               </p>
               <div className="space-y-1 font-mono text-[13px] text-text-variant">
                 {scored.map((item) => (

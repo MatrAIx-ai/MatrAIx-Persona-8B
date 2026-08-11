@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { listSurveyHarborTasks, api, ApiError } from "@/lib/api";
 import { personaModelPipelineLabel } from "@/lib/personaAgentCatalog";
 import type {
@@ -83,6 +84,8 @@ import {
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
 import { HARBOR_TASK_PATHS } from "@/lib/types";
 
+type Translate = ReturnType<typeof useI18n>["t"];
+
 export interface SurveyEvalCockpitProps {
   options: ConfigOptionsResponse | null;
   taskType: PlaygroundTaskType;
@@ -102,40 +105,50 @@ function surveyStatusLine(
   phase: HarborCockpitPhase,
   jobPhase: string | null | undefined,
   harborPhase?: string | null,
+  t?: Translate,
 ): string | null {
-  if (phase === "launching") return "Launching batch…";
+  if (phase === "launching") return t?.("eval.survey.status.launching", "Launching batch…") ?? "Launching batch…";
   if (phase !== "running") return null;
   const raw = (harborPhase ?? jobPhase ?? "").toLowerCase();
-  if (raw.includes("harbor") || raw.includes("trial")) return "Running survey trial…";
-  if (raw.includes("collect")) return "Saving the answers…";
-  if (raw.includes("survey")) return "The simulated user is filling out the questionnaire…";
-  return "Running the questionnaire…";
+  if (raw.includes("harbor") || raw.includes("trial")) return t?.("eval.survey.status.trial", "Running survey trial…") ?? "Running survey trial…";
+  if (raw.includes("collect")) return t?.("eval.survey.status.collecting", "Saving the answers…") ?? "Saving the answers…";
+  if (raw.includes("survey")) return t?.("eval.survey.status.answering", "The simulated user is filling out the questionnaire…") ?? "The simulated user is filling out the questionnaire…";
+  return t?.("eval.survey.status.running", "Running the questionnaire…") ?? "Running the questionnaire…";
 }
 
 /** Friendly chip word + tint + tooltip for a survey question type. Presentation only. */
-function questionTypeMeta(type: string): { label: string; tone: string; tooltip: string } {
-  const label = surveyQuestionTypeLabel(type);
+function questionTypeMeta(type: string, t?: Translate): { label: string; tone: string; tooltip: string } {
+  const labelKey: Record<string, string> = {
+    likert: "eval.survey.type.likert",
+    single_choice: "eval.survey.type.singleChoice",
+    multi_choice: "eval.survey.type.multiChoice",
+    free_text: "eval.survey.type.freeText",
+    boolean: "eval.survey.type.boolean",
+    bool: "eval.survey.type.boolean",
+  };
+  const fallbackLabel = surveyQuestionTypeLabel(type);
+  const label = t?.(labelKey[type] ?? "eval.survey.questionType", fallbackLabel) ?? fallbackLabel;
   const tone = surveyQuestionTypeChipClass(type);
   switch (type) {
     case "likert":
-      return { label, tone, tooltip: "Rate on a numeric scale" };
+      return { label, tone, tooltip: t?.("eval.survey.tooltip.likert", "Rate on a numeric scale") ?? "Rate on a numeric scale" };
     case "single_choice":
-      return { label, tone, tooltip: "Choose one option" };
+      return { label, tone, tooltip: t?.("eval.survey.tooltip.singleChoice", "Choose one option") ?? "Choose one option" };
     case "multi_choice":
-      return { label, tone, tooltip: "Choose all that apply" };
+      return { label, tone, tooltip: t?.("eval.survey.tooltip.multiChoice", "Choose all that apply") ?? "Choose all that apply" };
     case "free_text":
-      return { label, tone, tooltip: "Answer in their own words" };
+      return { label, tone, tooltip: t?.("eval.survey.tooltip.freeText", "Answer in their own words") ?? "Answer in their own words" };
     default:
-      return { label, tone, tooltip: type || "Question" };
+      return { label, tone, tooltip: type || (t?.("eval.survey.questionType", "Question") ?? "Question") };
   }
 }
 
 /** Friendly actor name for a trajectory row. Presentation only. */
-function trajectoryActor(actor: string): string {
+function trajectoryActor(actor: string, t?: Translate): string {
   const value = actor.toLowerCase();
-  if (value === "agent") return "Simulated user";
-  if (value === "system") return "System";
-  if (value === "scorer") return "Scorer";
+  if (value === "agent") return t?.("eval.survey.actor.agent", "Simulated user") ?? "Simulated user";
+  if (value === "system") return t?.("eval.survey.actor.system", "System") ?? "System";
+  if (value === "scorer") return t?.("eval.survey.actor.scorer", "Scorer") ?? "Scorer";
   return actor;
 }
 
@@ -167,6 +180,7 @@ export function SurveyEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: SurveyEvalCockpitProps) {
+  const { t } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<SurveyEvalJobView>({ taskKind: "survey" });
@@ -301,9 +315,11 @@ export function SurveyEvalCockpit({
   useEffect(() => {
     if (!isActive) return;
     onFooterContextChange?.(
-      `survey · ${harborTask?.title ?? activeQuestionnaire?.title ?? "Questionnaire"}`,
+      t("eval.survey.footerContext", "survey · {title}", {
+        title: harborTask?.title ?? activeQuestionnaire?.title ?? t("eval.survey.titleFallback", "Questionnaire"),
+      }),
     );
-  }, [isActive, harborTask, activeQuestionnaire, onFooterContextChange]);
+  }, [isActive, harborTask, activeQuestionnaire, onFooterContextChange, t]);
 
   const surveyResult = job?.surveyResult ?? null;
   const verifier = job?.verifier ?? null;
@@ -313,7 +329,7 @@ export function SurveyEvalCockpit({
   const failed =
     !verifierOnlyFailure &&
     (phase === "error" || phase === "timeout" || job?.status === "error");
-  const status = surveyStatusLine(phase, job?.phase, harborPhase);
+  const status = surveyStatusLine(phase, job?.phase, harborPhase, t);
   const setupInstructionMarkdown = useMemo(() => {
     const instruction = selectedTaskDetailQuery.data?.instructionMarkdown?.trim();
     if (instruction) return instruction;
@@ -522,32 +538,39 @@ export function SurveyEvalCockpit({
             : 0;
   const runProgressLabel = batchJobName
     ? batchCancelled
-      ? "Batch stopped"
+      ? t("eval.progress.batchStopped", "Batch stopped")
       : formatBatchProgressLabel(
           batchCompletedTrials,
           expectedTrialCount,
+          t,
         )
     : phase === "launching"
-      ? "Launching survey trial…"
+      ? t("eval.survey.progress.launching", "Launching survey trial…")
       : phase === "running"
         ? questionTotal > 0
-          ? `Answering · ${questionAnswered}/${questionTotal} questions`
-          : (status ?? "Persona is answering…")
+          ? t("eval.survey.progress.answering", "Answering · {answered}/{total} questions", {
+              answered: questionAnswered,
+              total: questionTotal,
+            })
+          : (status ?? t("eval.survey.progress.persona", "Persona is answering…"))
         : phase === "done"
-          ? `Survey complete · ${questionAnswered} answers`
+          ? t("eval.survey.progress.complete", "Survey complete · {count} {unit}", {
+              count: questionAnswered,
+              unit: t(questionAnswered === 1 ? "eval.common.answer.one" : "eval.common.answer.many", questionAnswered === 1 ? "answer" : "answers"),
+            })
           : failed
             ? error?.startsWith("Run stopped")
-              ? "Run stopped"
-              : error ?? "The questionnaire didn't finish."
+              ? t("eval.progress.runStopped", "Run stopped")
+              : error ?? t("eval.survey.progress.error", "The questionnaire didn't finish.")
             : undefined;
   const canExport = exportSnapshot !== null && surveyResult !== null;
 
   const surveyLiveContent =
     phase === "done" && !surveyResult && !runBusy ? (
       <div className="rounded-md border border-outline bg-surface-lowest p-5 text-[15px] text-text-variant">
-        <p className="font-medium text-text-main">Survey finished, but no answers were loaded.</p>
+        <p className="font-medium text-text-main">{t("eval.survey.finishedNoAnswers", "Survey finished, but no answers were loaded.")}</p>
         <p className="mt-2">
-          {error ?? job?.error ?? "Try Reset and run again, or open this trial in Runs for the saved debrief."}
+          {error ?? job?.error ?? t("eval.survey.finishedNoAnswersBody", "Try Reset and run again, or open this trial in Runs for the saved debrief.")}
         </p>
       </div>
     ) : phase !== "idle" || surveyResult ? (
@@ -618,7 +641,9 @@ export function SurveyEvalCockpit({
           progressPct={runProgressPct}
           progressLabel={runProgressLabel}
           progressSublabel={
-            batchJobName && batchComplete ? BATCH_RUN_COMPLETE_HINT : undefined
+            batchJobName && batchComplete
+              ? t("eval.common.batchCompleteHint", BATCH_RUN_COMPLETE_HINT)
+              : undefined
           }
           canRun={
             hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) &&
@@ -664,7 +689,7 @@ export function SurveyEvalCockpit({
             }
             instruction={
               <InstructionPanel
-                label="Task instruction"
+                label={t("cockpit.instruction.label", "Task instruction")}
                 title={instructionView.title}
                 markdown={instructionView.instructionMarkdown ?? instructionView.markdown}
                 loading={instructionView.loading}
@@ -673,12 +698,12 @@ export function SurveyEvalCockpit({
             }
             context={
               <InstructionPanel
-                label="Task context"
+                label={t("eval.survey.contextLabel", "Task context")}
                 title={instructionView.title}
                 markdown={instructionView.contextMarkdown}
                 loading={instructionView.loading}
                 error={instructionView.error}
-                emptyMessage="No separate context document is available for this run."
+                emptyMessage={t("eval.survey.contextEmpty", "No separate context document is available for this run.")}
                 icon="menu_book"
               />
             }
@@ -691,12 +716,12 @@ export function SurveyEvalCockpit({
                 </div>
               ) : (
                 <InstructionPanel
-                  label="Questionnaire"
+                  label={t("eval.survey.questionnaireLabel", "Questionnaire")}
                   title={instructionView.title}
                   markdown={null}
                   loading={instructionView.loading}
                   error={instructionView.error}
-                  emptyMessage="No questionnaire is available for this run."
+                  emptyMessage={t("eval.survey.questionnaireEmpty", "No questionnaire is available for this run.")}
                   icon="list_alt"
                 />
               )
@@ -719,9 +744,9 @@ export function SurveyEvalCockpit({
           tasksLoading={harborTasksQuery.isLoading}
           tasksError={
             harborTasksQuery.isError && taskCards.length === 0
-              ? "Could not load survey tasks — restart the Playground backend."
+              ? t("eval.survey.tasksLoadFailed", "Could not load survey tasks — restart the Playground backend.")
               : harborTasksQuery.isError
-                ? "Built-in survey tasks loaded from catalog."
+                ? t("eval.survey.tasksCatalogFallback", "Built-in survey tasks loaded from catalog.")
                 : null
           }
           disabled={setupLocked}
@@ -756,6 +781,7 @@ function SurveyLive({
   instructionMarkdown?: string;
   onRetry: () => void;
 }) {
+  const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
   const activeInstrument = result?.instrument ?? instrument;
@@ -768,20 +794,26 @@ function SurveyLive({
       {/* Header */}
       <div className="min-w-0">
         <div className="hud mb-2 break-words text-[12px] text-primary">
-          Survey · {humanizeToken(activeInstrument?.id ?? activeInstrument?.title ?? "questionnaire")}
+          {t("eval.survey.instrumentPrefix", "Survey · {name}", {
+            name: humanizeToken(activeInstrument?.id ?? activeInstrument?.title ?? t("eval.survey.titleFallback", "questionnaire")),
+          })}
         </div>
         <h2 className="font-display text-[22px] font-bold tracking-tight text-text-main">
-          {running ? "Persona is answering" : failed ? "The questionnaire didn’t finish" : "Completed questionnaire"}
+          {running
+            ? t("eval.survey.answering", "Persona is answering")
+            : failed
+              ? t("eval.survey.failed", "The questionnaire didn’t finish")
+              : t("eval.survey.completed", "Completed questionnaire")}
         </h2>
       </div>
 
       {/* Answer cards */}
       {failed && (
         <ErrorCard
-          title="The questionnaire didn’t finish"
-          body={error ?? "Something interrupted the run. Your setup is still here. Press Try again."}
+          title={t("eval.survey.failed", "The questionnaire didn’t finish")}
+          body={error ?? t("eval.survey.errorBody", "Something interrupted the run. Your setup is still here. Press Try again.")}
           onRetry={onRetry}
-          retryLabel="Try again"
+          retryLabel={t("eval.common.tryAgain", "Try again")}
         />
       )}
 
@@ -814,11 +846,11 @@ function SurveyLive({
       {result && (
         <>
           <div className="flex items-center justify-center gap-2 pt-1">
-            <span className="hud text-[11px] text-text-dim">{answered} of {total} answered</span>
+            <span className="hud text-[11px] text-text-dim">{t("eval.survey.answered", "{answered} of {total} answered", { answered, total })}</span>
             {total - answered > 0 && (
               <>
                 <span className="text-outline-dim">·</span>
-                <span className="hud text-[11px] text-text-dim">{total - answered} remaining</span>
+                <span className="hud text-[11px] text-text-dim">{t("eval.survey.remaining", "{count} remaining", { count: total - answered })}</span>
               </>
             )}
           </div>
@@ -839,7 +871,8 @@ function SurveyAnswerCard({
   answer: SurveyAnswer;
   question: SurveyQuestion | null;
 }) {
-  const meta = questionTypeMeta(question?.type ?? "");
+  const { t } = useI18n();
+  const meta = questionTypeMeta(question?.type ?? "", t);
   const confidence = answer.confidence;
   return (
     <div
@@ -862,8 +895,14 @@ function SurveyAnswerCard({
       {(answer.rationale || confidence != null) && (
         <div className="mt-5 border-t border-outline pt-3.5">
           <p className="font-mono text-[13px] leading-relaxed text-text-variant">
-            {answer.rationale ? `persona rationale: ${answer.rationale}` : "persona answered"}{" "}
-            {confidence != null && <span className="text-text-variant">(conf {confidence.toFixed(2)})</span>}
+            {answer.rationale
+              ? t("eval.survey.rationale", "persona rationale: {rationale}", { rationale: answer.rationale })
+              : t("eval.survey.answeredByPersona", "persona answered")} {" "}
+            {confidence != null && (
+              <span className="text-text-variant">
+                {t("eval.survey.confidence", "(conf {value})", { value: confidence.toFixed(2) })}
+              </span>
+            )}
           </p>
         </div>
       )}
@@ -872,6 +911,7 @@ function SurveyAnswerCard({
 }
 
 function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: SurveyQuestion | null }) {
+  const { t } = useI18n();
   const type = question?.type;
 
   if (type === "likert") {
@@ -921,7 +961,7 @@ function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: Sur
     return (
       <div className="space-y-2">
         {multi && (
-          <p className="hud text-[11px] text-text-dim">Select all that apply · {selected.length} selected</p>
+          <p className="hud text-[11px] text-text-dim">{t("eval.survey.selectAll", "Select all that apply · {count} selected", { count: selected.length })}</p>
         )}
         {optionDetails.map((option) => {
           const isSelected = selected.includes(option.id);
@@ -973,7 +1013,7 @@ function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: Sur
     return (
       <div className="rounded border border-outline bg-field p-4">
         <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-text-variant">
-          {formatSurveyValue(answer.value) || "(no response)"}
+          {formatSurveyValue(answer.value) || t("eval.survey.noResponse", "(no response)")}
         </p>
       </div>
     );
@@ -982,13 +1022,14 @@ function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: Sur
   // Fallback for unknown types / missing question metadata.
   return (
     <div className="rounded border border-outline bg-field px-3 py-2.5">
-      <p className="font-mono text-[14px] text-text-main">{formatSurveyValue(answer.value) || "(no answer)"}</p>
+      <p className="font-mono text-[14px] text-text-main">{formatSurveyValue(answer.value) || t("eval.survey.noAnswer", "(no answer)")}</p>
     </div>
   );
 }
 
 /** Collapsible Q&A trajectory timeline. */
 function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const groups = groupSurveyTrajectory(events);
   return (
@@ -999,9 +1040,14 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
         aria-expanded={open}
         className={`flex w-full items-center justify-between gap-2 border-b border-outline px-4 py-3 text-left transition-colors hover:bg-surface-low active:bg-surface-high ${FOCUS_RING}`}
       >
-        <span className="hud text-[12px] text-text-dim">Trajectory</span>
+        <span className="hud text-[12px] text-text-dim">{t("eval.survey.trajectory", "Trajectory")}</span>
         <span className="flex items-center gap-2">
-          <span className="hud text-[11px] text-text-dim">{groups.length} steps</span>
+          <span className="hud text-[11px] text-text-dim">
+            {t("eval.survey.trajectorySteps", "{count} {unit}", {
+              count: groups.length,
+              unit: t(groups.length === 1 ? "eval.common.step.one" : "eval.common.step.many", groups.length === 1 ? "step" : "steps"),
+            })}
+          </span>
           <Sym name={open ? "expand_more" : "chevron_right"} size={18} className="text-text-dim" />
         </span>
       </button>
@@ -1023,10 +1069,14 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
                   className="rounded-md border border-outline bg-surface-lowest px-3 py-2.5"
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    <span className="hud text-[11px] text-primary">{qIndex != null ? `Q${qIndex}` : "Q"}</span>
+                    <span className="hud text-[11px] text-primary">
+                      {qIndex != null
+                        ? t("eval.survey.questionIndex", "Question {index}", { index: qIndex })
+                        : t("eval.survey.questionType", "Question")}
+                    </span>
                     {type ? (
                       <span className={`hud rounded border px-1.5 py-0.5 text-[11px] ${surveyQuestionTypeChipClass(type)}`}>
-                        {surveyQuestionTypeLabel(type)}
+                        {questionTypeMeta(type, t).label}
                       </span>
                     ) : null}
                   </div>
@@ -1034,7 +1084,7 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
                     <p className="text-[14px] leading-snug text-text-variant">{prompt}</p>
                   ) : null}
                   <p className="mt-1.5 rounded border border-outline bg-field px-2.5 py-1.5 font-mono text-[13px] text-text-main break-words">
-                    {value || "(no answer)"}
+                    {value || t("eval.survey.noAnswer", "(no answer)")}
                   </p>
                 </div>
               );
@@ -1042,16 +1092,23 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
 
             const event = group.event;
             const action = event.action;
-            let title = `${trajectoryActor(event.actor)} · ${event.action}`;
+            let title = `${trajectoryActor(event.actor, t)} · ${event.action}`;
             let detail = "";
             if (action === "survey_started") {
-              title = "Survey started";
+              title = t("eval.survey.started", "Survey started");
               const n = event.context?.numQuestions;
-              detail = typeof n === "number" ? `${n} questions` : "";
+              detail = typeof n === "number"
+                ? t("eval.survey.questionsCount", "{count} {unit}", {
+                    count: n,
+                    unit: t(n === 1 ? "eval.common.question.one" : "eval.common.question.many", n === 1 ? "question" : "questions"),
+                  })
+                : "";
             } else if (action === "survey_completed") {
-              title = "Survey completed";
+              title = t("eval.survey.completed", "Survey completed");
               const answered = event.outcome?.numAnswered;
-              detail = typeof answered === "number" ? `${answered} answered` : "";
+              detail = typeof answered === "number"
+                ? t("eval.survey.answeredCount", "{count} answered", { count: answered })
+                : "";
             }
             return (
               <div
@@ -1076,13 +1133,15 @@ function ErrorCard({
   title,
   body,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel,
 }: {
   title: string;
   body: string;
   onRetry: () => void;
   retryLabel?: string;
 }) {
+  const { t } = useI18n();
+  const resolvedRetryLabel = retryLabel ?? t("eval.common.tryAgain", "Try again");
   return (
     <section className="rounded-md border border-danger/30 bg-danger/10 p-5">
       <div className="flex items-start gap-3">
@@ -1096,7 +1155,7 @@ function ErrorCard({
             className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-3 py-1.5 text-[14px] font-medium text-danger hover:bg-danger/10 ${FOCUS_RING}`}
           >
             <Sym name="refresh" size={15} />
-            {retryLabel}
+            {resolvedRetryLabel}
           </button>
         </div>
       </div>

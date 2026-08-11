@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useI18n } from "@/i18n/I18nProvider";
 
 import { RunHeader } from "./RunHeader";
 import { Trajectory } from "./Trajectory";
@@ -110,17 +111,19 @@ function liveStatusLine(
   phase: HarborCockpitPhase,
   isRunning: boolean,
   harborPhase?: string | null,
+  t?: (key: string, fallback?: string) => string,
 ): string | null {
-  if (phase === "launching") return "Launching batch…";
+  if (phase === "launching") return t ? t("eval.live.launching", "Launching batch…") : "Launching batch…";
   if (!isRunning) return null;
   const raw = (harborPhase ?? job?.phase ?? "").toLowerCase();
-  if (raw.includes("harbor") || raw.includes("trial")) return "Running trial…";
-  if (raw.includes("persona") || raw.includes("user") || raw.includes("simulat")) return "The simulated user is typing…";
-  if (raw.includes("chatbot") || raw.includes("application") || raw.includes("agent") || raw.includes("turn"))
-    return "The app is thinking…";
-  if (raw.includes("eval")) return "Scoring how it went…";
+  if (raw.includes("harbor") || raw.includes("trial")) return t ? t("eval.live.runningTrial", "Running trial…") : "Running trial…";
+  if (raw.includes("persona") || raw.includes("user") || raw.includes("simulat"))
+    return t ? t("eval.live.typing", "The simulated user is typing…") : "The simulated user is typing…";
+  if (raw.includes("chatbot") || raw.includes("application") || raw.includes("agent") || raw.includes("recai") || raw.includes("turn"))
+    return t ? t("eval.live.thinking", "The app is thinking…") : "The app is thinking…";
+  if (raw.includes("eval")) return t ? t("eval.live.scoring", "Scoring how it went…") : "Scoring how it went…";
   if (job?.phase) return `${job.phase.replace(/^harbor_/, "").replace(/_/g, " ")}…`;
-  return "Running the playground…";
+  return t ? t("eval.live.runningPlayground", "Running the playground…") : "Running the playground…";
 }
 
 /** True when focus is in a text input / textarea / select / contenteditable. */
@@ -281,6 +284,7 @@ function ChatbotEvalCockpit({
   onTaskTypeChange,
   isActive,
 }: ChatbotEvalCockpitProps) {
+  const { t } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<PlaygroundJobView>({ taskKind: "chatbot" });
@@ -441,7 +445,9 @@ function ChatbotEvalCockpit({
         await api.startChatbotSidecar(appId);
         await sidecarsQuery.refetch();
       } catch (e) {
-        setSidecarActionError(e instanceof Error ? e.message : "Failed to start sidecar");
+        setSidecarActionError(
+        e instanceof Error ? e.message : t("eval.common.startSidecarFailed", "Failed to start sidecar"),
+      );
       } finally {
         setSidecarStartingId(null);
       }
@@ -493,7 +499,7 @@ function ChatbotEvalCockpit({
   const turns = useMemo(() => job?.turns ?? [], [job]);
   const draftTurn = job?.draftTurn ?? null;
   const sutDescription = job?.sutDescription ?? null;
-  const status = liveStatusLine(job, phase, isRunning, harborPhase);
+  const status = liveStatusLine(job, phase, isRunning, harborPhase, t);
   const questionnaire = job?.questionnaire ?? null;
   const metrics = job?.metricScores ?? null;
   const chatTaskPath = selectedTask?.taskPath?.trim() ?? "";
@@ -757,7 +763,7 @@ function ChatbotEvalCockpit({
     return ids;
   }, [isRunning, selectedTaskId, isBatchActive, batchTaskId]);
   const chatTaskCards = useMemo<TaskCardModel[]>(
-    () => chatbotEvalTaskCards(chatbotTasks, { runningTaskIds: runningChatTaskIds }),
+    () => chatbotEvalTaskCards(chatbotTasks, { runningTaskIds: runningChatTaskIds }, t),
     [chatbotTasks, runningChatTaskIds],
   );
   const verifierOnlyFailure = isRewardOnlyTrialFailure(error ?? job?.error ?? null, {
@@ -828,23 +834,33 @@ function ChatbotEvalCockpit({
 
   const runProgressLabel = batchJobName
     ? batchCancelled
-      ? "Batch stopped"
+      ? t("eval.progress.batchStopped", "Batch stopped")
       : formatBatchProgressLabel(
           batchCompletedTrials,
           expectedTrialCount,
+          t,
         )
     : pipelinePhase === "building"
-      ? "Starting the app…"
+      ? t("eval.progress.starting", "Starting the app…")
       : pipelinePhase === "running"
         ? maxTurns !== null
-          ? `Turn ${turns.length} of ${maxTurns} · ${elapsedSeconds}s`
-          : `Turn ${turns.length} · ${elapsedSeconds}s`
+          ? t("eval.progress.turnOf", `Turn ${turns.length} of ${maxTurns} · ${elapsedSeconds}s`, {
+              current: String(turns.length),
+              total: String(maxTurns),
+              seconds: String(elapsedSeconds),
+            })
+          : t("eval.progress.turn", `Turn ${turns.length} · ${elapsedSeconds}s`, {
+              current: String(turns.length),
+              seconds: String(elapsedSeconds),
+            })
         : pipelinePhase === "done"
-          ? `Run complete · ${turns.length} turn${turns.length === 1 ? "" : "s"}`
+          ? t("eval.progress.complete", `Run complete · ${turns.length} turn${turns.length === 1 ? "" : "s"}`, {
+              count: String(turns.length),
+            })
           : pipelinePhase === "error" || pipelinePhase === "timeout"
             ? error?.startsWith("Run stopped")
-              ? "Run stopped"
-              : error ?? "The run stopped before completing."
+              ? t("eval.progress.runStopped", "Run stopped")
+              : error ?? t("eval.progress.stopped", "The run stopped before completing.")
             : undefined;
 
   const cockpitView = (
@@ -950,7 +966,9 @@ function ChatbotEvalCockpit({
             progressPct={runProgressPct}
             progressLabel={runProgressLabel}
             progressSublabel={
-              batchJobName && batchComplete ? BATCH_RUN_COMPLETE_HINT : undefined
+              batchJobName && batchComplete
+                ? t("eval.common.batchCompleteHint", BATCH_RUN_COMPLETE_HINT)
+                : undefined
             }
             onNewRun={showLiveCenter ? handleNewRun : undefined}
             onCancelRun={onCancelRun}
@@ -988,12 +1006,12 @@ function ChatbotEvalCockpit({
           }
             context={
               <InstructionPanel
-                label="Task context"
+                label={t("eval.common.taskContextLabel", "Task context")}
                 title={instructionView.title}
                 markdown={instructionView.contextMarkdown}
                 loading={instructionView.loading}
                 error={instructionView.error}
-                emptyMessage="No separate context document is available for this task."
+                emptyMessage={t("eval.common.noSeparateContext", "No separate context document is available for this task.")}
                 icon="menu_book"
               />
             }

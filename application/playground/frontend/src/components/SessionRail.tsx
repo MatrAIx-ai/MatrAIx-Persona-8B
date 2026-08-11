@@ -13,31 +13,39 @@
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
 import { fmtDomain } from "./runsShared";
 import type { SessionSummary } from "@/lib/types";
+import { useI18n } from "@/i18n/I18nProvider";
 
 /** Compact relative age for a session's `createdAt` ("2m ago", "yesterday"). */
-function relativeAge(iso: string | undefined): string {
+function relativeAge(iso: string | undefined, t: (key: string, fallback?: string, values?: { count: number }) => string): string {
   if (!iso) return "";
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return "";
   const diffMs = Date.now() - then;
   const min = Math.round(diffMs / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
+  if (min < 1) return t("cockpit.session.justNow", "just now");
+  if (min < 60) return t("cockpit.session.minutesAgo", "{count}m ago", { count: min });
   const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return t("cockpit.session.hoursAgo", "{count}h ago", { count: hr });
   const day = Math.round(hr / 24);
-  if (day === 1) return "yesterday";
-  if (day < 7) return `${day}d ago`;
+  if (day === 1) return t("cockpit.session.yesterday", "yesterday");
+  if (day < 7) return t("cockpit.session.daysAgo", "{count}d ago", { count: day });
   const wk = Math.round(day / 7);
-  return `${wk}w ago`;
+  return t("cockpit.session.weeksAgo", "{count}w ago", { count: wk });
 }
 
 /** Compose the rail sub-line: `{domain} · {n} turns · {age}` (honest fields only). */
-function subLine(s: SessionSummary): string {
+function subLine(
+  s: SessionSummary,
+  t: (key: string, fallback?: string, values?: { count: number }) => string,
+): string {
   const parts: string[] = [];
   if (s.config?.domain) parts.push(fmtDomain(s.config.domain));
-  parts.push(`${s.turnCount} turn${s.turnCount === 1 ? "" : "s"}`);
-  const age = relativeAge(s.createdAt);
+  parts.push(
+    s.turnCount === 1
+      ? t("cockpit.session.turn", "{count} turn", { count: s.turnCount })
+      : t("cockpit.session.turns", "{count} turns", { count: s.turnCount }),
+  );
+  const age = relativeAge(s.createdAt, t);
   if (age) parts.push(age);
   return parts.join(" · ");
 }
@@ -79,6 +87,7 @@ export function SessionRail({
   onClearAll,
   onRetry,
 }: SessionRailProps) {
+  const { t } = useI18n();
   return (
     <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-outline bg-surface-lowest lg:flex">
       {/* New chat */}
@@ -86,26 +95,26 @@ export function SessionRail({
         <button
           type="button"
           onClick={onNew}
-          aria-label="Start a new chat"
+          aria-label={t("cockpit.session.startNewChat", "Start a new chat")}
           className={`flex h-9 w-full items-center justify-center gap-2 rounded-md bg-primary text-[14px] font-semibold text-on-primary transition hover:bg-primary-dim active:scale-[0.98] ${FOCUS_RING}`}
         >
           <Sym name="add" size={16} />
-          New chat
+          {t("cockpit.session.newChat", "New chat")}
         </button>
       </div>
 
       {/* Session list */}
       <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-3">
         <div className="flex items-center justify-between px-1 pb-2">
-          <span className="hud text-[11px] text-text-dim">Your chats</span>
+          <span className="hud text-[11px] text-text-dim">{t("cockpit.session.yourChats", "Your chats")}</span>
           {sessions.length > 0 && (
             <button
               type="button"
               onClick={onClearAll}
-              title="Delete every saved chat"
+              title={t("cockpit.session.deleteEverySavedChat", "Delete every saved chat")}
               className={`hud rounded text-[11px] text-text-dim transition hover:text-danger ${FOCUS_RING}`}
             >
-              Clear all
+              {t("cockpit.session.clearAll", "Clear all")}
             </button>
           )}
         </div>
@@ -115,8 +124,12 @@ export function SessionRail({
             <div className="flex items-start gap-2">
               <Sym name="error" fill={1} size={16} className="mt-px flex-none text-warn" />
               <div className="min-w-0">
-                <div className="text-[14px] font-medium text-text-main">Couldn&apos;t load your chats</div>
-                <p className="mt-0.5 text-[13px] leading-relaxed text-text-variant">The backend may be starting up.</p>
+                <div className="text-[14px] font-medium text-text-main">
+                  {t("cockpit.session.loadFailed", "Couldn’t load your chats")}
+                </div>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-text-variant">
+                  {t("cockpit.session.backendStarting", "The backend may be starting up.")}
+                </p>
               </div>
             </div>
             {onRetry && (
@@ -126,7 +139,7 @@ export function SessionRail({
                 className={`mt-2.5 inline-flex items-center gap-1.5 rounded-md bg-warn/10 px-3 py-1.5 text-[13px] font-medium text-warn transition hover:bg-warn/20 active:scale-[0.98] ${FOCUS_RING}`}
               >
                 <Sym name="refresh" size={14} />
-                Recheck
+                {t("cockpit.session.recheck", "Recheck")}
               </button>
             )}
           </div>
@@ -138,7 +151,10 @@ export function SessionRail({
           </div>
         ) : sessions.length === 0 ? (
           <div className="px-1 py-2 text-[14px] leading-relaxed text-text-variant">
-            No chats yet. Start one to try the recommender. You&apos;ll play the user and RecAI replies.
+            {t(
+              "cockpit.session.noChats",
+              "No chats yet. Start one to try the recommender. You’ll play the user and RecAI replies.",
+            )}
           </div>
         ) : (
           <div className="space-y-1">
@@ -162,23 +178,29 @@ export function SessionRail({
                   >
                     <div
                       className={`truncate text-[15px] ${active ? "font-medium text-text-main" : "text-text-variant"}`}
-                      title={s.title || "Untitled chat"}
+                      title={s.title || t("cockpit.session.untitledChat", "Untitled chat")}
                     >
-                      {s.title || "Untitled chat"}
+                      {s.title || t("cockpit.session.untitledChat", "Untitled chat")}
                     </div>
                     <div
                       className="hud mt-1 flex items-start gap-1.5 text-[11px] text-text-dim"
-                      title={`Ranker: ${s.config?.rankerMode ?? "not set"} · Model: ${s.config?.engine ?? "not set"}. Change these in the bar above`}
+                      title={t(
+                        "cockpit.session.configTitle",
+                        "Ranker: {ranker} · Model: {model}. Change these in the bar above",
+                        { ranker: s.config?.rankerMode ?? "not set", model: s.config?.engine ?? "not set" },
+                      )}
                     >
                       {active && <span className="mt-px h-1.5 w-1.5 flex-none rounded-full bg-secondary" aria-hidden />}
-                      <span className="min-w-0 break-words">{subLine(s)}</span>
+                      <span className="min-w-0 break-words">{subLine(s, t)}</span>
                     </div>
                   </button>
                   <button
                     type="button"
                     onClick={() => onDelete(s.id)}
-                    aria-label={`Delete chat: ${s.title || "Untitled chat"}`}
-                    title="Delete chat"
+                    aria-label={t("cockpit.session.deleteChatAria", "Delete chat: {title}", {
+                      title: s.title || t("cockpit.session.untitledChat", "Untitled chat"),
+                    })}
+                    title={t("cockpit.session.deleteChat", "Delete chat")}
                     className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded text-text-dim opacity-0 transition hover:bg-danger/10 hover:text-danger focus:opacity-100 group-hover:opacity-100 ${FOCUS_RING}`}
                   >
                     <Sym name="delete" size={14} />

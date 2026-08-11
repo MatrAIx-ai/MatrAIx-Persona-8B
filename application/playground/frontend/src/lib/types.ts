@@ -1039,7 +1039,7 @@ export interface PersonaPoolPersonaCard {
   personaId: string;
   name?: string;
   source?: string;
-  path?: string;
+  path?: string | null;
   dimensions: Record<string, string>;
   /** Lowercased haystack of id/name/source + all YAML attribute keys/values. */
   searchText?: string;

@@ -5,19 +5,23 @@
  * no hard-coded OpenBB / RecAI / default chatbot rows.
  */
 import { SCORE_BAND_CLASS, humanizeToken, scoreBand } from "./cockpit/cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
 import type { SelfReportSchema, SelfReportSchemaField, UserFeedbackArtifact } from "@/lib/types";
 
-function displayValue(value: string | number | boolean | null | undefined): string {
+function displayValue(
+  value: string | number | boolean | null | undefined,
+  t: (key: string, fallback?: string) => string,
+): string {
   if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "boolean") return value ? t("scorecards.survey.yes", "Yes") : t("scorecards.survey.no", "No");
   if (typeof value === "number") return String(value);
   const text = String(value).trim();
   if (!text) return "—";
   const lower = text.toLowerCase();
-  if (lower === "yes" || lower === "true") return "Yes";
-  if (lower === "no" || lower === "false") return "No";
-  if (lower === "partially") return "Partially";
-  if (lower === "unsure") return "Unsure";
+  if (lower === "yes" || lower === "true") return t("scorecards.survey.yes", "Yes");
+  if (lower === "no" || lower === "false") return t("scorecards.survey.no", "No");
+  if (lower === "partially") return t("scorecards.survey.partially", "Partially");
+  if (lower === "unsure") return t("scorecards.survey.unsure", "Unsure");
   return humanizeToken(text);
 }
 
@@ -47,6 +51,7 @@ function FieldRow({
 }) {
   const kind = (field.kind || "string").toLowerCase();
   const max = field.maximum ?? null;
+  const { t } = useI18n();
   const isOverall =
     field.key === "overallExperienceRating" ||
     (kind === "integer" && max === 10 && /overall|experience|rating/i.test(field.key));
@@ -93,7 +98,7 @@ function FieldRow({
   }
 
   if (kind === "enum" || kind === "boolean") {
-    const label = displayValue(value);
+    const label = displayValue(value, t);
     const tone =
       typeof value === "string"
         ? enumTone(value)
@@ -118,7 +123,7 @@ function FieldRow({
   return (
     <div>
       <div className="text-[14px] font-medium text-text-main">{field.prompt}</div>
-      <p className="mt-1.5 text-[14px] leading-relaxed text-text-variant">{displayValue(value)}</p>
+      <p className="mt-1.5 text-[14px] leading-relaxed text-text-variant">{displayValue(value, t)}</p>
       {explanation ? (
         <p className="mt-1.5 text-[14px] leading-snug text-text-variant">{explanation}</p>
       ) : null}
@@ -133,6 +138,7 @@ export function SchemaSelfReportPanel({
   schema: SelfReportSchema;
   feedback: UserFeedbackArtifact | null | undefined;
 }) {
+  const { t } = useI18n();
   const fields = schema.fields ?? [];
   const byKey = new Map(fields.map((field) => [field.key, field]));
   const explanations = new Map<string, string>();
@@ -146,7 +152,7 @@ export function SchemaSelfReportPanel({
   if (measured.length === 0) {
     return (
       <div className="rounded-md glass-tile glass-tile--dim px-4 py-8 text-center text-[15px] text-text-variant">
-        This task defines a self-report schema, but no measurable fields were authored.
+        {t("scorecards.survey.noMeasurableFields", "This task defines a self-report schema, but no measurable fields were authored.")}
       </div>
     );
   }

@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { listWebEvalTasks, api, ApiError } from "@/lib/api";
 import {
   findPersonaAgent,
@@ -77,6 +78,7 @@ import {
 } from "./cockpitShared";
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
 
+type Translate = ReturnType<typeof useI18n>["t"];
 
 export interface WebEvalCockpitProps {
   options: ConfigOptionsResponse | null;
@@ -96,14 +98,15 @@ function webStatusLine(
   phase: HarborCockpitPhase,
   jobPhase: string | null | undefined,
   harborPhase?: string | null,
+  t?: Translate,
 ): string | null {
-  if (phase === "launching") return "Launching batch…";
+  if (phase === "launching") return t?.("eval.web.status.launching", "Launching batch…") ?? "Launching batch…";
   if (phase !== "running") return null;
   const raw = (harborPhase ?? jobPhase ?? "").toLowerCase();
-  if (raw.includes("harbor") || raw.includes("trial")) return "Running web trial…";
-  if (raw.includes("collect")) return "Saving the results and step screenshots…";
-  if (raw.includes("web")) return "The simulated visitor is using the site…";
-  return "Running the website test…";
+  if (raw.includes("harbor") || raw.includes("trial")) return t?.("eval.web.status.trial", "Running web trial…") ?? "Running web trial…";
+  if (raw.includes("collect")) return t?.("eval.web.status.collecting", "Saving the results and step screenshots…") ?? "Saving the results and step screenshots…";
+  if (raw.includes("web")) return t?.("eval.web.status.browsing", "The simulated visitor is using the site…") ?? "The simulated visitor is using the site…";
+  return t?.("eval.web.status.running", "Running the website test…") ?? "Running the website test…";
 }
 
 function formatDate(value: string | null | undefined): string | null {
@@ -128,6 +131,7 @@ export function WebEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: WebEvalCockpitProps) {
+  const { t } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<WebEvalJobView>({ taskKind: "web" });
@@ -259,8 +263,10 @@ export function WebEvalCockpit({
   }, [webPersonaModelOptions, personaModel, setPersonaModel]);
   useEffect(() => {
     if (!isActive) return;
-    onFooterContextChange?.(`web · ${task?.siteName ?? "Website"}`);
-  }, [isActive, task, onFooterContextChange]);
+    onFooterContextChange?.(t("eval.web.footerContext", "web · {site}", {
+      site: task?.siteName ?? t("eval.web.siteFallback", "Website"),
+    }));
+  }, [isActive, task, onFooterContextChange, t]);
 
   const webResult = job?.webResult ?? null;
   const verifier = job?.verifier ?? null;
@@ -304,7 +310,7 @@ export function WebEvalCockpit({
 
   const failed = phase === "error" || phase === "timeout" || job?.status === "error";
   const displayError = formatCockpitRunError(error ?? job?.error ?? null);
-  const status = webStatusLine(phase, job?.phase, harborPhase);
+  const status = webStatusLine(phase, job?.phase, harborPhase, t);
 
   useEffect(() => {
     if (phase === "done") {
@@ -471,23 +477,30 @@ export function WebEvalCockpit({
             : 0;
   const runProgressLabel = batchJobName
     ? batchCancelled
-      ? "Batch stopped"
+      ? t("eval.progress.batchStopped", "Batch stopped")
       : formatBatchProgressLabel(
           batchCompletedTrials,
           expectedTrialCount,
+          t,
         )
     : phase === "launching"
-      ? "Launching web trial…"
+      ? t("eval.web.progress.launching", "Launching web trial…")
       : phase === "running"
         ? stepCount > 0
-          ? `Browser trace · ${stepCount} step${stepCount === 1 ? "" : "s"}`
-          : (status ?? "Simulated visitor is browsing…")
+          ? t("eval.web.progress.trace", "Browser trace · {count} {unit}", {
+              count: stepCount,
+              unit: t(stepCount === 1 ? "eval.common.step.one" : "eval.common.step.many", stepCount === 1 ? "step" : "steps"),
+            })
+          : (status ?? t("eval.web.progress.browsing", "Simulated visitor is browsing…"))
         : phase === "done"
-          ? `Web run complete · ${stepCount} steps`
+          ? t("eval.web.progress.complete", "Web run complete · {count} {unit}", {
+              count: stepCount,
+              unit: t(stepCount === 1 ? "eval.common.step.one" : "eval.common.step.many", stepCount === 1 ? "step" : "steps"),
+            })
           : failed
             ? error?.startsWith("Run stopped")
-              ? "Run stopped"
-              : displayError ?? "The website test didn't finish."
+              ? t("eval.progress.runStopped", "Run stopped")
+              : displayError ?? t("eval.web.progress.error", "The website test didn't finish.")
             : undefined;
   const canExport = exportSnapshot !== null && webResult !== null;
 
@@ -572,7 +585,9 @@ export function WebEvalCockpit({
           progressPct={runProgressPct}
           progressLabel={runProgressLabel}
           progressSublabel={
-            batchJobName && batchComplete ? BATCH_RUN_COMPLETE_HINT : undefined
+            batchJobName && batchComplete
+              ? t("eval.common.batchCompleteHint", BATCH_RUN_COMPLETE_HINT)
+              : undefined
           }
           canRun={
             hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) &&
@@ -626,12 +641,12 @@ export function WebEvalCockpit({
             }
             context={
               <InstructionPanel
-                label="Task context"
+                label={t("eval.web.contextLabel", "Task context")}
                 title={instructionView.title}
                 markdown={instructionView.contextMarkdown}
                 loading={instructionView.loading}
                 error={instructionView.error}
-                emptyMessage="No separate context document is available for this task."
+                emptyMessage={t("eval.web.contextEmpty", "No separate context document is available for this task.")}
                 icon="menu_book"
               />
             }
@@ -658,8 +673,8 @@ export function WebEvalCockpit({
           tasksError={
             tasks.length === 0
               ? tasksQuery.isError
-                ? "Web task API unavailable — restart the Playground backend on :8765."
-                : "No web tasks available."
+                ? t("eval.web.tasksApiUnavailable", "Web task API unavailable — restart the Playground backend on :8765.")
+                : t("eval.web.tasksEmpty", "No web tasks available.")
               : null
           }
           disabled={setupLocked}
@@ -697,13 +712,14 @@ function WebResults({
   persona: PlaygroundPersona | null;
   onRetry: () => void;
 }) {
+  const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
-  const personaTitle = persona ? personaDescriptiveTitle(null, persona.blurb, persona.source) : "Persona";
+  const personaTitle = persona ? personaDescriptiveTitle(null, persona.blurb, persona.source) : t("eval.web.personaFallback", "Persona");
   const runDate = formatDate(webResult?.createdAt);
   const headerBits = [
-    "Web",
-    task?.title ?? "website task",
+    t("eval.web.siteFallback", "Web"),
+    task?.title ?? t("eval.web.taskFallback", "website task"),
     personaTitle,
     ...(runDate ? [runDate] : []),
   ];
@@ -713,7 +729,7 @@ function WebResults({
       {/* Run identity line */}
       <div className="hud flex items-start gap-2 text-[11px] text-text-variant">
         <Sym name="language" size={16} className="shrink-0 text-primary" />
-        <span className="min-w-0 break-words">Run · {headerBits.join(" · ")}</span>
+        <span className="min-w-0 break-words">{t("eval.web.results.run", "Run · {details}", { details: headerBits.join(" · ") })}</span>
       </div>
 
       {/* Live "browsing" banner */}
@@ -721,12 +737,17 @@ function WebResults({
         <div className="rise-in rounded-md border border-outline bg-surface-lowest px-4 py-4">
           <div className="flex items-center gap-2">
             <Sym name="autorenew" size={16} className="animate-rb-spin text-primary" />
-            <span className="hud text-[12px] text-primary">Running</span>
+            <span className="hud text-[12px] text-primary">{t("eval.web.results.running", "Running")}</span>
           </div>
-          <p className="mt-2 text-[15px] text-text-main">Simulated visitor is browsing…</p>
+          <p className="mt-2 text-[15px] text-text-main">{t("eval.web.results.browsing", "Simulated visitor is browsing…")}</p>
           {status && <p className="mt-0.5 text-[14px] text-text-variant">{status}</p>}
           {trace && trace.events.length > 0 && (
-            <p className="mt-2 font-mono text-[13px] text-text-variant">Recorded {trace.events.length} steps so far</p>
+            <p className="mt-2 font-mono text-[13px] text-text-variant">
+              {t("eval.web.results.recorded", "Recorded {count} {unit} so far", {
+                count: trace.events.length,
+                unit: t(trace.events.length === 1 ? "eval.common.step.one" : "eval.common.step.many", trace.events.length === 1 ? "step" : "steps"),
+              })}
+            </p>
           )}
         </div>
       )}
@@ -734,10 +755,10 @@ function WebResults({
       {/* Error */}
       {failed && (
         <ErrorCard
-          title="The website test didn’t finish"
-          body={error ?? "Something interrupted the test. Your setup is still here. Press Try again."}
+          title={t("eval.web.results.errorTitle", "The website test didn’t finish")}
+          body={error ?? t("eval.web.results.errorBody", "Something interrupted the test. Your setup is still here. Press Try again.")}
           onRetry={onRetry}
-          retryLabel="Try again"
+          retryLabel={t("eval.web.results.retry", "Try again")}
         />
       )}
 
@@ -745,8 +766,11 @@ function WebResults({
       {trace && trace.events.length > 0 && (
         <div className="space-y-3">
           <h3 className="hud flex items-center gap-2 text-[12px] text-primary">
-            <Sym name="route" size={14} /> Browser trace · {trace.events.length} step
-            {trace.events.length === 1 ? "" : "s"}
+            <Sym name="route" size={14} />
+            {t("eval.web.results.trace", "Browser trace · {count} {unit}", {
+              count: trace.events.length,
+              unit: t(trace.events.length === 1 ? "eval.common.step.one" : "eval.common.step.many", trace.events.length === 1 ? "step" : "steps"),
+            })}
           </h3>
           <HarborTraceReplay trace={trace} autoFollowLatest={running} />
         </div>
@@ -768,13 +792,15 @@ function ErrorCard({
   title,
   body,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel,
 }: {
   title: string;
   body: string;
   onRetry: () => void;
   retryLabel?: string;
 }) {
+  const { t } = useI18n();
+  const resolvedRetryLabel = retryLabel ?? t("eval.common.tryAgain", "Try again");
   return (
     <section className="rounded-md border border-danger/30 bg-danger/10 p-5">
       <div className="flex items-start gap-3">
@@ -788,7 +814,7 @@ function ErrorCard({
             className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-3 py-1.5 text-[14px] font-medium text-danger hover:bg-danger/10 ${FOCUS_RING}`}
           >
             <Sym name="refresh" size={15} />
-            {retryLabel}
+            {resolvedRetryLabel}
           </button>
         </div>
       </div>

@@ -9,6 +9,7 @@
  */
 import type { ReactNode } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { SCORE_BAND_CLASS, Sym, type ScoreBand } from "./cockpit/cockpitShared";
 import type {
   Domain,
@@ -19,6 +20,17 @@ import type {
   WebResult,
   WebTrace,
 } from "@/lib/types";
+
+type RunTranslate = ReturnType<typeof useI18n>["t"];
+
+function relativeText(
+  t: RunTranslate | undefined,
+  key: string,
+  fallback: string,
+  values?: Record<string, string | number>,
+): string {
+  return t ? t(key, fallback, values) : fallback;
+}
 
 // ---------------------------------------------------------------------------
 // Narrowed run-detail shapes (what RunDetail / RunCompare actually read)
@@ -187,43 +199,43 @@ function shortAbsolute(d: Date): string {
  * Relative age for run lists / meta lines.
  * Always includes "ago" so `22m` is not mistaken for a duration.
  */
-export function fmtRunDate(iso: string | null | undefined): string {
+export function fmtRunDate(iso: string | null | undefined, translate?: RunTranslate): string {
   if (!iso) return "-";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "-";
-  const date = new Date(t);
-  const diffMs = Date.now() - t;
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) return "-";
+  const date = new Date(timestamp);
+  const diffMs = Date.now() - timestamp;
   const sec = Math.round(diffMs / 1000);
   if (sec < 0) return shortAbsolute(date); // clock skew: just show the date
-  if (sec < 45) return "just now";
+  if (sec < 45) return relativeText(translate, "runResidual.relative.justNow", "just now");
   const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
+  if (min < 60) return relativeText(translate, "runResidual.relative.compactMinute", `${min}m ago`, { count: min });
   const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return relativeText(translate, "runResidual.relative.compactHour", `${hr}h ago`, { count: hr });
   const day = Math.round(hr / 24);
-  if (day < 7) return `${day}d ago`;
+  if (day < 7) return relativeText(translate, "runResidual.relative.compactDay", `${day}d ago`, { count: day });
   return shortAbsolute(date);
 }
 
 /** Spelled-out relative time for debrief headers (`22 minutes ago`). */
-export function fmtRunDateFriendly(iso: string | null | undefined): string {
+export function fmtRunDateFriendly(iso: string | null | undefined, translate?: RunTranslate): string {
   if (!iso) return "";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "";
-  const date = new Date(t);
-  const diffMs = Date.now() - t;
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) return "";
+  const date = new Date(timestamp);
+  const diffMs = Date.now() - timestamp;
   const sec = Math.round(diffMs / 1000);
   if (sec < 0) return shortAbsolute(date);
-  if (sec < 45) return "just now";
+  if (sec < 45) return relativeText(translate, "runResidual.relative.justNow", "just now");
   const min = Math.round(sec / 60);
-  if (min === 1) return "1 minute ago";
-  if (min < 60) return `${min} minutes ago`;
+  if (min === 1) return relativeText(translate, "runResidual.relative.minute", "1 minute ago", { count: min });
+  if (min < 60) return relativeText(translate, "runResidual.relative.minutes", `${min} minutes ago`, { count: min });
   const hr = Math.round(min / 60);
-  if (hr === 1) return "1 hour ago";
-  if (hr < 24) return `${hr} hours ago`;
+  if (hr === 1) return relativeText(translate, "runResidual.relative.hour", "1 hour ago", { count: hr });
+  if (hr < 24) return relativeText(translate, "runResidual.relative.hours", `${hr} hours ago`, { count: hr });
   const day = Math.round(hr / 24);
-  if (day === 1) return "yesterday";
-  if (day < 7) return `${day} days ago`;
+  if (day === 1) return relativeText(translate, "runResidual.relative.yesterday", "yesterday");
+  if (day < 7) return relativeText(translate, "runResidual.relative.days", `${day} days ago`, { count: day });
   return shortAbsolute(date);
 }
 
@@ -246,18 +258,20 @@ export function fmtSource(source: string | null | undefined): string {
 
 /** A quiet domain pill (reused across list / detail / compare headers). */
 export function DomainPill({ domain }: { domain: string | null | undefined }) {
+  const { t } = useI18n();
   return (
     <span className="glass-tile inline-flex items-center rounded px-2 py-0.5 text-[13px] font-medium text-text-variant">
-      {fmtDomain(domain)}
+      {t(`setup.runs.domain.${domain ?? "unknown"}`, fmtDomain(domain))}
     </span>
   );
 }
 
 /** A small muted source tag next to a persona name. */
 export function SourceTag({ source }: { source: string | null | undefined }) {
+  const { t } = useI18n();
   return (
     <span className="glass-tile inline-flex shrink-0 items-center rounded px-1.5 py-px font-mono text-[12px] text-text-variant">
-      {fmtSource(source)}
+      {source ? fmtSource(source) : t("setup.runs.curated", "curated")}
     </span>
   );
 }
@@ -309,15 +323,25 @@ const APP_TYPE_META: Record<string, { icon: string; label: string }> = {
  * glance. Renders from whatever type the summary carries; absent → chatbot.
  */
 export function AppTypeTag({ type }: { type?: string | null }) {
+  const { t } = useI18n();
   const key = (type ?? "chatbot").toString().toLowerCase();
   const meta = APP_TYPE_META[key] ?? APP_TYPE_META.chatbot;
+  const labelKey = key === "survey"
+    ? "setup.runs.survey"
+    : key === "web"
+      ? "setup.runs.web"
+      : key === "os-app"
+        ? "setup.runs.osApp"
+        : key === "unknown"
+          ? "setup.runs.unknown"
+          : "setup.runs.chatbot";
   return (
     <span
       className="glass-tile inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[13px] text-text-variant"
-      title="Application type for this run."
+      title={t("setup.runs.applicationType", "Application type for this run.")}
     >
       <Sym name={meta.icon} size={13} />
-      {meta.label}
+      {t(labelKey, meta.label)}
     </span>
   );
 }

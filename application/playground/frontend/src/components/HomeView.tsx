@@ -1,6 +1,7 @@
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
 import { CosmicField } from "./studio/CosmicField";
 import { DigitalGlobe } from "./studio/DigitalGlobe";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface HomeViewProps {
   onOpenPlayground: () => void;
@@ -11,6 +12,8 @@ export interface HomeViewProps {
  * Keeps MatrAIx copy; no floating glass dashboard widgets.
  */
 export function HomeView({ onOpenPlayground }: HomeViewProps) {
+  const { t } = useI18n();
+
   return (
     <div className="landing-home-stage relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <CosmicField />
@@ -22,17 +25,21 @@ export function HomeView({ onOpenPlayground }: HomeViewProps) {
 
           <div className="landing-stat-block mt-2 items-center">
             <span className="landing-stat-value landing-stat-value--home">8.3B</span>
-            <span className="landing-stat-label">personas</span>
+            <span className="landing-stat-label">{t("shell.home.personas", "personas")}</span>
           </div>
 
           <h1 className="landing-home-title mt-5">
-            Planetary-scale{" "}
-            <span className="landing-home-title-accent">digital humans</span>
+            {t("shell.home.title", "Planetary-scale")}{" "}
+            <span className="landing-home-title-accent">
+              {t("shell.home.titleAccent", "digital humans")}
+            </span>
           </h1>
 
           <p className="landing-home-subtitle mt-4 max-w-md text-[14px] leading-relaxed">
-            Simulate real users across chatbots, surveys, browsers, and agents with
-            evaluation reporting
+            {t(
+              "shell.home.subtitle",
+              "Simulate real users across chatbots, surveys, browsers, and agents with evaluation reporting",
+            )}
           </p>
 
           <button
@@ -40,7 +47,7 @@ export function HomeView({ onOpenPlayground }: HomeViewProps) {
             onClick={onOpenPlayground}
             className={`landing-cta-primary mt-8 ${FOCUS_RING}`}
           >
-            Playground
+            {t("shell.nav.playground", "Playground")}
             <Sym name="arrow_forward" size={18} />
           </button>
         </div>

@@ -1,4 +1,5 @@
 import { FOCUS_RING } from "../cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface CockpitToggleProps {
   checked: boolean;
@@ -18,8 +19,9 @@ export function CockpitToggle({
   description,
   disabled,
   busy = false,
-  busyLabel = "Starting…",
+  busyLabel,
 }: CockpitToggleProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
@@ -35,7 +37,7 @@ export function CockpitToggle({
           </div>
           {(busy || description) && (
             <p className="mt-0.5 text-[12px] leading-snug text-text-dim">
-              {busy ? busyLabel : description}
+              {busy ? busyLabel ?? t("setup.status.starting", "Starting…") : description}
             </p>
           )}
         </div>
@@ -61,7 +63,7 @@ export function CockpitToggle({
         <div
           className="h-1 overflow-hidden rounded-full bg-outline/35"
           role="progressbar"
-          aria-valuetext={busyLabel}
+          aria-valuetext={busyLabel ?? t("setup.status.starting", "Starting…")}
         >
           <div className="h-full w-2/5 animate-cockpit-indeterminate rounded-full bg-primary" />
         </div>

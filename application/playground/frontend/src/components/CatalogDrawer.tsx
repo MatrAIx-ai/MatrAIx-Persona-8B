@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { PersonaCard } from "./cockpit/PersonaCard";
 import { PersonaDrawer } from "./cockpit/PersonaDrawer";
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
@@ -57,6 +58,7 @@ export interface CatalogDrawerProps {
 }
 
 export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDrawerProps) {
+  const { t, formatNumber } = useI18n();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<SourceFilter>("all");
   // Clicking a card opens this persona's detail drawer (view), not select-and-close.
@@ -103,7 +105,7 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
   }, [all, filter]);
 
   const loadedLabel =
-    personasQuery.isLoading && all.length === 0 ? "…" : all.length.toLocaleString();
+    personasQuery.isLoading && all.length === 0 ? "…" : formatNumber(all.length);
 
   if (!open) return null;
 
@@ -117,27 +119,29 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
       className="fade-in fixed inset-0 z-50 flex flex-col bg-surface-dim"
       role="dialog"
       aria-modal="true"
-      aria-label="Browse personas"
+      aria-label={t("catalog.personaWorld.title", "Browse personas")}
     >
       {/* Header: title + loaded count + close, then search + source chips. */}
       <div className="flex-shrink-0 border-b border-outline bg-surface-lowest px-6 py-5">
         <div className="mx-auto w-full max-w-[1320px]">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <div className="hud mb-1.5 text-[12px] text-primary">Persona catalog</div>
+              <div className="hud mb-1.5 text-[12px] text-primary">
+                {t("catalog.personaCatalog.eyebrow", "Persona catalog")}
+              </div>
               <h1 className="font-display text-[24px] font-bold tracking-tight text-text-main">
-                Browse personas
+                {t("catalog.personaWorld.title", "Browse personas")}
               </h1>
             </div>
             <div className="flex items-center gap-3">
               <div className="rounded-md border border-outline bg-surface px-4 py-2 text-center">
-                <div className="hud text-[11px] text-text-dim">Loaded</div>
+                <div className="hud text-[11px] text-text-dim">{t("catalog.catalogDrawer.loaded", "Loaded")}</div>
                 <div className="font-mono text-[18px] font-bold text-primary">{loadedLabel}</div>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close catalog"
+                aria-label={t("catalog.catalogDrawer.close", "Close catalog")}
                 className={`flex h-9 w-9 flex-none items-center justify-center rounded-md border border-outline bg-surface-low text-text-variant transition-colors hover:border-primary hover:bg-surface hover:text-text-main active:bg-surface-high ${FOCUS_RING}`}
               >
                 <Sym name="close" size={18} />
@@ -152,26 +156,40 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search occupation, traits, demographics…"
-                aria-label="Search personas"
+                placeholder={t(
+                  "catalog.catalogDrawer.searchPlaceholder",
+                  "Search occupation, traits, demographics…",
+                )}
+                aria-label={t("catalog.personaCatalog.search", "Search personas")}
                 className="h-full w-full min-w-0 bg-transparent px-3 text-[15px] text-text-main outline-none placeholder:text-text-variant"
               />
               {query && (
                 <button
                   type="button"
                   onClick={() => setQuery("")}
-                  aria-label="Clear search"
+                  aria-label={t("catalog.personaStore.clearSearch", "Clear search")}
                   className={`mr-2 flex-none rounded p-1 text-text-dim transition-colors hover:bg-surface-high hover:text-text-main active:bg-surface-low ${FOCUS_RING}`}
                 >
                   <Sym name="close" size={16} />
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by source">
-              <FilterChip label="All" active={filter === "all"} onClick={() => setFilter("all")} />
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label={t("catalog.personaCatalog.filterBySource", "Filter by source")}
+            >
               <FilterChip
-                label="Curated"
-                title="Hand-picked personas we ship by default"
+                label={t("catalog.personaCatalog.allSources", "All")}
+                active={filter === "all"}
+                onClick={() => setFilter("all")}
+              />
+              <FilterChip
+                label={t("catalog.personaCatalog.curated", "Curated")}
+                title={t(
+                  "catalog.personaCatalog.curatedTitle",
+                  "Hand-picked personas we ship by default",
+                )}
                 active={filter === "curated"}
                 onClick={() => setFilter("curated")}
               />
@@ -179,7 +197,9 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
                 <FilterChip
                   key={s}
                   label={s}
-                  title={`Source dataset: ${s}`}
+                  title={t("catalog.personaCatalog.sourceDataset", "Source dataset: {source}", {
+                    source: s,
+                  })}
                   active={filter === s}
                   onClick={() => setFilter(s)}
                 />
@@ -284,6 +304,7 @@ function CatalogSkeleton() {
 
 /** Empty state: no personas match the current search. */
 function CatalogEmpty({ query }: { query: string }) {
+  const { t } = useI18n();
   return (
     <div className="rise-in flex flex-col items-center px-4 py-16 text-center">
       <div
@@ -293,12 +314,21 @@ function CatalogEmpty({ query }: { query: string }) {
         <Sym name="search_off" size={26} className="text-text-dim" />
       </div>
       <p className="font-display text-[15px] font-semibold text-text-main">
-        {query ? "No matches" : "No personas yet"}
+        {query
+          ? t("catalog.personaCatalog.noMatches", "No matches")
+          : t("catalog.personaCatalog.noPersonasYet", "No personas yet")}
       </p>
       <p className="mt-1 max-w-[320px] text-[14px] leading-snug text-text-variant">
         {query
-          ? `Nothing matches “${query}”. Try a role like “nurse” or a broader term.`
-          : "No personas to show yet. Try clearing the source filter."}
+          ? t(
+              "catalog.personaCatalog.nothingMatches",
+              "Nothing matches “{query}”. Try a role like “nurse” or a broader term.",
+              { query },
+            )
+          : t(
+              "catalog.personaCatalog.emptyDescription",
+              "No personas to show yet. Try clearing the source filter.",
+            )}
       </p>
     </div>
   );
@@ -306,6 +336,7 @@ function CatalogEmpty({ query }: { query: string }) {
 
 /** Error state: the catalog failed to load, with a retry. */
 function CatalogError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="rise-in mx-auto max-w-md rounded-md border border-outline border-l-4 border-l-danger bg-surface px-4 py-6 text-center">
       <div
@@ -314,9 +345,14 @@ function CatalogError({ onRetry }: { onRetry: () => void }) {
       >
         <Sym name="error" size={24} className="text-danger" />
       </div>
-      <p className="font-display text-[15px] font-semibold text-text-main">Couldn&apos;t load personas</p>
+      <p className="font-display text-[15px] font-semibold text-text-main">
+        {t("catalog.personaCatalog.couldNotLoad", "Couldn't load personas")}
+      </p>
       <p className="mx-auto mt-1 max-w-[300px] text-[14px] leading-snug text-text-variant">
-        We couldn&apos;t load the personas. Check the backend is running, then retry.
+        {t(
+          "catalog.personaCatalog.loadDescription",
+          "We couldn't load the personas. Check the backend is running, then retry.",
+        )}
       </p>
       <button
         type="button"
@@ -324,7 +360,7 @@ function CatalogError({ onRetry }: { onRetry: () => void }) {
         className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-[13px] font-medium text-danger transition-colors hover:bg-danger/20 active:bg-danger/30 ${FOCUS_RING}`}
       >
         <Sym name="refresh" size={15} />
-        Try again
+        {t("catalog.personaCatalog.tryAgain", "Try again")}
       </button>
     </div>
   );

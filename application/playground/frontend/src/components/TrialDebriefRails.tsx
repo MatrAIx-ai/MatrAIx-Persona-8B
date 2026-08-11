@@ -11,6 +11,7 @@ import {
 } from "@/lib/taskContent";
 import type { PlaygroundPrompts, SurveyInstrument } from "@/lib/types";
 import type { RunPersona } from "./runsShared";
+import { useI18n } from "../i18n/I18nProvider";
 
 export interface TrialDebriefRailsProps {
   prompts?: PlaygroundPrompts | null;
@@ -53,6 +54,7 @@ function DebriefRail({
   body?: string;
   children?: ReactNode;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const hasBody = Boolean((body ?? "").trim()) || Boolean(children);
   const expandable = hasBody;
@@ -82,7 +84,9 @@ function DebriefRail({
         </span>
         {expandable ? (
           <span className="flex flex-none items-center gap-2">
-            <span className="hud text-[11px] text-text-dim">{open ? "Hide" : "View"}</span>
+            <span className="hud text-[11px] text-text-dim">
+              {open ? t("runs.hide", "Hide") : t("runs.show", "View")}
+            </span>
             <Sym name={open ? "expand_more" : "chevron_right"} size={18} className="text-text-dim" />
           </span>
         ) : null}
@@ -115,6 +119,7 @@ export function TrialDebriefRails({
   outputSchemaMarkdown,
   hideOutputSchema = false,
 }: TrialDebriefRailsProps) {
+  const { t } = useI18n();
   const sections = prompts ? resolvePromptSections(prompts) : { persona: "", task: "" };
   const personaCandidate = sections.persona || (persona?.context ?? "").trim();
   const dimensionFallback = formatPersonaDimensionFallback(persona);
@@ -138,21 +143,21 @@ export function TrialDebriefRails({
     rails.push(
       <DebriefRail
         key="persona"
-        label="Persona profile"
+        label={t("runs.personaProfile", "Persona profile")}
         icon="person"
         body={personaBody}
       />,
     );
   }
   if (taskBody) {
-    rails.push(<DebriefRail key="instruction" label="Task instruction" icon="assignment" body={taskBody} />);
+    rails.push(<DebriefRail key="instruction" label={t("runs.taskInstruction", "Task instruction")} icon="assignment" body={taskBody} />);
   }
   if (contextBody) {
-    rails.push(<DebriefRail key="context" label="Task context" icon="menu_book" body={contextBody} />);
+    rails.push(<DebriefRail key="context" label={t("runs.taskContext", "Task context")} icon="menu_book" body={contextBody} />);
   }
   if (hasStructuredQuestionnaire && questionnaire) {
     rails.push(
-      <DebriefRail key="questionnaire" label="Questionnaire" icon="list_alt">
+      <DebriefRail key="questionnaire" label={t("runs.questionnaire", "Questionnaire")} icon="list_alt">
         <QuestionnairePreview instrument={questionnaire} />
       </DebriefRail>,
     );
@@ -161,14 +166,14 @@ export function TrialDebriefRails({
     rails.push(
       <DebriefRail
         key="questionnaire"
-        label="Questionnaire"
+        label={t("runs.questionnaire", "Questionnaire")}
         icon="list_alt"
         body={(questionnaireMarkdown ?? "").trim()}
       />,
     );
   }
   if (outputSchemaBody) {
-    rails.push(<DebriefRail key="output-schema" label="Output schema" icon="schema" body={outputSchemaBody} />);
+    rails.push(<DebriefRail key="output-schema" label={t("runs.outputSchema", "Output schema")} icon="schema" body={outputSchemaBody} />);
   }
 
   if (rails.length === 0) return null;

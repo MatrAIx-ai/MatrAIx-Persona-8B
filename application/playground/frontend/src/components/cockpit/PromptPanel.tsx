@@ -1,18 +1,20 @@
 import { Sym } from "./cockpitShared";
 import type { PlaygroundPrompts } from "@/lib/types";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface PromptPanelProps {
   prompts: PlaygroundPrompts | null | undefined;
 }
 
 export function PromptPanel({ prompts }: PromptPanelProps) {
+  const { t } = useI18n();
   if (!prompts) {
     return (
       <div className="p-md">
         <div className="rise-in rounded-md border border-dashed border-outline-dim bg-surface-low px-4 py-10 text-center">
           <Sym name="terminal" size={28} className="text-text-dim" />
           <p className="mt-2 text-[15px] leading-relaxed text-text-variant">
-            Run a simulation to see the exact prompts used.
+            {t("promptPanel.empty", "Run a simulation to see the exact prompts used.")}
           </p>
         </div>
       </div>
@@ -22,12 +24,19 @@ export function PromptPanel({ prompts }: PromptPanelProps) {
   return (
     <div className="space-y-3 p-md">
       <PromptBlock
-        label="Persona prompt"
-        sublabel="simulated-user system prompt"
+        label={t("promptPanel.personaPrompt", "Persona prompt")}
+        sublabel={t("promptPanel.personaPromptSublabel", "simulated-user system prompt")}
         value={prompts.personaPrompt ?? prompts.harborPrompt ?? ""}
         index={0}
+        emptyLabel={t("promptPanel.emptyValue", "(empty)")}
       />
-      <PromptBlock label="Task prompt" sublabel="application instruction" value={prompts.taskPrompt ?? ""} index={1} />
+      <PromptBlock
+        label={t("promptPanel.taskPrompt", "Task prompt")}
+        sublabel={t("promptPanel.taskPromptSublabel", "application instruction")}
+        value={prompts.taskPrompt ?? ""}
+        index={1}
+        emptyLabel={t("promptPanel.emptyValue", "(empty)")}
+      />
     </div>
   );
 }
@@ -37,11 +46,13 @@ function PromptBlock({
   sublabel,
   value,
   index = 0,
+  emptyLabel = "(empty)",
 }: {
   label: string;
   sublabel: string;
   value: string;
   index?: number;
+  emptyLabel?: string;
 }) {
   return (
     <section
@@ -56,7 +67,7 @@ function PromptBlock({
         <Sym name="data_object" size={16} className="flex-shrink-0 text-text-dim" />
       </div>
       <pre className="custom-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words bg-field p-3 font-mono text-[13px] leading-relaxed text-text-variant">
-        {value || "(empty)"}
+        {value || emptyLabel}
       </pre>
     </section>
   );

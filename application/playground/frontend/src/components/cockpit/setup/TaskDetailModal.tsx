@@ -3,20 +3,29 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Markdown } from "@/components/Markdown";
 import { QuestionnairePreview } from "@/components/QuestionnairePreview";
+import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import type { SurveyInstrument } from "@/lib/types";
 import { FOCUS_RING, Sym } from "../cockpitShared";
 import { RailInsetModal } from "./RailInsetModal";
 import type { TaskCardModel } from "./TaskSelectionRail";
 import { ToneChip, transportChipTone } from "./ToneChip";
-import { CHIP_TEXT_CLASS, formatChipLabel } from "./taskCardLabels";
+import {
+  CHIP_TEXT_CLASS,
+  formatChipLabel,
+  taskDisplayTitle,
+  taskDocumentLabel,
+} from "./taskCardLabels";
 import { buildTaskDocSections, type TaskDocSection, type TaskDocTabId } from "./taskDetailSections";
 
-function transportLabel(transport?: TaskCardModel["transport"]): string {
-  if (transport === "api_sidecar") return "API (sidecar)";
-  if (transport === "api_external") return "API (endpoint)";
-  if (transport === "mcp_sidecar") return "MCP (sidecar)";
-  if (transport === "mcp_external") return "MCP (endpoint)";
+function transportLabel(
+  transport: TaskCardModel["transport"] | undefined,
+  translate: (key: string, fallback?: string) => string,
+): string {
+  if (transport === "api_sidecar") return translate("setup.tasks.apiSidecar", "API (sidecar)");
+  if (transport === "api_external") return translate("setup.tasks.apiEndpoint", "API (endpoint)");
+  if (transport === "mcp_sidecar") return translate("setup.tasks.mcpSidecar", "MCP (sidecar)");
+  if (transport === "mcp_external") return translate("setup.tasks.mcpEndpoint", "MCP (endpoint)");
   return "—";
 }
 
@@ -29,12 +38,13 @@ function TaskDocTabBar({
   active: TaskDocTabId;
   onChange: (tab: TaskDocTabId) => void;
 }) {
+  const { t } = useI18n();
   if (sections.length <= 1) return null;
 
   return (
     <div
       role="tablist"
-      aria-label="Task documents"
+      aria-label={t("setup.tasks.documents", "Task documents")}
       className="flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-outline/40"
     >
       {sections.map((section) => {
@@ -53,7 +63,7 @@ function TaskDocTabBar({
             }`}
           >
             <Sym name={section.icon} fill={selected ? 1 : 0} size={14} />
-            {section.label}
+            {taskDocumentLabel(section.id, t)}
           </button>
         );
       })}
@@ -70,6 +80,7 @@ export interface TaskDetailModalProps {
 }
 
 export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDetailModalProps) {
+  const { t } = useI18n();
   const taskPath = card?.taskPath?.trim() ?? "";
 
   const detailQuery = useQuery({
@@ -112,12 +123,17 @@ export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDeta
   const activeSection = sections.find((section) => section.id === activeTab) ?? sections[0] ?? null;
   const loading = Boolean(taskPath) && detailQuery.isLoading && sections.length === 0;
   const failed = Boolean(taskPath) && detailQuery.isError && sections.length === 0;
+  const displayTitle = taskDisplayTitle(detailQuery.data?.title ?? card?.title, card ?? {}, t);
 
   return (
     <RailInsetModal
       open={open && Boolean(card)}
-      title={detailQuery.data?.title ?? card?.title ?? "Task"}
-      subtitle={card?.taskType ? `${card.taskType} task documents` : "Task documents"}
+      title={displayTitle || t("setup.tasks.title", "Task")}
+      subtitle={card?.taskType
+        ? t("setup.tasks.typeDocuments", "{type} task documents", {
+            type: formatChipLabel(card.taskType, t),
+          })
+        : t("setup.tasks.documents", "Task documents")}
       onClose={onClose}
     >
       {card && (
@@ -125,7 +141,7 @@ export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDeta
           <div className="flex flex-wrap gap-1.5">
             {card.transport && (
               <ToneChip tone={transportChipTone(card.transport)} className={CHIP_TEXT_CLASS}>
-                {transportLabel(card.transport)}
+                {transportLabel(card.transport, t)}
               </ToneChip>
             )}
             {(card.tags ??
@@ -137,20 +153,20 @@ export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDeta
                 showDot={tag.label === "Available" || tag.label === "Unavailable"}
                 className={CHIP_TEXT_CLASS}
               >
-                {formatChipLabel(tag.label)}
+                {formatChipLabel(tag.label, t)}
               </ToneChip>
             ))}
           </div>
 
           {!taskPath && (
-            <p className="text-[14px] text-danger">This task has no task path — no instruction document to show.</p>
+            <p className="text-[14px] text-danger">{t("setup.tasks.noTaskPath", "This task has no task path — no instruction document to show.")}</p>
           )}
-          {loading && <p className="text-[14px] text-text-dim">Loading task documents…</p>}
+          {loading && <p className="text-[14px] text-text-dim">{t("setup.tasks.loadingDocuments", "Loading task documents…")}</p>}
           {failed && (
             <p className="text-[14px] text-danger">
               {detailQuery.error instanceof ApiError
                 ? detailQuery.error.message
-                : "Could not load task documents."}
+                : t("setup.tasks.loadDocumentsFailed", "Could not load task documents.")}
             </p>
           )}
 
@@ -172,7 +188,7 @@ export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDeta
           ) : null}
 
           {!loading && !failed && taskPath && sections.length === 0 ? (
-            <p className="text-[14px] text-text-dim">No task documents are available for this task.</p>
+            <p className="text-[14px] text-text-dim">{t("setup.tasks.noDocuments", "No task documents are available for this task.")}</p>
           ) : null}
 
           {primaryAction ? (

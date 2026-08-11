@@ -56,27 +56,33 @@ import type {
   UserFeedbackArtifact,
   WebTrace,
 } from "@/lib/types";
+import { useI18n } from "../i18n/I18nProvider";
 
 export interface RunDetailProps {
   harborTrial: { jobName: string; trialName: string };
   onBack: () => void;
 }
 
-function runDebriefMetaLine(run: RunDetailView, appType: RunApplicationType): string {
+function runDebriefMetaLine(run: RunDetailView, appType: RunApplicationType, t?: ReturnType<typeof useI18n>["t"]): string {
+  const onLabel = t?.("runResidual.on", "on") ?? "on";
+  const catalogLabel = t?.("runResidual.catalog", "catalog") ?? "catalog";
+  const websiteTaskLabel = t?.("runResidual.websiteTask", "Website task") ?? "Website task";
+  const osAppTaskLabel = t?.("runResidual.osAppTask", "OS app task") ?? "OS app task";
+  const chatAppLabel = t?.("runResidual.chatApp", "Chat app") ?? "Chat app";
   const parts: string[] = [];
   if (appType === "survey" && run.surveyResult) {
     parts.push(
       run.surveyResult.instrument.title || run.instrumentTitle || run.surveyResult.instrument.id,
     );
   } else if (appType === "web" && run.webResult) {
-    const task = run.taskTitle || run.siteName || "Website task";
-    parts.push(run.siteName && run.taskTitle ? `${task} on ${run.siteName}` : task);
+    const task = run.taskTitle || run.siteName || websiteTaskLabel;
+    parts.push(run.siteName && run.taskTitle ? `${task} ${onLabel} ${run.siteName}` : task);
   } else if (appType === "os-app") {
-    parts.push(run.taskTitle || "OS app task");
+    parts.push(run.taskTitle || osAppTaskLabel);
   } else {
     const applicationId = run.config?.applicationId?.trim() || null;
-    const app = applicationId ? appName(applicationId) : run.taskTitle || appName(null);
-    const domain = run.config?.domain ? `${fmtDomain(run.config.domain)} catalog` : "";
+    const app = applicationId ? appName(applicationId) : run.taskTitle || chatAppLabel;
+    const domain = run.config?.domain ? `${fmtDomain(run.config.domain)} ${catalogLabel}` : "";
     parts.push(domain ? `${app} · ${domain}` : app);
   }
   if (run.persona?.name) {
@@ -84,14 +90,22 @@ function runDebriefMetaLine(run: RunDetailView, appType: RunApplicationType): st
   }
   const when = fmtRunDateFriendly(
     run.surveyResult?.createdAt ?? run.webResult?.createdAt ?? run.createdAt,
+    t,
   );
   if (when) {
-    parts.push(when === "just now" || when === "yesterday" ? when : `Ran ${when}`);
+    const justNow = t?.("runResidual.relative.justNow", "just now") ?? "just now";
+    const yesterday = t?.("runResidual.relative.yesterday", "yesterday") ?? "yesterday";
+    parts.push(
+      when === justNow || when === yesterday
+        ? when
+        : t?.("runResidual.ran", "Ran {date}", { date: when }) ?? `Ran ${when}`,
+    );
   }
   return parts.join(" · ");
 }
 
 export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
+  const { t } = useI18n();
   const query = useQuery<PlaygroundResult>({
     queryKey: ["harbor-trial-debrief", harborTrial.jobName, harborTrial.trialName],
     queryFn: () => api.getHarborTrialDebrief(harborTrial.jobName, harborTrial.trialName),
@@ -100,7 +114,7 @@ export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
 
   const run = useMemo(() => (query.data ? asRunDetail(query.data) : null), [query.data]);
   const appType: RunApplicationType = run ? runApplicationType(run) : "chatbot";
-  const metaLine = run ? runDebriefMetaLine(run, appType) : null;
+  const metaLine = run ? runDebriefMetaLine(run, appType, t) : null;
   const absoluteWhen = run
     ? run.surveyResult?.createdAt ?? run.webResult?.createdAt ?? run.createdAt ?? null
     : null;
@@ -109,20 +123,20 @@ export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
     <StudioPageFrame>
       <StudioPageHeader
         compact
-        eyebrow="MatrAIx · Runs"
+        eyebrow={t("runs.eyebrow", "MatrAIx · Runs")}
         title={metaLine || harborTrial.trialName}
         meta={run ? <AppTypeTag type={appType} /> : null}
         actions={
           <>
             <StudioToolbarButton icon="arrow_back" onClick={onBack}>
-              Back to job
+              {t("runs.backToJob", "Back to job")}
             </StudioToolbarButton>
             <StudioToolbarButton
               icon="refresh"
               onClick={() => query.refetch()}
               disabled={query.isFetching}
             >
-              Refresh
+              {t("runs.refresh", "Refresh")}
             </StudioToolbarButton>
             <StudioToolbarButton
               icon="picture_as_pdf"
@@ -130,7 +144,7 @@ export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
                 api.downloadHarborTrialReportPdf(harborTrial.jobName, harborTrial.trialName)
               }
             >
-              Download PDF
+              {t("runs.downloadPdf", "Download PDF")}
             </StudioToolbarButton>
           </>
         }
@@ -138,7 +152,7 @@ export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
 
       <p className="-mt-2 mb-3.5 break-all font-mono text-[12px] leading-relaxed text-text-dim">
         {harborTrial.trialName} · {harborTrial.jobName}
-        {absoluteWhen ? ` · ${fmtRunDateFriendly(absoluteWhen)}` : ""}
+        {absoluteWhen ? ` · ${fmtRunDateFriendly(absoluteWhen, t)}` : ""}
       </p>
 
       {query.isLoading ? (
@@ -274,8 +288,8 @@ function humanizeFeedbackKey(key: string): string {
   return humanizeToken(snake);
 }
 
-function feedbackDisplayValue(value: unknown): string {
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+function feedbackDisplayValue(value: unknown, t: (key: string, fallback?: string) => string): string {
+  if (typeof value === "boolean") return value ? t("runs.yes", "Yes") : t("runs.no", "No");
   if (typeof value === "number") return String(value);
   if (typeof value === "string") return value;
   return "-";
@@ -335,6 +349,7 @@ function UserFeedbackPanel({
 }: {
   feedback: UserFeedbackArtifact | null | undefined;
 }) {
+  const { t } = useI18n();
   const overall = feedbackNumericValue(feedback, "overallExperienceRating");
   const trust = feedbackNumericValue(feedback, "trustLevel");
   const effort = feedbackNumericValue(feedback, "effortRating");
@@ -356,16 +371,16 @@ function UserFeedbackPanel({
     );
 
   return (
-    <DebriefPanel title="Persona self-report" icon="rate_review" bodyClassName="p-4">
+    <DebriefPanel title={t("runs.personaSelfReport", "Persona self-report")} icon="rate_review" bodyClassName="p-4">
       {!feedback || Object.keys(feedback).length === 0 ? (
         <DashedNote>
-          No post-run self-report was recorded. This section appears when the task writes{" "}
+          {t("runs.noPostRunSelfReport", "No post-run self-report was recorded. This section appears when the task writes")} {" "}
           <span className="font-mono text-[13px]">user_feedback.json</span>.
         </DashedNote>
       ) : (
         <div className="space-y-4">
           <p className="text-[14px] leading-relaxed text-text-variant">
-            Subjective reflection captured after task completion from{" "}
+            {t("runs.subjectiveReflection", "Subjective reflection captured after task completion from")} {" "}
             <span className="font-mono">user_feedback.json</span>.
           </p>
 
@@ -373,23 +388,23 @@ function UserFeedbackPanel({
             {overall != null ? (
               <StatTile
                 lead
-                caption="Overall experience"
+                caption={t("runs.overallExperience", "Overall experience")}
                 value={overall}
                 unit="/10"
                 band={scoreBand(overall / 10)}
               />
             ) : null}
-            {trust != null ? <StatTile caption="Trust" value={trust} unit="/10" /> : null}
-            {effort != null ? <StatTile caption="Effort" value={effort} /> : null}
-            {clarity != null ? <StatTile caption="Next step clarity" value={clarity} /> : null}
+            {trust != null ? <StatTile caption={t("runs.trust", "Trust")} value={trust} unit="/10" /> : null}
+            {effort != null ? <StatTile caption={t("runs.effort", "Effort")} value={effort} /> : null}
+            {clarity != null ? <StatTile caption={t("runs.nextStepClarity", "Next step clarity")} value={clarity} /> : null}
             {feltUnderstood != null ? (
               <div className="flex flex-col justify-center rounded-lg glass-tile p-4 backdrop-blur-sm">
-                <span className="hud text-[11px] text-text-dim">Felt understood</span>
+                <span className="hud text-[11px] text-text-dim">{t("runs.feltUnderstood", "Felt understood")}</span>
                 <div className="mt-1.5">
                   <ValidityBadge
                     valid={feltUnderstood}
-                    validLabel="Yes"
-                    invalidLabel="Not really"
+                    validLabel={t("runs.yes", "Yes")}
+                    invalidLabel={t("runs.notReally", "Not really")}
                   />
                 </div>
               </div>
@@ -407,7 +422,7 @@ function UserFeedbackPanel({
                     {humanizeFeedbackKey(key)}
                   </div>
                   <div className="mt-1.5 text-[15px] leading-relaxed text-text-main">
-                    {feedbackDisplayValue(value)}
+                    {feedbackDisplayValue(value, t)}
                   </div>
                 </div>
               ))}
@@ -417,7 +432,7 @@ function UserFeedbackPanel({
           {reason ? (
             <div className="rounded-lg glass-tile p-4 backdrop-blur-sm">
               <div className="text-[12px] uppercase tracking-wide text-text-dim">
-                Reasoning
+                {t("runs.reasoning", "Reasoning")}
               </div>
               <div className="mt-1.5 text-[14px] leading-relaxed text-text-variant">
                 {reason}
@@ -468,6 +483,7 @@ function ChatbotDebrief({ run }: { run: RunDetailView }) {
 // ===========================================================================
 
 function SurveyDebrief({ run }: { run: RunDetailView }) {
+  const { t } = useI18n();
   const survey = run.surveyResult;
   const persona = run.persona ?? {};
   if (!survey) {
@@ -480,7 +496,7 @@ function SurveyDebrief({ run }: { run: RunDetailView }) {
         questionnaireMarkdown={run.questionnaireMarkdown}
         hideOutputSchema
       >
-        <DashedNote>No survey results were recorded for this run.</DashedNote>
+        <DashedNote>{t("runs.noSurveyResults", "No survey results were recorded for this run.")}</DashedNote>
       </TrialDebriefChrome>
     );
   }
@@ -504,18 +520,22 @@ function SurveyDebrief({ run }: { run: RunDetailView }) {
     >
       <DebriefPanel bodyClassName="p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatTile lead caption="Questions answered" value={`${c.numAnswered}/${c.numQuestions}`} />
+          <StatTile lead caption={t("runs.questionsAnswered", "Questions answered")} value={`${c.numAnswered}/${c.numQuestions}`} />
           <div className="flex flex-col justify-center rounded-lg glass-tile p-4 backdrop-blur-sm">
-            <span className="hud text-[11px] text-text-dim">Answers look valid</span>
+            <span className="hud text-[11px] text-text-dim">{t("runs.answersLookValid", "Answers look valid")}</span>
             <div className="mt-1.5">
-              <ValidityBadge valid={c.valid} validLabel="Valid" invalidLabel="Needs review" />
+              <ValidityBadge
+                valid={c.valid}
+                validLabel={t("runs.valid", "Valid")}
+                invalidLabel={t("runs.needsReview", "Needs review")}
+              />
             </div>
           </div>
           <div className="flex flex-col justify-center rounded-lg glass-tile p-4 backdrop-blur-sm">
-            <span className="hud text-[11px] text-text-dim">Question types</span>
+            <span className="hud text-[11px] text-text-dim">{t("runs.questionTypes", "Question types")}</span>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {typeCounts.length === 0 ? (
-                <span className="text-[14px] text-text-dim">n/a</span>
+                <span className="text-[14px] text-text-dim">{t("runs.notApplicable", "n/a")}</span>
               ) : (
                 typeCounts.map((entry) => (
                   <span
@@ -533,9 +553,9 @@ function SurveyDebrief({ run }: { run: RunDetailView }) {
       </DebriefPanel>
 
       <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-12">
-        <DebriefPanel title="Answers" icon="fact_check" className="lg:col-span-7" bodyClassName="overflow-y-auto">
+        <DebriefPanel title={t("runs.answers", "Answers")} icon="fact_check" className="lg:col-span-7" bodyClassName="overflow-y-auto">
           {survey.answers.length === 0 ? (
-            <DashedNote>No answers were recorded for this survey run.</DashedNote>
+            <DashedNote>{t("runs.noAnswers", "No answers were recorded for this survey run.")}</DashedNote>
           ) : (
             <ul className="divide-y divide-outline-dim">
               {survey.answers.map((a, i) => (
@@ -551,13 +571,13 @@ function SurveyDebrief({ run }: { run: RunDetailView }) {
         </DebriefPanel>
 
         <DebriefPanel
-          title="Trajectory"
+          title={t("runs.trajectory", "Trajectory")}
           icon="route"
           className="lg:col-span-5 lg:min-h-full"
           bodyClassName="flex flex-col"
         >
           {trajectoryGroups.length === 0 ? (
-            <DashedNote>No trajectory was recorded for this run.</DashedNote>
+            <DashedNote>{t("runs.noTrajectory", "No trajectory was recorded for this run.")}</DashedNote>
           ) : (
             <div className="custom-scrollbar flex min-h-0 flex-1 flex-col p-3">
               <div className="relative flex min-h-full flex-1 flex-col">
@@ -604,6 +624,7 @@ function SurveyAnswerRow({
   question: SurveyQuestion | undefined;
   index: number;
 }) {
+  const { t } = useI18n();
   const type = question?.type;
   const prompt = question?.prompt ?? answer.questionId;
   const conf = answer.confidence;
@@ -634,14 +655,19 @@ function SurveyAnswerRow({
 
       {answer.rationale ? (
         <p className="mt-3 glass-tile glass-tile--dim rounded-lg px-3 py-2 text-[14px] leading-relaxed text-text-variant">
-          {singleChoice || likert ? "Why: " : ""}
+          {singleChoice || likert ? t("runs.why", "Why: ") : ""}
           {answer.rationale}
           {conf != null && (
-            <span className="text-text-dim"> · How sure: {(conf * 100).toFixed(0)}%</span>
+            <span className="text-text-dim">
+              {" · "}
+              {t("runs.howSure", "How sure: {percent}%", { percent: (conf * 100).toFixed(0) })}
+            </span>
           )}
         </p>
       ) : conf != null ? (
-        <p className="mt-2 text-[13px] text-text-variant">How sure: {(conf * 100).toFixed(0)}%</p>
+        <p className="mt-2 text-[13px] text-text-variant">
+          {t("runs.howSure", "How sure: {percent}%", { percent: (conf * 100).toFixed(0) })}
+        </p>
       ) : null}
     </li>
   );
@@ -654,6 +680,7 @@ function SurveyAnswerVisual({
   answer: SurveyAnswer;
   question: SurveyQuestion | undefined;
 }) {
+  const { t } = useI18n();
   const type = question?.type;
 
   if (type === "likert") {
@@ -707,7 +734,9 @@ function SurveyAnswerVisual({
       return (
         <div className="space-y-1.5">
           {multi ? (
-            <p className="hud text-[11px] text-text-dim">{selected.length} selected</p>
+            <p className="hud text-[11px] text-text-dim">
+              {t("runs.selected", "{count} selected", { count: selected.length })}
+            </p>
           ) : null}
           {optionDetails.map((option) => {
             const isSelected = selected.includes(option.id);
@@ -755,13 +784,14 @@ function SurveyAnswerVisual({
   const fallback = fmtAnswerValue(answer.value, question);
   return (
     <p className="glass-tile rounded-lg px-3 py-2 text-[14px] leading-relaxed text-text-main break-words">
-      {fallback || "(no answer)"}
+      {fallback || t("runs.noAnswer", "(no answer)")}
     </p>
   );
 }
 
 /** Milestone row for survey_started / survey_completed / unpaired events. */
 function SurveyTrajectoryMilestone({ event }: { event: SurveyTrajectoryEvent }) {
+  const { t } = useI18n();
   const action = event.action;
   const outcome = event.outcome ?? {};
   const context = event.context ?? {};
@@ -769,24 +799,26 @@ function SurveyTrajectoryMilestone({ event }: { event: SurveyTrajectoryEvent }) 
   let detail = "";
 
   if (action === "survey_started") {
-    title = "Started";
+    title = t("runs.started", "Started");
     const n = context.numQuestions;
-    detail = typeof n === "number" ? `${n} questions` : String(context.instrumentTitle ?? "");
+    detail = typeof n === "number"
+      ? t("runs.questionCount", "{count} question{suffix}", { count: String(n), suffix: n === 1 ? "" : "s" })
+      : String(context.instrumentTitle ?? "");
   } else if (action === "survey_completed") {
-    title = "Completed";
+    title = t("runs.completed", "Completed");
     const answered = outcome.numAnswered;
     const valid = outcome.valid;
     const parts: string[] = [];
-    if (typeof answered === "number") parts.push(`${answered} answered`);
-    if (typeof valid === "boolean") parts.push(valid ? "valid" : "needs review");
+    if (typeof answered === "number") parts.push(t("runs.answered", "{count} answered", { count: String(answered) }));
+    if (typeof valid === "boolean") parts.push(valid ? t("runs.valid", "Valid") : t("runs.needsReview", "Needs review"));
     detail = parts.join(" · ");
   } else if (action === "ask_question") {
     const index = surveyTrajectoryQuestionIndex(event);
-    title = index != null ? `Q${index}` : "Asked";
+    title = index != null ? `Q${index}` : t("runs.asked", "Asked");
     detail = surveyTrajectoryPrompt(event) || surveyQuestionTypeLabel(surveyTrajectoryQuestionType(event));
   } else if (action === "answer_question") {
     const index = surveyTrajectoryQuestionIndex(event);
-    title = index != null ? `Q${index}` : "Answered";
+    title = index != null ? `Q${index}` : t("runs.answeredShort", "Answered");
     detail = formatSurveyTrajectoryValue(outcome.value);
   }
 
@@ -881,6 +913,7 @@ function fmtAnswerValue(value: unknown, question?: SurveyQuestion): string {
 // ===========================================================================
 
 function WebDebrief({ run }: { run: RunDetailView }) {
+  const { t } = useI18n();
   const result = run.webResult;
   const persona = run.persona ?? {};
   const trace = runWebTrace(run);
@@ -898,7 +931,7 @@ function WebDebrief({ run }: { run: RunDetailView }) {
         outputSchemaMarkdown={run.outputSchemaMarkdown}
       >
         <DebriefPanel>
-          <DashedNote>No web result was recorded for this run.</DashedNote>
+          <DashedNote>{t("runResidual.noWebResult", "No web result was recorded for this run.")}</DashedNote>
         </DebriefPanel>
       </TrialDebriefChrome>
     );
@@ -918,19 +951,19 @@ function WebDebrief({ run }: { run: RunDetailView }) {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-5">
             <StatTile
               lead
-              caption="Met the persona's need"
+              caption={t("runResidual.metPersonaNeed", "Met the persona's need")}
               value={result.needSatisfaction}
               unit="/10"
               band={scoreBand(result.needSatisfaction / 10)}
             />
             <StatTile
-              caption="Ease of use"
+              caption={t("runResidual.easeOfUse", "Ease of use")}
               value={result.easeOfUse}
               unit="/10"
               band={scoreBand(result.easeOfUse / 10)}
             />
             <StatTile
-              caption="Overall experience"
+              caption={t("runs.overallExperience", "Overall experience")}
               value={result.overallExperienceRating}
               unit="/10"
               band={scoreBand(result.overallExperienceRating / 10)}
@@ -949,14 +982,18 @@ function WebDebrief({ run }: { run: RunDetailView }) {
                 <span className="text-[14px] font-semibold text-text-main">
                   {result.selectedProductName || "(no product chosen)"}
                 </span>
-                <ValidityBadge valid={result.valid} validLabel="Valid pick" invalidLabel="Invalid pick" />
+                <ValidityBadge
+                  valid={result.valid}
+                  validLabel={t("runs.validPick", "Valid pick")}
+                  invalidLabel={t("runs.invalidPick", "Invalid pick")}
+                />
               </div>
               {result.selectedProductId && (
                 <div className="mt-0.5 font-mono text-[12px] text-text-dim">{result.selectedProductId}</div>
               )}
               {result.reason && (
                 <p className="mt-1 text-[14px] leading-snug text-text-variant">
-                  Why this one: {result.reason}
+                  {t("runs.whyThisOne", "Why this one: ")}{result.reason}
                 </p>
               )}
             </div>
@@ -967,11 +1004,14 @@ function WebDebrief({ run }: { run: RunDetailView }) {
       <UserFeedbackPanel feedback={feedback} />
 
       <DebriefPanel
-        title={`Browser trace · ${events.length} step${events.length === 1 ? "" : "s"}`}
+        title={t("runs.browserTrace", "Browser trace · {count} step{suffix}", {
+          count: events.length,
+          suffix: events.length === 1 ? "" : "s",
+        })}
         icon="route"
       >
         {!trace || events.length === 0 ? (
-          <DashedNote>No browser steps were captured for this run.</DashedNote>
+          <DashedNote>{t("runs.noBrowserSteps", "No browser steps were captured for this run.")}</DashedNote>
         ) : (
           <div className="p-4">
             <HarborTraceReplay trace={trace} />
@@ -991,6 +1031,7 @@ function TrialDecisionPanel({
 }: {
   trialEvaluation?: TrialEvaluationArtifact | null;
 }) {
+  const { t } = useI18n();
   if (!trialEvaluation) return null;
 
   const ignoredTypes = new Set(["task_outcome", "user_feedback", "feedback", "persona_alignment"]);
@@ -1000,7 +1041,7 @@ function TrialDecisionPanel({
   if (contexts.length === 0) return null;
 
   return (
-    <DebriefPanel title="Task output" icon="analytics" bodyClassName="p-4">
+    <DebriefPanel title={t("runs.taskOutput", "Task output")} icon="analytics" bodyClassName="p-4">
       <div className="space-y-4">
         {contexts.map((ctx) => (
           <div
@@ -1038,6 +1079,7 @@ function TrialDecisionPanel({
 }
 
 function OsAppDebrief({ run }: { run: RunDetailView }) {
+  const { t } = useI18n();
   const runRecord = run as Record<string, unknown>;
   const osAppResult = (runRecord.osAppResult as OsAppResult | null | undefined) ?? null;
   const trace = (runRecord.osAppTrace ?? run.webTrace ?? run.trace ?? null) as WebTrace | null;
@@ -1053,7 +1095,7 @@ function OsAppDebrief({ run }: { run: RunDetailView }) {
       questionnaireMarkdown={run.questionnaireMarkdown}
       outputSchemaMarkdown={run.outputSchemaMarkdown}
     >
-      <DebriefPanel title="Evaluation" icon="verified" bodyClassName="p-4">
+      <DebriefPanel title={t("runs.evaluation", "Evaluation")} icon="verified" bodyClassName="p-4">
         <OsAppEvalScorecard
           osAppResult={osAppResult}
           verifier={run.verifier ?? null}
@@ -1064,11 +1106,14 @@ function OsAppDebrief({ run }: { run: RunDetailView }) {
       <TrialDecisionPanel trialEvaluation={run.trialEvaluation} />
       <UserFeedbackPanel feedback={feedback} />
       <DebriefPanel
-        title={`Desktop trace · ${events.length} step${events.length === 1 ? "" : "s"}`}
+        title={t("runs.desktopTrace", "Desktop trace · {count} step{suffix}", {
+          count: events.length,
+          suffix: events.length === 1 ? "" : "s",
+        })}
         icon="route"
       >
         {events.length === 0 ? (
-          <DashedNote>No desktop steps were captured for this run.</DashedNote>
+          <DashedNote>{t("runs.noDesktopSteps", "No desktop steps were captured for this run.")}</DashedNote>
         ) : (
           <div className="p-4">
             <HarborTraceReplay trace={trace!} />
@@ -1097,35 +1142,37 @@ function DetailLoading() {
 }
 
 function DetailNotFound() {
+  const { t } = useI18n();
   return (
     <StudioGlassPanel className="px-6 py-14 text-center rise-in">
       <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-md glass-tile">
         <Sym name="search_off" size={26} className="text-text-dim" />
       </div>
       <h2 className="font-display text-[15px] font-semibold text-text-main">
-        We couldn&apos;t find this run
+        {t("runs.notFoundTitle", "We couldn't find this run")}
       </h2>
       <p className="mx-auto mt-2 max-w-sm text-[15px] leading-relaxed text-text-variant">
-        It may have been deleted. Go back to the list to pick another.
+        {t("runs.notFoundDetail", "It may have been deleted. Go back to the list to pick another.")}
       </p>
     </StudioGlassPanel>
   );
 }
 
 function DetailError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const { t } = useI18n();
   const notFound = error instanceof ApiError && error.status === 404;
   if (notFound) return <DetailNotFound />;
   const message =
     error instanceof ApiError
       ? error.message
-      : "Something went wrong loading the details. Try again in a moment.";
+      : t("runs.loadDetailError", "Something went wrong loading the details. Try again in a moment.");
   return (
     <StudioGlassPanel className="border-l-4 border-l-danger px-5 py-8 text-center rise-in">
       <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-md bg-danger/10">
         <Sym name="error" fill={1} size={22} className="text-danger" />
       </div>
       <h2 className="font-display text-[15px] font-semibold text-text-main">
-        We couldn&apos;t open this run
+        {t("runs.openErrorTitle", "We couldn't open this run")}
       </h2>
       <p className="mx-auto mt-1.5 max-w-md break-words text-[15px] leading-relaxed text-text-variant">
         {message}
@@ -1136,7 +1183,7 @@ function DetailError({ error, onRetry }: { error: unknown; onRetry: () => void }
         className={`mt-4 inline-flex items-center gap-1.5 rounded-md bg-danger/10 px-4 py-2 text-[14px] text-danger transition ease-out hover:bg-danger/20 active:scale-[0.97] ${FOCUS_RING}`}
       >
         <Sym name="refresh" size={16} />
-        Try again
+        {t("runs.tryAgain", "Try again")}
       </button>
     </StudioGlassPanel>
   );

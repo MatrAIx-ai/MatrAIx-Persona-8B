@@ -1,4 +1,6 @@
 import { FOCUS_RING, Sym } from "../cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
+import { personaDimensionLabelKey } from "@/i18n/personaLabelKeys";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import type { PersonaPoolPersonaCard } from "@/lib/types";
 import { PersonaAvatar } from "./PersonaAvatar";
@@ -33,6 +35,7 @@ export function BenchPersonaCard({
   onOpenDetail,
   hits = [],
 }: BenchPersonaCardProps) {
+  const { t } = useI18n();
   const dims = Object.entries(persona.dimensions ?? {}).slice(0, 4);
   const displayName = personaPrimaryName(persona.name, persona.personaId, persona.dimensions ?? {});
   const codename = personaDisplayId(persona.personaId);
@@ -103,7 +106,7 @@ export function BenchPersonaCard({
                     event.stopPropagation();
                     onOpenDetail();
                   }}
-                  aria-label={`View details for ${displayName}`}
+                  aria-label={t("setup.persona.viewDetails", "View details for {name}", { name: displayName })}
                   className={`rounded-md p-1.5 text-text-dim transition hover:bg-surface-high hover:text-primary ${FOCUS_RING}`}
                 >
                   <Sym name="info" size={16} />
@@ -122,7 +125,7 @@ export function BenchPersonaCard({
               title={`${hit.label}: ${hit.value}`}
               className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
             >
-              <span className="opacity-70">Match</span>
+              <span className="opacity-70">{t("setup.persona.match", "Match")}</span>
               <span className="opacity-40">·</span>
               <span className="truncate">{hit.value}</span>
             </span>
@@ -142,7 +145,9 @@ export function BenchPersonaCard({
         >
           <dl className="space-y-2">
             {dims.map(([key, value], index) => {
-              const label = DIM_LABELS[key] ?? key.replace(/_/g, " ");
+              const fallback = DIM_LABELS[key] ?? key.replace(/_/g, " ");
+              const labelKey = personaDimensionLabelKey(key, fallback);
+              const label = labelKey ? t(labelKey, fallback) : fallback;
               return (
                 <div key={key} className="grid min-w-0 grid-cols-[4.75rem_1fr] items-baseline gap-x-2">
                   <dt className="truncate text-[11px] text-text-dim" title={label}>

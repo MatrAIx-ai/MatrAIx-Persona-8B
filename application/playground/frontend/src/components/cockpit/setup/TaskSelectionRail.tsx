@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import type { ConfigOptionValue } from "@/lib/types";
+import { useI18n } from "@/i18n/I18nProvider";
 import { isPinnedTask, recordRecentTaskSelection, togglePinnedTask } from "@/lib/cockpitTaskRailStorage";
 import { domainOptionsForTaskCards, orderTaskCards } from "@/lib/taskRailOrdering";
 import { FOCUS_RING, Sym } from "../cockpitShared";
@@ -13,7 +14,7 @@ import { CockpitRailHeader } from "./CockpitRailHeader";
 import { CockpitToggle } from "./CockpitToggle";
 import { TaskDetailModal } from "./TaskDetailModal";
 import { ToneChip, transportChipTone, type ToneChipTone } from "./ToneChip";
-import { CHIP_TEXT_CLASS, formatChipLabel } from "./taskCardLabels";
+import { CHIP_TEXT_CLASS, formatChipLabel, taskDisplayTitle } from "./taskCardLabels";
 import type { TaskCardTag } from "./taskCardLabels";
 import { taskCardIcon } from "./taskCardIcons";
 
@@ -81,11 +82,11 @@ export interface TaskSelectionRailProps {
   disabled?: boolean;
 }
 
-function transportLabel(transport?: ChatTransport): string {
-  if (transport === "api_sidecar") return "API (sidecar)";
-  if (transport === "api_external") return "API (endpoint)";
-  if (transport === "mcp_sidecar") return "MCP (sidecar)";
-  if (transport === "mcp_external") return "MCP (endpoint)";
+function transportLabel(transport: ChatTransport | undefined, t: ReturnType<typeof useI18n>["t"]): string {
+  if (transport === "api_sidecar") return t("taskDisplay.transport.apiSidecar", "API (sidecar)");
+  if (transport === "api_external") return t("taskDisplay.transport.apiEndpoint", "API (endpoint)");
+  if (transport === "mcp_sidecar") return t("taskDisplay.transport.mcpSidecar", "MCP (sidecar)");
+  if (transport === "mcp_external") return t("taskDisplay.transport.mcpEndpoint", "MCP (endpoint)");
   return "—";
 }
 
@@ -95,12 +96,8 @@ const ESTIMATED_CARD_HEIGHT = 132;
 /** Sentinel for the "no domain filter" dropdown entry. */
 const ALL_DOMAINS = "__all__";
 
-function formatDomainLabel(domain: string): string {
-  return domain
-    .split(/[-_/]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function formatDomainLabel(domain: string, t: ReturnType<typeof useI18n>["t"]): string {
+  return formatChipLabel(domain, t);
 }
 
 export function TaskSelectionRail({
@@ -127,6 +124,7 @@ export function TaskSelectionRail({
   tasksError,
   disabled,
 }: TaskSelectionRailProps) {
+  const { t } = useI18n();
   const [settingsOpen, setSettingsOpen] = useState<string | null>(null);
   const [detailCard, setDetailCard] = useState<TaskCardModel | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -155,13 +153,13 @@ export function TaskSelectionRail({
       if (domain) counts.set(domain, (counts.get(domain) ?? 0) + 1);
     }
     return [
-      { value: ALL_DOMAINS, label: `All domains · ${cards.length}` },
+      { value: ALL_DOMAINS, label: `${t("taskDisplay.domain.all", "All domains")} · ${cards.length}` },
       ...domainOptions.map((domain) => ({
         value: domain,
-        label: `${formatDomainLabel(domain)} · ${counts.get(domain) ?? 0}`,
+        label: `${formatDomainLabel(domain, t)} · ${counts.get(domain) ?? 0}`,
       })),
     ];
-  }, [cards, domainOptions]);
+  }, [cards, domainOptions, t]);
 
   const searchFilteredCards = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -216,6 +214,7 @@ export function TaskSelectionRail({
     const settingsId = settingsOpen === card.id;
     const unavailable = card.available === false;
     const pinned = isPinnedTask(taskType, card.id);
+    const displayTitle = taskDisplayTitle(card.title, card, t);
     return (
       <div
         className={`rounded-lg border border-transparent transition ${
@@ -246,7 +245,7 @@ export function TaskSelectionRail({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-display text-[14px] font-semibold leading-tight text-text-main">
-                      {card.title}
+                      {displayTitle}
                     </p>
                     {card.subtitle && (
                       <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-text-dim">
@@ -256,7 +255,7 @@ export function TaskSelectionRail({
                     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                       {card.transport && (
                         <ToneChip tone={transportChipTone(card.transport)} className={CHIP_TEXT_CLASS}>
-                          {transportLabel(card.transport)}
+                          {transportLabel(card.transport, t)}
                         </ToneChip>
                       )}
                       {(card.tags ??
@@ -270,7 +269,7 @@ export function TaskSelectionRail({
                           showDot={tag.label === "Available" || tag.label === "Unavailable"}
                           className={CHIP_TEXT_CLASS}
                         >
-                          {formatChipLabel(tag.label)}
+                          {formatChipLabel(tag.label, t)}
                         </ToneChip>
                       ))}
                     </div>
@@ -280,7 +279,11 @@ export function TaskSelectionRail({
                   type="button"
                   onClick={() => handleTogglePin(card.id)}
                   className={`shrink-0 rounded-md p-1.5 ${pinned ? "text-primary" : "text-text-dim hover:bg-surface-high hover:text-primary"} ${FOCUS_RING}`}
-                  aria-label={pinned ? `Unpin ${card.title}` : `Pin ${card.title}`}
+                  aria-label={t(
+                    pinned ? "setup.tasks.unpin" : "setup.tasks.pin",
+                    pinned ? "Unpin {title}" : "Pin {title}",
+                    { title: displayTitle },
+                  )}
                 >
                   <Sym name={pinned ? "keep" : "keep_off"} size={16} />
                 </button>
@@ -288,7 +291,7 @@ export function TaskSelectionRail({
                   type="button"
                   onClick={() => setDetailCard(card)}
                   className={`shrink-0 rounded-md p-1.5 text-text-dim hover:bg-surface-high hover:text-primary ${FOCUS_RING}`}
-                  aria-label={`View details for ${card.title}`}
+                  aria-label={t("setup.tasks.details", "View details for {title}", { title: displayTitle })}
                 >
                   <Sym name="info" size={16} />
                 </button>
@@ -297,7 +300,7 @@ export function TaskSelectionRail({
                     type="button"
                     onClick={() => setSettingsOpen(settingsId ? null : card.id)}
                     className={`shrink-0 rounded-md p-1.5 text-text-dim hover:bg-surface-high hover:text-primary ${FOCUS_RING}`}
-                    aria-label="Chatbot settings"
+                    aria-label={t("setup.tasks.chatbotSettings", "Chatbot settings")}
                   >
                     <Sym name="settings" size={16} />
                   </button>
@@ -307,7 +310,7 @@ export function TaskSelectionRail({
                     type="button"
                     onClick={() => setSettingsOpen(settingsId ? null : card.id)}
                     className={`shrink-0 rounded-md p-1.5 text-text-dim hover:bg-surface-high hover:text-primary ${FOCUS_RING}`}
-                    aria-label="Task settings"
+                    aria-label={t("setup.tasks.taskSettings", "Task settings")}
                   >
                     <Sym name="settings" size={16} />
                   </button>
@@ -326,7 +329,7 @@ export function TaskSelectionRail({
               {settingsId && taskType === "os-app" && resolveCuaRuntime && onCuaRuntimeChange && (
                 <div className="space-y-2 border-t border-outline/30 px-3 py-3">
                   <CockpitSelect
-                    label="OS runtime"
+                    label={t("setup.tasks.osRuntime", "OS runtime")}
                     value={resolveCuaRuntime(card.id, card.platform)}
                     options={cuaRuntimeSelectOptions(card.platform ?? "linux")}
                     disabled={disabled}
@@ -339,7 +342,7 @@ export function TaskSelectionRail({
                       rel="noreferrer"
                       className="text-[12px] font-medium text-primary hover:underline"
                     >
-                      use.computer setup →
+                      {t("setup.tasks.useComputerSetup", "use.computer setup →")}
                     </a>
                   )}
                 </div>
@@ -355,37 +358,37 @@ export function TaskSelectionRail({
                     <CockpitToggle
                       checked={serviceUp}
                       busy={starting}
-                      busyLabel="Starting…"
+                      busyLabel={t("setup.tasks.starting", "Starting…")}
                       onChange={(on) => {
                         if (on && !serviceUp && canStart) onStartSidecar?.(card.id);
                       }}
                       disabled={disabled || starting || serviceUp || !canStart}
-                      label="Service up"
+                      label={t("setup.tasks.serviceUp", "Service up")}
                       description={
                         serviceUp
                           ? card.statusDetail ??
                             (card.transport === "mcp_sidecar" || card.transport === "mcp_external"
-                              ? "MCP server is ready."
-                              : "Chat API is ready (capability check passed).")
+                              ? t("setup.tasks.mcpReady", "MCP server is ready.")
+                              : t("setup.tasks.chatApiReady", "Chat API is ready (capability check passed)."))
                           : canStart
                             ? card.transport === "mcp_sidecar" || card.transport === "mcp_external"
-                              ? "Start local MCP sidecar."
-                              : "Start local chat API sidecar."
+                              ? t("setup.tasks.startMcp", "Start local MCP sidecar.")
+                              : t("setup.tasks.startChatApi", "Start local chat API sidecar.")
                             : card.transport === "mcp_sidecar" || card.transport === "mcp_external"
-                              ? "Configure the MCP endpoint for this task."
-                              : "Configure the upstream API for this task."
+                              ? t("setup.tasks.configureMcp", "Configure the MCP endpoint for this task.")
+                              : t("setup.tasks.configureApi", "Configure the upstream API for this task.")
                       }
                     />
                   ) : (
                     <div className="glass-tile glass-tile--dim rounded-md px-3 py-2">
                       <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-text-dim">
-                        Connection
+                        {t("setup.tasks.connection", "Connection")}
                       </p>
                       <p className="mt-1 text-[13px] leading-relaxed text-text-variant">
                         {card.statusDetail ??
                           (card.transport === "mcp_sidecar" || card.transport === "mcp_external"
-                            ? "MCP-backed task; no local HTTP readiness toggle is available."
-                            : "No HTTP readiness check is configured for this task.")}
+                            ? t("setup.tasks.mcpNoToggle", "MCP-backed task; no local HTTP readiness toggle is available.")
+                            : t("setup.tasks.noReadinessCheck", "No HTTP readiness check is configured for this task."))}
                       </p>
                     </div>
                   )}
@@ -395,14 +398,17 @@ export function TaskSelectionRail({
                   {(card.capabilities?.length ?? 0) > 0 && (
                     <div>
                       <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-text-dim">
-                        Product capabilities
+                        {t("setup.tasks.capabilities", "Product capabilities")}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {card.capabilities!.map((cap) => (
                           <span
                             key={cap.id}
                             className="glass-tile rounded px-2 py-0.5 text-[12px] text-text-variant"
-                            title={cap.kind === "exposure" ? "Visible in replies" : "UserSim tool"}
+                            title={t(
+                              cap.kind === "exposure" ? "setup.tasks.visibleInReplies" : "setup.tasks.userSimTool",
+                              cap.kind === "exposure" ? "Visible in replies" : "UserSim tool",
+                            )}
                           >
                             {cap.label}
                           </span>
@@ -411,7 +417,7 @@ export function TaskSelectionRail({
                     </div>
                   )}
                   <label className="cockpit-field-label flex flex-col gap-1.5">
-                    Application model
+                    {t("setup.tasks.applicationModel", "Application model")}
                     <select
                       value={engine}
                       disabled={disabled}
@@ -429,16 +435,16 @@ export function TaskSelectionRail({
                     checked={maxTurns !== null}
                     onChange={(enabled) => onMaxTurnsChange(enabled ? maxTurns ?? 8 : null)}
                     disabled={disabled}
-                    label="Turn limit"
+                    label={t("setup.tasks.turnLimit", "Turn limit")}
                     description={
                       maxTurns === null
-                        ? "Unlimited by default. The run stops only when the user simulator decides to end."
-                        : "Stop after this many user turns."
+                        ? t("setup.tasks.unlimitedTurns", "Unlimited by default. The run stops only when the user simulator decides to end.")
+                        : t("setup.tasks.stopAfterTurns", "Stop after this many user turns.")
                     }
                   />
                   {maxTurns !== null && (
                     <label className="cockpit-field-label flex flex-col gap-1.5">
-                      Max turns
+                      {t("setup.tasks.maxTurns", "Max turns")}
                       <input
                         type="number"
                         min={1}
@@ -462,10 +468,10 @@ export function TaskSelectionRail({
 
   return (
     <aside className="glass-panel glass-panel-rail relative flex h-full min-h-0 flex-col rounded-xl p-4">
-      <CockpitRailHeader label="Task" />
+      <CockpitRailHeader label={t("setup.tasks.title", "Task")} />
 
       <label className="mb-2.5 flex flex-col gap-1">
-        <span className="sr-only">Search tasks</span>
+        <span className="sr-only">{t("setup.tasks.search", "Search tasks")}</span>
         <div className="relative">
           <Sym
             name="search"
@@ -477,7 +483,7 @@ export function TaskSelectionRail({
             value={searchQuery}
             disabled={disabled}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter by name, description, or tag…"
+            placeholder={t("setup.tasks.filterPlaceholder", "Filter by name, description, or tag…")}
             className="glass-tile h-9 w-full rounded-lg pl-9 pr-2.5 text-[14px] text-text-main placeholder:text-text-dim"
           />
         </div>
@@ -486,7 +492,7 @@ export function TaskSelectionRail({
       {domainOptions.length > 1 && (
         <div className="mb-2.5">
           <CockpitSelect
-            label="Domain"
+            label={t("taskDisplay.domain.label", "Domain")}
             inlineLabel
             value={domainFilter ?? ALL_DOMAINS}
             options={domainSelectOptions}
@@ -497,7 +503,7 @@ export function TaskSelectionRail({
       )}
 
       {tasksLoading && (
-        <p className="mb-2 text-[13px] text-text-dim">Loading tasks…</p>
+        <p className="mb-2 text-[13px] text-text-dim">{t("setup.tasks.loading", "Loading tasks…")}</p>
       )}
       {tasksError && (
         <p className="mb-2 text-[13px] text-danger">{tasksError}</p>
@@ -506,7 +512,9 @@ export function TaskSelectionRail({
       <div ref={listRef} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
         {filteredCards.length === 0 && !tasksLoading && (
           <p className="glass-tile glass-tile--dim rounded-lg px-3 py-4 text-center text-[13px] text-text-dim">
-            {searchQuery.trim() || domainFilter ? "No tasks match your filters." : "No tasks available."}
+            {searchQuery.trim() || domainFilter
+              ? t("setup.tasks.noMatch", "No tasks match your filters.")
+              : t("setup.tasks.none", "No tasks available.")}
           </p>
         )}
         {useVirtualList ? (

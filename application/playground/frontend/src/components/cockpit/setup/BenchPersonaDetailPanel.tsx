@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api, ApiError } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
+import {
+  personaDimensionLabelKey,
+  personaSectionLabelKey,
+} from "@/i18n/personaLabelKeys";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import {
   PERSONA_BENCH_POOL,
@@ -53,6 +58,15 @@ function spotlightDotClass(tone: ReturnType<typeof personaDimChipTone>): string 
 }
 
 function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
+  const { t } = useI18n();
+  const sectionLabel = (id: string, label: string): string => {
+    const labelKey = personaSectionLabelKey(id, label);
+    return labelKey ? t(labelKey, label) : label;
+  };
+  const dimensionLabel = (id: string, label: string): string => {
+    const labelKey = personaDimensionLabelKey(id, label);
+    return labelKey ? t(labelKey, label) : label;
+  };
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     groups.forEach((group, index) => {
@@ -74,7 +88,7 @@ function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
 
   if (groups.length === 0) {
     return (
-      <p className="mt-4 text-[13px] leading-relaxed text-text-dim">No dimension values available.</p>
+      <p className="mt-4 text-[13px] leading-relaxed text-text-dim">{t("setup.persona.noDimensionValues", "No dimension values available.")}</p>
     );
   }
 
@@ -97,11 +111,13 @@ function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
             >
               <span className="min-w-0">
                 <span className="block font-display text-[14px] font-semibold text-text-main">
-                  {group.label}
+                  {sectionLabel(group.id, group.label)}
                 </span>
                 <span className="mt-1 block text-[12px] text-text-dim">
-                  {group.count.toLocaleString()} attributes · {group.subgroups.length}{" "}
-                  subgroups
+                  {t("setup.persona.subgroups", "{count} attributes · {subgroups} subgroups", {
+                    count: group.count.toLocaleString(),
+                    subgroups: group.subgroups.length,
+                  })}
                 </span>
               </span>
               <Sym
@@ -129,7 +145,7 @@ function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
                         className={`flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left ${FOCUS_RING}`}
                       >
                         <span className="text-[13px] font-medium text-text-main">
-                          {subgroup.label}
+                          {sectionLabel(subgroup.id, subgroup.label)}
                         </span>
                         <span className="flex items-center gap-1.5 text-[12px] text-text-dim">
                           {subgroup.count}
@@ -148,9 +164,9 @@ function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
                             >
                               <span
                                 className="truncate text-[12px] leading-snug text-text-dim"
-                                title={item.label}
+                                title={dimensionLabel(item.id, item.label)}
                               >
-                                {item.label}
+                                {dimensionLabel(item.id, item.label)}
                               </span>
                               <span
                                 className="truncate text-right text-[13px] leading-snug text-text-main"
@@ -179,11 +195,12 @@ export function BenchPersonaDetailPanel({
   pool = PERSONA_BENCH_POOL,
   onClose,
   onUse,
-  useLabel = "Use persona",
+  useLabel,
   coverRail = false,
   embedded = false,
   className = "",
 }: BenchPersonaDetailPanelProps) {
+  const { t } = useI18n();
   const personaId = persona?.personaId ?? null;
   const activePool = pool?.trim() || PERSONA_BENCH_POOL;
   const detailQuery = useQuery({
@@ -203,23 +220,27 @@ export function BenchPersonaDetailPanel({
     return [
       {
         id: "all",
-        label: "Attributes",
+        label: t("setup.persona.attributes", "Attributes"),
         count: entries.length,
         subgroups: [
           {
             id: "flat",
-            label: "All dimensions",
+            label: t("setup.persona.allDimensions", "All dimensions"),
             count: entries.length,
             items: entries.map(([id, value]) => ({
               id,
-              label: id.replace(/_/g, " "),
+              label: (() => {
+                const fallback = id.replace(/_/g, " ");
+                const labelKey = personaDimensionLabelKey(id, fallback);
+                return labelKey ? t(labelKey, fallback) : fallback;
+              })(),
               value,
             })),
           },
         ],
       },
     ];
-  }, [detailQuery.data?.dimensionGroups, dims]);
+  }, [detailQuery.data?.dimensionGroups, dims, t]);
 
   const spotlight = useMemo(
     () => SPOTLIGHT.map((item) => ({ ...item, value: dims[item.key] })).filter((item) => item.value),
@@ -251,7 +272,7 @@ export function BenchPersonaDetailPanel({
       : `glass-panel flex h-full max-h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl ${className}`;
 
   return (
-    <aside className={shellClass} aria-label={`Persona details for ${displayName}`}>
+    <aside className={shellClass} aria-label={t("setup.persona.detailsFor", "Persona details for {name}", { name: displayName })}>
       <div className="shrink-0 border-b border-outline/20 px-1 pb-3 pt-0.5">
         <div className="flex items-center justify-between gap-2">
           <button
@@ -260,15 +281,15 @@ export function BenchPersonaDetailPanel({
             className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-text-dim transition hover:bg-surface-high hover:text-text-main ${FOCUS_RING}`}
           >
             <Sym name="arrow_back" size={16} />
-            Back
+            {t("setup.common.back", "Back")}
           </button>
           <p className="cockpit-field-label text-[11px] tracking-[0.08em] text-text-dim">
-            Persona profile
+            {t("setup.persona.profile", "Persona profile")}
           </p>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close persona details"
+            aria-label={t("setup.persona.closeDetails", "Close persona details")}
             className={`shrink-0 rounded-md p-1.5 text-text-dim transition hover:bg-surface-high hover:text-text-main ${FOCUS_RING}`}
           >
             <Sym name="close" size={18} />
@@ -298,7 +319,7 @@ export function BenchPersonaDetailPanel({
                   <span className="text-outline/80" aria-hidden>
                     ·
                   </span>
-                  <span>{filledCount.toLocaleString()} dimensions</span>
+                  <span>{filledCount.toLocaleString()} {t("setup.persona.dimensions", "dimensions")}</span>
                 </>
               ) : null}
             </p>
@@ -311,38 +332,42 @@ export function BenchPersonaDetailPanel({
 
         {spotlight.length > 0 ? (
           <dl className="mt-5 space-y-3 border-y border-outline/20 py-4">
-            {spotlight.map(({ key, label, value }, index) => (
-              <div key={key} className="grid grid-cols-[5.5rem_1fr] items-baseline gap-x-3">
-                <dt className="text-[12px] text-text-dim">
-                  <span
-                    className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${spotlightDotClass(personaDimChipTone(key, index))}`}
-                    aria-hidden
-                  />
-                  {label}
-                </dt>
-                <dd className="min-w-0 text-[14px] leading-snug text-text-main" title={value}>
-                  {value}
-                </dd>
-              </div>
-            ))}
+            {spotlight.map(({ key, label, value }, index) => {
+              const labelKey = personaDimensionLabelKey(key, label);
+              const displayLabel = labelKey ? t(labelKey, label) : label;
+              return (
+                <div key={key} className="grid grid-cols-[5.5rem_1fr] items-baseline gap-x-3">
+                  <dt className="text-[12px] text-text-dim">
+                    <span
+                      className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${spotlightDotClass(personaDimChipTone(key, index))}`}
+                      aria-hidden
+                    />
+                    {displayLabel}
+                  </dt>
+                  <dd className="min-w-0 text-[14px] leading-snug text-text-main" title={value}>
+                    {value}
+                  </dd>
+                </div>
+              );
+            })}
           </dl>
         ) : null}
 
         <div className="mt-6">
           <div>
-            <p className="font-display text-[15px] font-semibold text-text-main">Taxonomy</p>
+            <p className="font-display text-[15px] font-semibold text-text-main">{t("setup.persona.taxonomy", "Taxonomy")}</p>
             <p className="mt-1 text-[12px] leading-relaxed text-text-dim">
-              {groups.length} groups · expand a category to browse attributes
+              {t("setup.persona.groupsBrowse", "{count} groups · expand a category to browse attributes", { count: groups.length })}
             </p>
           </div>
           {detailQuery.isPending ? (
-            <p className="mt-4 text-[13px] text-text-dim">Loading full dimensions…</p>
+            <p className="mt-4 text-[13px] text-text-dim">{t("setup.persona.loadingDimensions", "Loading full dimensions…")}</p>
           ) : null}
           {detailQuery.isError ? (
             <p className="mt-4 text-[13px] text-danger">
               {detailQuery.error instanceof ApiError
                 ? detailQuery.error.message
-                : "Could not load persona record."}
+                : t("setup.persona.loadRecordFailed", "Could not load persona record.")}
             </p>
           ) : null}
           {!detailQuery.isPending ? <TaxonomyTree groups={groups} /> : null}
@@ -358,7 +383,7 @@ export function BenchPersonaDetailPanel({
             onClick={() => onUse(persona)}
             className={`inline-flex h-10 w-full items-center justify-center rounded-md bg-primary text-[14px] font-medium text-on-primary transition hover:bg-primary/90 ${FOCUS_RING}`}
           >
-            {useLabel}
+            {useLabel ?? t("setup.persona.use", "Use persona")}
           </button>
         </div>
       ) : null}

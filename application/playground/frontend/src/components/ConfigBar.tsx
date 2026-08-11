@@ -11,6 +11,7 @@
  * Knobs are disabled (read-only) until a session exists, and while a config
  * mutation is in flight, so a knob can't be changed mid-turn-setup.
  */
+import { useI18n } from "@/i18n/I18nProvider";
 import { KnobSelect, type KnobOption } from "./cockpit/KnobSelect";
 import { Sym } from "./cockpit/cockpitShared";
 import type { ConfigKnob, SessionConfig } from "@/lib/types";
@@ -64,6 +65,7 @@ function toKnobs(options: ConfigBarProps["options"]): ConfigKnob[] | null {
 }
 
 export function ConfigBar({ config, options, disabled, onChange }: ConfigBarProps) {
+  const { t } = useI18n();
   const knobs = toKnobs(options);
 
   if (!config || !knobs) {
@@ -94,13 +96,14 @@ export function ConfigBar({ config, options, disabled, onChange }: ConfigBarProp
         if (knob.key === "domain") return null;
         const knobOptions: KnobOption[] = knob.options.map((o) => ({
           value: o.value,
-          label: o.label,
-          description: o.description,
+          // Translate only for display; the API value remains the original enum/model id.
+          label: t(`cockpit.config.optionLabel.${knob.key}.${o.value}`, o.label),
+          description: t(`cockpit.config.optionDescription.${knob.key}.${o.value}`, o.description),
         }));
         return (
           <div key={knob.key} className="flex items-center gap-1.5">
             <KnobSelect
-              label={knob.label || FALLBACK_LABEL[knob.key] || knob.key}
+              label={t(`cockpit.config.label.${knob.key}`, knob.label || FALLBACK_LABEL[knob.key] || knob.key)}
               value={String(value)}
               options={knobOptions}
               onChange={(v) => onChange({ [key]: v } as Partial<SessionConfig>)}
@@ -109,8 +112,14 @@ export function ConfigBar({ config, options, disabled, onChange }: ConfigBarProp
             {knob.rebuildsAgent && (
               <span
                 className="flex items-center text-warn"
-                title="Changing this re-warms the recommender. The next turn will be slower."
-                aria-label="Changing this re-warms the recommender; the next turn will be slower"
+                title={t(
+                  "cockpit.config.rewarm.title",
+                  "Changing this re-warms the recommender. The next turn will be slower.",
+                )}
+                aria-label={t(
+                  "cockpit.config.rewarm.aria",
+                  "Changing this re-warms the recommender; the next turn will be slower",
+                )}
               >
                 <Sym name="bolt" fill={1} size={14} />
               </span>

@@ -1,7 +1,116 @@
 import type { ToneChipTone } from "./ToneChip";
 
-export function taskKindLabel(taskKind: "example" | "task"): string {
-  return taskKind === "example" ? "Example" : "Task";
+export type DisplayTranslate = (
+  key: string,
+  fallback?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+type TaskDisplayIdentity = {
+  id?: string;
+  taskPath?: string;
+};
+
+type TaskTitleEntry = {
+  key: string;
+  fallback: string;
+};
+
+/** Allowlisted task-title translations keyed by stable task id. */
+const TASK_TITLE_ENTRIES: Record<string, TaskTitleEntry> = {
+  "chat-meal-planning-nutrition": {
+    key: "taskDisplay.title.chatMealPlanningNutrition",
+    fallback: "Meal Planning Nutrition",
+  },
+  "chat-openbb-corporate-action-honesty": {
+    key: "taskDisplay.title.chatOpenbbCorporateActionHonesty",
+    fallback: "OpenBB Corporate Action Honesty",
+  },
+  "chat-api-support-chatbot": {
+    key: "taskDisplay.title.chatApiSupportChatbot",
+    fallback: "API Support Chatbot",
+  },
+  "chat-mcp-support-chatbot": {
+    key: "taskDisplay.title.chatMcpSupportChatbot",
+    fallback: "MCP Support Chatbot",
+  },
+  "harbor-product-feedback": {
+    key: "taskDisplay.title.harborProductFeedback",
+    fallback: "Product Feedback",
+  },
+  "harbor-survey-product-feedback": {
+    key: "taskDisplay.title.harborProductFeedback",
+    fallback: "Survey Product Feedback",
+  },
+  "harbor-annual-checkup-habits": {
+    key: "taskDisplay.title.harborAnnualCheckupHabits",
+    fallback: "Annual Checkup Habits",
+  },
+  "harbor-price-sensitivity-hasbro-gaming-candy-land": {
+    key: "taskDisplay.title.harborPriceSensitivityHasbroGamingCandyLand",
+    fallback: "Price Sensitivity Hasbro Gaming Candy Land",
+  },
+  "web-browser-use-laptop-choice": {
+    key: "taskDisplay.title.webBrowserUseLaptopChoice",
+    fallback: "Browser Use Laptop Choice",
+  },
+  "web-cocoa-plan-choice": {
+    key: "taskDisplay.title.webCocoaPlanChoice",
+    fallback: "Cocoa Plan Choice",
+  },
+  "web-cua-bookshop-choice": {
+    key: "taskDisplay.title.webCuaBookshopChoice",
+    fallback: "Cua Bookshop Choice",
+  },
+  "web-playwright-quote-choice": {
+    key: "taskDisplay.title.webPlaywrightQuoteChoice",
+    fallback: "Playwright Quote Choice",
+  },
+  "web-mit-ocw-course-choice": {
+    key: "taskDisplay.title.webMitOcwCourseChoice",
+    fallback: "Mit Ocw Course Choice",
+  },
+  "web-notion-plan-comparison": {
+    key: "taskDisplay.title.webNotionPlanComparison",
+    fallback: "Notion Plan Comparison",
+  },
+  "computer-use-ios-photo-access-review": {
+    key: "taskDisplay.title.computerUseIosPhotoAccessReview",
+    fallback: "Photo Access Review",
+  },
+  "computer-use-linux-note-to-csv": {
+    key: "taskDisplay.title.computerUseLinuxNoteToCsv",
+    fallback: "Note To CSV",
+  },
+  "computer-use-macos-calendar-reminder-handoff": {
+    key: "taskDisplay.title.computerUseMacosCalendarReminderHandoff",
+    fallback: "Calendar Reminder Handoff",
+  },
+  "os-app-ios-news-subscription-decision": {
+    key: "taskDisplay.title.osAppIosNewsSubscriptionDecision",
+    fallback: "News Subscription Decision",
+  },
+  "os-app-macos-stocks-mu-sentiment": {
+    key: "taskDisplay.title.osAppMacosStocksMuSentiment",
+    fallback: "Stocks MU Sentiment",
+  },
+};
+
+/** Translate only an allowlisted task title; unknown titles stay untouched. */
+export function taskDisplayTitle(
+  title: string | undefined,
+  identity: TaskDisplayIdentity,
+  t?: DisplayTranslate,
+): string {
+  const original = title?.trim() ?? "";
+  const entry = identity.id ? TASK_TITLE_ENTRIES[identity.id.trim()] : undefined;
+  return entry && t ? t(entry.key, entry.fallback) : entry?.fallback ?? original;
+}
+
+export function taskKindLabel(taskKind: "example" | "task", t?: DisplayTranslate): string {
+  const key = taskKind === "example" ? "catalog.task.kind.example" : "catalog.task.kind.task";
+  const fallback = taskKind === "example" ? "Example" : "Task";
+  return t?.(key, fallback) ?? fallback;
 }
 
 /** Example tasks live under ``application/tasks/example-*`` folders. */
@@ -31,23 +140,60 @@ export interface TaskCardTagInput {
   tags?: string[];
 }
 
-export function osChipLabel(os?: string | null): string {
+export function osChipLabel(os?: string | null, t?: DisplayTranslate): string {
   const key = (os ?? "").trim().toLowerCase();
-  if (key === "macos") return "macOS";
-  if (key === "ios") return "iOS";
-  if (key === "linux") return "Linux";
+  if (key === "macos") return t?.("taskDisplay.os.macos", "macOS") ?? "macOS";
+  if (key === "ios") return t?.("taskDisplay.os.ios", "iOS") ?? "iOS";
+  if (key === "linux") return t?.("taskDisplay.os.linux", "Linux") ?? "Linux";
   if (!key) return "";
-  return formatChipLabel(key);
+  return formatChipLabel(key, t);
 }
 
 /** Sentence-case chip text — only the first letter capitalized unless already mixed case. */
-export function formatChipLabel(text: string): string {
+export function formatChipLabel(text: string, t?: DisplayTranslate): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
-  if (/[a-z]/.test(trimmed) && /[A-Z]/.test(trimmed)) {
-    return trimmed;
-  }
+  const normalized = trimmed.toLowerCase().replace(/[\s_]+/g, "-");
+  const knownLabels: Record<string, { key: string; fallback: string }> = {
+    example: { key: "taskDisplay.kind.example", fallback: "Example" },
+    task: { key: "taskDisplay.kind.task", fallback: "Task" },
+    available: { key: "taskDisplay.status.available", fallback: "Available" },
+    unavailable: { key: "taskDisplay.status.unavailable", fallback: "Unavailable" },
+    survey: { key: "taskDisplay.type.survey", fallback: "Survey" },
+    chatbot: { key: "taskDisplay.type.chatbot", fallback: "Chatbot" },
+    web: { key: "taskDisplay.type.web", fallback: "Web" },
+    "os-app": { key: "taskDisplay.type.osApp", fallback: "OS App" },
+    software: { key: "taskDisplay.domain.software", fallback: "Software" },
+    healthcare: { key: "taskDisplay.domain.healthcare", fallback: "Healthcare" },
+    "finance-research": { key: "taskDisplay.domain.financeResearch", fallback: "Finance research" },
+    "commerce-retail": { key: "taskDisplay.domain.commerceRetail", fallback: "Commerce-retail" },
+    commerce: { key: "taskDisplay.domain.commerce", fallback: "Commerce" },
+    "arts-culture": { key: "taskDisplay.domain.artsCulture", fallback: "Arts-culture" },
+    education: { key: "taskDisplay.domain.education", fallback: "Education" },
+    finance: { key: "taskDisplay.domain.finance", fallback: "Finance" },
+    easy: { key: "taskDisplay.difficulty.easy", fallback: "Easy" },
+    medium: { key: "taskDisplay.difficulty.medium", fallback: "Medium" },
+    hard: { key: "taskDisplay.difficulty.hard", fallback: "Hard" },
+    linux: { key: "taskDisplay.os.linux", fallback: "Linux" },
+    macos: { key: "taskDisplay.os.macos", fallback: "macOS" },
+    ios: { key: "taskDisplay.os.ios", fallback: "iOS" },
+  };
+  const known = knownLabels[normalized];
+  if (known) return t?.(known.key, known.fallback) ?? known.fallback;
+  if (/[a-z]/.test(trimmed) && /[A-Z]/.test(trimmed)) return trimmed;
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
+export function taskDocumentLabel(documentId: string, t?: DisplayTranslate): string {
+  const labels: Record<string, { key: string; fallback: string }> = {
+    instruction: { key: "taskDisplay.document.instruction", fallback: "Instruction" },
+    context: { key: "taskDisplay.document.context", fallback: "Context" },
+    questionnaire: { key: "taskDisplay.document.questionnaire", fallback: "Questionnaire" },
+    "output-schema": { key: "taskDisplay.document.outputSchema", fallback: "Output schema" },
+    "self-report": { key: "taskDisplay.document.selfReport", fallback: "Self-report" },
+  };
+  const label = labels[documentId];
+  return label && t ? t(label.key, label.fallback) : label?.fallback ?? documentId;
 }
 
 /** Persona dimension chips use the same tone order as task metadata chips. */
@@ -82,21 +228,21 @@ export function taskCardTags({
   taskKind,
   domain,
   difficulty,
-}: TaskCardTagInput): TaskCardTag[] {
+}: TaskCardTagInput, t?: DisplayTranslate): TaskCardTag[] {
   const kind = resolveTaskKind(taskPath, taskKind);
   // One tone per chip category so they read at a glance:
   // kind → neutral, domain → accent, difficulty → secondary. The task type is
   // NOT repeated here — it already renders as its own chip / tab context.
-  const chips: TaskCardTag[] = [{ label: taskKindLabel(kind), tone: "neutral" }];
+  const chips: TaskCardTag[] = [{ label: taskKindLabel(kind, t), tone: "neutral" }];
 
   const domainLabel = domain?.trim();
   if (domainLabel) {
-    chips.push({ label: formatChipLabel(domainLabel), tone: "accent" });
+    chips.push({ label: formatChipLabel(domainLabel, t), tone: "accent" });
   }
 
   const difficultyLabel = difficulty?.trim();
   if (difficultyLabel) {
-    chips.push({ label: formatChipLabel(difficultyLabel), tone: "secondary" });
+    chips.push({ label: formatChipLabel(difficultyLabel, t), tone: "secondary" });
   }
 
   return chips;
