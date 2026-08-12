@@ -11,6 +11,7 @@ from matraix.persona_agent_context import (
 from matraix.persona_dimension_catalog import (
     build_dimension_narrative,
     collect_dimension_items,
+    load_zh_hant_labels,
 )
 
 
@@ -111,6 +112,31 @@ def test_zh_rendering_uses_chinese_labels_and_values():
     assert "每天" in text
 
 
+def test_zh_hant_rendering_uses_taiwan_labels_and_values():
+    persona = load_persona(
+        "persona/datasets/matraix-persona-dev-sample/persona_0018.yaml"
+    )
+    paragraphs = build_dimension_narrative(persona.dimensions, language="zh-Hant")
+    text = "\n".join(paragraphs)
+
+    assert "### 身分" in text
+    assert "### 語言與溝通" in text
+    assert "年齡" in text or "年齡段" in text
+    assert "每天" in text
+    assert "年龄" not in text
+
+
+def test_zh_hant_schema_pack_is_complete_and_missing_entries_fall_back():
+    labels = load_zh_hant_labels()
+    assert len(labels) == 1_290
+    paragraphs = build_dimension_narrative(
+        {"zzz_fake_dim": "Fake value"}, language="zh-Hant"
+    )
+    text = "\n".join(paragraphs)
+    assert "zzz fake dim" in text
+    assert "Fake value" in text
+
+
 def test_zh_rendering_follows_environment(monkeypatch):
     persona = load_persona(
         "persona/datasets/matraix-persona-dev-sample/persona_0018.yaml"
@@ -120,6 +146,18 @@ def test_zh_rendering_follows_environment(monkeypatch):
     text = "\n".join(build_dimension_narrative(persona.dimensions))
 
     assert "### 身份" in text
+    assert "每天" in text
+
+
+def test_zh_hant_rendering_follows_environment(monkeypatch):
+    persona = load_persona(
+        "persona/datasets/matraix-persona-dev-sample/persona_0018.yaml"
+    )
+    monkeypatch.setenv("MATRAIX_PERSONA_LANGUAGE", "zh-Hant")
+
+    text = "\n".join(build_dimension_narrative(persona.dimensions))
+
+    assert "### 身分" in text
     assert "每天" in text
 
 
@@ -140,6 +178,7 @@ def test_zh_missing_labels_file_returns_empty(tmp_path, monkeypatch):
     assert cat.resolve_persona_language(None) == "en"
     assert cat.resolve_persona_language("zh") == "zh"
     assert cat.resolve_persona_language("ZH ") == "zh"
+    assert cat.resolve_persona_language("ZH-hant") == "zh-Hant"
     monkeypatch.setenv("MATRAIX_PERSONA_LANGUAGE", "fr")
     assert cat.resolve_persona_language(None) == "en"
 
@@ -197,6 +236,21 @@ system_prompt: Prefer practical choices.
     assert "A careful shopper." in v0_zh
     assert "Prefer practical choices." in v0_zh
 
+    legacy_hant = render(legacy_path, language="zh-Hant")
+    assert "## 人口統計" in legacy_hant
+    assert "- 年齡: 25-34" in legacy_hant
+    assert "## 心理特徵" in legacy_hant
+    assert "## 溝通方式" in legacy_hant
+    assert "## 偏好" in legacy_hant
+    assert "## 行為方式" in legacy_hant
+
+    v0_hant = render(v0_path, language="zh-Hant")
+    assert "你是 Casey Brooks。" in v0_hant
+    assert "## 個人簡介" in v0_hant
+    assert "## 行為準則" in v0_hant
+    assert "A careful shopper." in v0_hant
+    assert "Prefer practical choices." in v0_hant
+
     legacy_en = render(legacy_path)
     assert "## Demographics" in legacy_en
     assert "- Age: 25-34" in legacy_en
@@ -225,5 +279,29 @@ def test_zh_template_preserves_task_instruction_verbatim():
 
     assert "你是 Ethan Brooks。" in text
     assert "## 你是谁" in text
+    assert "## Task instruction" in text
+    assert task in text
+
+
+def test_zh_hant_template_preserves_task_instruction_verbatim():
+    from matraix.agents.persona.templating import (
+        PERSONA_INSTRUCTION_TEMPLATE,
+        render_persona_template,
+        resolve_persona_template,
+    )
+
+    persona = load_persona(
+        "persona/datasets/matraix-persona-dev-sample/persona_0018.yaml"
+    )
+    task = "Keep this English task exactly as written."
+    text = render_persona_template(
+        resolve_persona_template(persona, None, PERSONA_INSTRUCTION_TEMPLATE),
+        persona,
+        instruction=task,
+        language="zh-Hant",
+    )
+
+    assert "你是 Ethan Brooks。" in text
+    assert "## 你是誰" in text
     assert "## Task instruction" in text
     assert task in text

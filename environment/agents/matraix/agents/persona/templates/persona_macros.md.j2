@@ -2,11 +2,13 @@
    Agent-facing text must read as direct identity — never mention simulation,
    persona IDs, schema versions, or "stay in character" roleplay cues. #}
 
+{% macro localized(language, english, simplified, traditional) -%}
+{% if language == 'zh-Hant' -%}{{ traditional }}{% elif language == 'zh' -%}{{ simplified }}{% else -%}{{ english }}{% endif -%}
+{%- endmacro %}
+
 {% macro render_persona_narrative(paragraphs, language='en') -%}
 {% if paragraphs %}
-{% if language == 'zh' %}## 你是谁
-{% else %}## Who you are
-{% endif %}
+## {{ localized(language, 'Who you are', '你是谁', '你是誰') }}
 
 {% for paragraph in paragraphs -%}
 {{ paragraph }}
@@ -17,98 +19,88 @@
 
 {% macro render_demographics(d, language='en') -%}
 {% if d %}
-{% if language == 'zh' %}## 人口统计
-{% else %}## Demographics
-{% endif %}
-{% if d.age is defined %}- {% if language == 'zh' %}年龄{% else %}Age{% endif %}: {{ d.age }}
+## {{ localized(language, 'Demographics', '人口统计', '人口統計') }}
+{% if d.age is defined %}- {{ localized(language, 'Age', '年龄', '年齡') }}: {{ d.age }}
 {% endif -%}
-{% if d.gender is defined %}- {% if language == 'zh' %}性别{% else %}Gender{% endif %}: {{ d.gender }}
+{% if d.gender is defined %}- {{ localized(language, 'Gender', '性别', '性別') }}: {{ d.gender }}
 {% endif -%}
-{% if d.location is defined %}- {% if language == 'zh' %}所在地{% else %}Location{% endif %}: {{ d.location }}
+{% if d.location is defined %}- {{ localized(language, 'Location', '所在地', '所在地') }}: {{ d.location }}
 {% endif -%}
-{% if d.occupation is defined %}- {% if language == 'zh' %}职业{% else %}Occupation{% endif %}: {{ d.occupation }}
+{% if d.occupation is defined %}- {{ localized(language, 'Occupation', '职业', '職業') }}: {{ d.occupation }}
 {% endif -%}
-{% if d.education is defined %}- {% if language == 'zh' %}教育程度{% else %}Education{% endif %}: {{ d.education }}
+{% if d.education is defined %}- {{ localized(language, 'Education', '教育程度', '教育程度') }}: {{ d.education }}
 {% endif -%}
-{% if d.income_bracket is defined %}- {% if language == 'zh' %}收入区间{% else %}Income{% endif %}: {{ d.income_bracket }}
+{% if d.income_bracket is defined %}- {{ localized(language, 'Income', '收入区间', '收入區間') }}: {{ d.income_bracket }}
 {% endif -%}
-{% if d.life_stage is defined %}- {% if language == 'zh' %}人生阶段{% else %}Life stage{% endif %}: {{ d.life_stage }}
+{% if d.life_stage is defined %}- {{ localized(language, 'Life stage', '人生阶段', '人生階段') }}: {{ d.life_stage }}
 {% endif -%}
-{% if d.cultural_background is defined %}- {% if language == 'zh' %}文化背景{% else %}Background{% endif %}: {{ d.cultural_background }}
+{% if d.cultural_background is defined %}- {{ localized(language, 'Background', '文化背景', '文化背景') }}: {{ d.cultural_background }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_psychology(p, language='en') -%}
 {% if p %}
-{% if language == 'zh' %}## 心理特征
-{% else %}## Psychology
-{% endif %}
+## {{ localized(language, 'Psychology', '心理特征', '心理特徵') }}
 {% if p.big_five is defined and p.big_five %}
-- {% if language == 'zh' %}大五人格{% else %}Big Five{% endif %}: openness={{ p.big_five.openness }}, conscientiousness={{ p.big_five.conscientiousness }}, extraversion={{ p.big_five.extraversion }}, agreeableness={{ p.big_five.agreeableness }}, neuroticism={{ p.big_five.neuroticism }}
+- {{ localized(language, 'Big Five', '大五人格', '大五人格') }}: openness={{ p.big_five.openness }}, conscientiousness={{ p.big_five.conscientiousness }}, extraversion={{ p.big_five.extraversion }}, agreeableness={{ p.big_five.agreeableness }}, neuroticism={{ p.big_five.neuroticism }}
 {% endif -%}
-{% if p.risk_tolerance is defined %}- {% if language == 'zh' %}风险承受度{% else %}Risk tolerance{% endif %}: {{ p.risk_tolerance }}
+{% if p.risk_tolerance is defined %}- {{ localized(language, 'Risk tolerance', '风险承受度', '風險承受度') }}: {{ p.risk_tolerance }}
 {% endif -%}
-{% if p.openness_to_new_tools is defined %}- {% if language == 'zh' %}对新工具的开放度{% else %}Openness to new tools{% endif %}: {{ p.openness_to_new_tools }}
+{% if p.openness_to_new_tools is defined %}- {{ localized(language, 'Openness to new tools', '对新工具的开放度', '對新工具的開放度') }}: {{ p.openness_to_new_tools }}
 {% endif -%}
-{% if p.patience is defined %}- {% if language == 'zh' %}耐心程度{% else %}Patience{% endif %}: {{ p.patience }}
+{% if p.patience is defined %}- {{ localized(language, 'Patience', '耐心程度', '耐心程度') }}: {{ p.patience }}
 {% endif -%}
-{% if p.skepticism is defined %}- {% if language == 'zh' %}怀疑程度{% else %}Skepticism{% endif %}: {{ p.skepticism }}
+{% if p.skepticism is defined %}- {{ localized(language, 'Skepticism', '怀疑程度', '懷疑程度') }}: {{ p.skepticism }}
 {% endif -%}
 {% if p.motivation_drivers is defined and p.motivation_drivers %}
-- {% if language == 'zh' %}动机{% else %}Motivation{% endif %}: {{ p.motivation_drivers | join(', ') }}
+- {{ localized(language, 'Motivation', '动机', '動機') }}: {{ p.motivation_drivers | join(', ') }}
 {% endif -%}
 {% if 'values' in p and p['values'] %}
-- {% if language == 'zh' %}价值观{% else %}Values{% endif %}: {{ p['values'] | join(', ') }}
+- {{ localized(language, 'Values', '价值观', '價值觀') }}: {{ p['values'] | join(', ') }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_communication(c, language='en') -%}
 {% if c %}
-{% if language == 'zh' %}## 沟通方式
-{% else %}## Communication
-{% endif %}
-{% if c.tone is defined %}- {% if language == 'zh' %}语气{% else %}Tone{% endif %}: {{ c.tone }}
+## {{ localized(language, 'Communication', '沟通方式', '溝通方式') }}
+{% if c.tone is defined %}- {{ localized(language, 'Tone', '语气', '語氣') }}: {{ c.tone }}
 {% endif -%}
-{% if c.verbosity is defined %}- {% if language == 'zh' %}详细程度{% else %}Verbosity{% endif %}: {{ c.verbosity }}
+{% if c.verbosity is defined %}- {{ localized(language, 'Verbosity', '详细程度', '詳細程度') }}: {{ c.verbosity }}
 {% endif -%}
-{% if c.formality is defined %}- {% if language == 'zh' %}正式程度{% else %}Formality{% endif %}: {{ c.formality }}
+{% if c.formality is defined %}- {{ localized(language, 'Formality', '正式程度', '正式程度') }}: {{ c.formality }}
 {% endif -%}
-{% if c.language_level is defined %}- {% if language == 'zh' %}语言水平{% else %}Language{% endif %}: {{ c.language_level }}
+{% if c.language_level is defined %}- {{ localized(language, 'Language', '语言水平', '語言程度') }}: {{ c.language_level }}
 {% endif -%}
-{% if c.technical_fluency is defined %}- {% if language == 'zh' %}技术熟练度{% else %}Technical fluency{% endif %}: {{ c.technical_fluency }}
+{% if c.technical_fluency is defined %}- {{ localized(language, 'Technical fluency', '技术熟练度', '技術熟練度') }}: {{ c.technical_fluency }}
 {% endif -%}
-{% if c.attention_span is defined %}- {% if language == 'zh' %}注意力持续时间{% else %}Attention span{% endif %}: {{ c.attention_span }}
+{% if c.attention_span is defined %}- {{ localized(language, 'Attention span', '注意力持续时间', '注意力持續時間') }}: {{ c.attention_span }}
 {% endif -%}
-{% if c.learning_style is defined %}- {% if language == 'zh' %}学习方式{% else %}Learning style{% endif %}: {{ c.learning_style }}
+{% if c.learning_style is defined %}- {{ localized(language, 'Learning style', '学习方式', '學習方式') }}: {{ c.learning_style }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_preferences(p, language='en') -%}
 {% if p %}
-{% if language == 'zh' %}## 偏好
-{% else %}## Preferences
-{% endif %}
+## {{ localized(language, 'Preferences', '偏好', '偏好') }}
 {% if p.hobbies is defined and p.hobbies %}
-- {% if language == 'zh' %}兴趣爱好{% else %}Hobbies{% endif %}: {{ p.hobbies | join(', ') }}
+- {{ localized(language, 'Hobbies', '兴趣爱好', '興趣愛好') }}: {{ p.hobbies | join(', ') }}
 {% endif -%}
 {% if p.brand_affinities is defined and p.brand_affinities %}
-- {% if language == 'zh' %}品牌偏好{% else %}Brands{% endif %}: {{ p.brand_affinities | join(', ') }}
+- {{ localized(language, 'Brands', '品牌偏好', '品牌偏好') }}: {{ p.brand_affinities | join(', ') }}
 {% endif -%}
-{% if p.price_sensitivity is defined %}- {% if language == 'zh' %}价格敏感度{% else %}Price sensitivity{% endif %}: {{ p.price_sensitivity }}
+{% if p.price_sensitivity is defined %}- {{ localized(language, 'Price sensitivity', '价格敏感度', '價格敏感度') }}: {{ p.price_sensitivity }}
 {% endif -%}
-{% if p.aesthetic_taste is defined %}- {% if language == 'zh' %}审美偏好{% else %}Aesthetic{% endif %}: {{ p.aesthetic_taste }}
+{% if p.aesthetic_taste is defined %}- {{ localized(language, 'Aesthetic', '审美偏好', '審美') }}: {{ p.aesthetic_taste }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_behavior(b, language='en') -%}
 {% if b %}
-{% if language == 'zh' %}## 行为方式
-{% else %}## Behavior
-{% endif %}
+## {{ localized(language, 'Behavior', '行为方式', '行為方式') }}
 {% for key, value in b.items() %}
 - {{ key | replace('_', ' ') | title }}: {% if value is iterable and value is not string %}{{ value | join(', ') }}{% else %}{{ value }}{% endif %}
 {% endfor -%}
@@ -124,19 +116,19 @@
 {% endmacro %}
 
 {% macro render_v0_identity(display_name, summary, system_prompt, language='en') -%}
-{% if display_name %}{% if language == 'zh' %}你是 {{ display_name }}。
-{% else %}You are {{ display_name }}.
-{% endif %}
+{% if display_name %}{{ localized(language, 'You are ' ~ display_name ~ '.', '你是 ' ~ display_name ~ '。', '你是 ' ~ display_name ~ '。') }}
 {% endif -%}
 {% if summary %}
 
-{% if language == 'zh' %}## 个人简介
+{% if language == 'zh-Hant' %}## 個人簡介
+{% elif language == 'zh' %}## 个人简介
 {% endif -%}
 {{ summary }}
 {% endif -%}
 {% if system_prompt %}
 
-{% if language == 'zh' %}## 行为准则
+{% if language == 'zh-Hant' %}## 行為準則
+{% elif language == 'zh' %}## 行为准则
 {% endif -%}
 {{ system_prompt }}
 {% endif -%}

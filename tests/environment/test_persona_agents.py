@@ -105,6 +105,8 @@ def test_persona_loader_reads_sample_dataset() -> None:
     [
         ("en", "explicit", "zh", ("en", "explicit")),
         (None, None, "zh", ("zh", "env")),
+        ("zh-Hant", "explicit", None, ("zh-Hant", "explicit")),
+        (None, None, "zh-Hant", ("zh-Hant", "env")),
         (None, None, None, ("en", "default")),
         (None, None, "fr", ("en", "default")),
         ("fr", "explicit", None, ("en", "default")),

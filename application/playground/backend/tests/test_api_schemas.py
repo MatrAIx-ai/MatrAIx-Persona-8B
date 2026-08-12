@@ -32,6 +32,8 @@ def test_harbor_job_launch_request_defaults_chat_context():
         ("en", "follow_ui"),
         ("zh", "explicit"),
         ("zh", "follow_ui"),
+        ("zh-Hant", "explicit"),
+        ("zh-Hant", "follow_ui"),
     ],
 )
 def test_harbor_job_launch_request_accepts_language_source_pairs(
@@ -45,6 +47,16 @@ def test_harbor_job_launch_request_accepts_language_source_pairs(
 
     assert request.language == language
     assert request.languageSource == language_source
+
+
+def test_harbor_job_launch_request_canonicalizes_case_insensitive_zh_hant():
+    request = HarborJobLaunchRequest(
+        taskPath="application/tasks/chat_recai",
+        language="ZH-hant",
+        languageSource="explicit",
+    )
+
+    assert request.language == "zh-Hant"
 
 
 @pytest.mark.parametrize(

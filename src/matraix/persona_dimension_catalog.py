@@ -18,6 +18,7 @@ from typing import Any
 
 DEFAULT_CATALOG_PATH = "persona/schema/dimensions.json"
 DEFAULT_ZH_LABELS_PATH = "persona/schema/labels_zh.json"
+DEFAULT_ZH_HANT_LABELS_PATH = "persona/schema/labels_zh-TW.json"
 
 # Chinese section headings, keyed by the English _SECTIONS heading.
 _ZH_SECTIONS: dict[str, str] = {
@@ -34,6 +35,25 @@ _ZH_SECTIONS: dict[str, str] = {
     "Other attributes": "其他属性",
 }
 
+_ZH_HANT_SECTIONS: dict[str, str] = {
+    "Identity": "身分",
+    "Career & education": "職業與教育",
+    "Language & communication": "語言與溝通",
+    "Personality & values": "性格與價值觀",
+    "Current interaction state": "目前互動狀態",
+    "Worldview": "世界觀",
+    "Interests": "興趣愛好",
+    "Skills & expertise": "技能與專長",
+    "Lifestyle & health": "生活方式與健康",
+    "Developer & AI": "開發者與人工智慧",
+    "Other attributes": "其他屬性",
+}
+
+_PERSONA_SECTION_LABELS: dict[str, dict[str, str]] = {
+    "zh": _ZH_SECTIONS,
+    "zh-Hant": _ZH_HANT_SECTIONS,
+}
+
 _ZH_LABELS_CACHE: dict[str, dict[str, dict]] = {}
 
 
@@ -41,15 +61,17 @@ def normalize_persona_language(language: str | None) -> str | None:
     """Normalize a supported runtime language, or return ``None``."""
     if language is None:
         return None
-    normalized = str(language).strip().lower()
-    return normalized if normalized in {"en", "zh"} else None
+    normalized = str(language).strip()
+    lowered = normalized.lower()
+    if lowered in {"en", "zh"}:
+        return lowered
+    if lowered == "zh-hant":
+        return "zh-Hant"
+    return None
 
 
-def load_zh_labels(
-    zh_labels_path: str = DEFAULT_ZH_LABELS_PATH,
-) -> dict[str, dict]:
-    """Load Chinese label/value translations, falling back to an empty map."""
-    path = Path(zh_labels_path)
+def _load_labels_path(labels_path: str) -> dict[str, dict]:
+    path = Path(labels_path)
     if not path.is_absolute():
         path = _repo_root() / path
     key = str(path.resolve())
@@ -65,6 +87,29 @@ def load_zh_labels(
             labels = {}
     _ZH_LABELS_CACHE[key] = labels
     return labels
+
+
+def load_zh_labels(
+    zh_labels_path: str = DEFAULT_ZH_LABELS_PATH,
+) -> dict[str, dict]:
+    """Load Chinese label/value translations, falling back to an empty map."""
+    return _load_labels_path(zh_labels_path)
+
+
+def load_zh_hant_labels(
+    zh_labels_path: str = DEFAULT_ZH_HANT_LABELS_PATH,
+) -> dict[str, dict]:
+    """Load Traditional Chinese label/value translations with English fallback."""
+    return _load_labels_path(zh_labels_path)
+
+
+def load_persona_labels(language: str | None) -> dict[str, dict]:
+    """Load the label/value pack for a normalized runtime language."""
+    if language == "zh":
+        return load_zh_labels()
+    if language == "zh-Hant":
+        return load_zh_hant_labels()
+    return {}
 
 
 def resolve_persona_language(language: str | None) -> str:
@@ -338,8 +383,9 @@ def _format_section(
     heading: str,
     items: list[tuple[str, str]],
     zh_labels: dict | None = None,
+    section_labels: dict[str, str] | None = None,
 ) -> str:
-    display = _ZH_SECTIONS.get(heading, heading) if zh_labels else heading
+    display = section_labels.get(heading, heading) if section_labels else heading
     lines = [f"### {display}"]
     for label, value in items:
         lines.append(f"- {label}: {value}")
@@ -413,12 +459,13 @@ def build_dimension_narrative(
     Returns a list of markdown section blocks for the Jinja persona macros.
     """
     language = resolve_persona_language(language)
-    zh_labels = load_zh_labels() if language == "zh" else None
+    persona_labels = load_persona_labels(language)
+    section_labels = _PERSONA_SECTION_LABELS.get(language)
     budget = resolve_profile_max_chars(max_chars)
     grouped = collect_dimension_items(
         dimensions,
         catalog_path=catalog_path,
-        zh_labels=zh_labels,
+        zh_labels=persona_labels,
     )
     if not grouped:
         return []
@@ -453,12 +500,18 @@ def build_dimension_narrative(
             if not fitted:
                 omitted += len(items)
                 continue
-            block = _format_section(heading, fitted, zh_labels=zh_labels)
+            block = _format_section(
+                heading,
+                fitted,
+                zh_labels=persona_labels,
+                section_labels=section_labels,
+            )
         else:
             block = _format_section(
                 heading,
                 [(label, value) for _dim_id, label, value in items],
-                zh_labels=zh_labels,
+                zh_labels=persona_labels,
+                section_labels=section_labels,
             )
 
         rendered.append(block)

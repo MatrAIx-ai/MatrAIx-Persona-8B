@@ -4,12 +4,13 @@
  * Separate from the UI locale: this controls the language the persona
  * narrative / system prompt is rendered in. Options:
  *   - follow_ui: resolve from the current UI locale at launch time
- *   - "en" | "zh": explicit override
+ *   - "en" | "zh" | "zh-Hant": explicit override
  * The backend records the resolved language + its source on every run and
  * never trusts the browser locale itself — the frontend resolves follow-UI.
  */
 
-export type PersonaLanguageSetting = "follow_ui" | "en" | "zh";
+export type PersonaLanguageCode = "en" | "zh" | "zh-Hant";
+export type PersonaLanguageSetting = "follow_ui" | PersonaLanguageCode;
 
 const STORAGE_KEY = "matraix.personaLanguage";
 export const DEFAULT_PERSONA_LANGUAGE: PersonaLanguageSetting = "follow_ui";
@@ -17,7 +18,12 @@ export const DEFAULT_PERSONA_LANGUAGE: PersonaLanguageSetting = "follow_ui";
 export function readPersonaLanguageSetting(): PersonaLanguageSetting {
   try {
     const value = window.localStorage.getItem(STORAGE_KEY);
-    if (value === "en" || value === "zh" || value === "follow_ui") {
+    if (
+      value === "en" ||
+      value === "zh" ||
+      value === "zh-Hant" ||
+      value === "follow_ui"
+    ) {
       return value;
     }
   } catch {
@@ -35,13 +41,14 @@ export function persistPersonaLanguageSetting(setting: PersonaLanguageSetting): 
 }
 
 /** Map a UI locale code to the runtime persona language token. */
-export function uiLocaleToLanguage(uiLocale: string): "en" | "zh" {
+export function uiLocaleToLanguage(uiLocale: string): PersonaLanguageCode {
+  if (uiLocale === "zh-TW") return "zh-Hant";
   return uiLocale === "zh-CN" ? "zh" : "en";
 }
 
 export interface LaunchLanguage {
-  /** Request-body language: explicit en|zh (null = follow env/default). */
-  language: "en" | "zh" | null;
+  /** Request-body language: explicit en|zh|zh-Hant (null = follow env/default). */
+  language: PersonaLanguageCode | null;
   /** Where the language came from, for the run record. */
   languageSource: "follow_ui" | "explicit" | null;
 }
@@ -50,7 +57,7 @@ export function resolveLaunchLanguage(
   setting: PersonaLanguageSetting,
   uiLocale: string,
 ): LaunchLanguage {
-  if (setting === "en" || setting === "zh") {
+  if (setting !== "follow_ui") {
     return { language: setting, languageSource: "explicit" };
   }
   return { language: uiLocaleToLanguage(uiLocale), languageSource: "follow_ui" };

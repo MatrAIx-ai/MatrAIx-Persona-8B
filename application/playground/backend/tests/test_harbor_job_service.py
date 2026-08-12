@@ -47,12 +47,16 @@ def test_launch_writes_job_config(tmp_path, monkeypatch):
         persona_pool="persona/datasets/matraix-persona-dev-sample",
         persona_model="anthropic/claude-haiku-4-5",
         job_name="test-harbor-job",
+        language="zh-Hant",
+        language_source="explicit",
     )
     assert job_name == "test-harbor-job"
     config_path = repo / "configs" / "jobs" / "application-task-job-recipe" / "test-harbor-job.yaml"
     assert config_path.is_file()
     text = config_path.read_text(encoding="utf-8")
     assert "persona_0001.yaml" in text or "persona_0002.yaml" in text
+    assert "persona_language: zh-Hant" in text
+    assert "persona_language_source: explicit" in text
     assert service._executor.calls
     fn, args, kwargs = service._executor.calls[0]
     assert fn.__name__ == "_run_local_distributed"

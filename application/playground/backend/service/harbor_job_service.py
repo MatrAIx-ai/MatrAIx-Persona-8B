@@ -1185,7 +1185,7 @@ class HarborJobService:
         job_meta = job_config.pop("_job_meta", None)
 
         # Runtime / persona prompt language (official review #3): explicit
-        # en|zh overrides env MATRAIX_PERSONA_LANGUAGE; None = follow env.
+        # en|zh|zh-Hant overrides env MATRAIX_PERSONA_LANGUAGE; None = follow env.
         if language or language_source:
             for agent in job_config.get("agents", []):
                 if isinstance(agent, dict):

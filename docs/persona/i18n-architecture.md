@@ -15,9 +15,9 @@ Status: **implemented**. This document describes the shipped architecture.
 
 | # | Requirement | Acceptance |
 |---|---|---|
-| 1 | Independent language dimension | One flat pack per locale (`messages/packs/<code>.ts`); `LOCALE_REGISTRY`; generic `LocalePicker`; lazy loading (zh-CN ships as a separate chunk); missing keys fall back to English |
+| 1 | Independent language dimension | One flat pack per locale (`messages/packs/<code>.ts`); `LOCALE_REGISTRY`; generic `LocalePicker`; lazy loading (zh-CN and zh-TW ship as separate chunks); missing keys fall back to English |
 | 2 | UI locale vs runtime/persona language decoupled | UI i18n covers chrome only; persona/prompt language is a separate setting (`matraix.personaLanguage`) resolved at launch, never coupled to the UI locale |
-| 3 | Overridable default + recorded | Default `follow_ui`; explicit `en`/`zh` override; every run persists `effective_language` + `language_source` in `persona_meta.json`; backend never reads the browser locale |
+| 3 | Overridable default + recorded | Default `follow_ui`; explicit `en`/`zh`/`zh-Hant` override; every run persists `effective_language` + `language_source` in `persona_meta.json`; backend never reads the browser locale |
 | 4 | English-first | `DEFAULT_LOCALE = "en-US"`; en-US is the always-resident source pack; missing keys fall back to it |
 
 ## 2. Layout
@@ -51,12 +51,16 @@ re-exports the derived type and shared locale interfaces:
 export const LOCALE_REGISTRY = [
   { code: "en-US", label: "English", englishName: "English" },
   { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese" },
+  { code: "zh-TW", label: "繁體中文", englishName: "Traditional Chinese" },
 ] as const;
 export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];
 ```
 
 Adding a language means adding one registry entry and one locale pack with its
 loader. `types.ts` does not contain a second locale-code list.
+
+The shipped optional packs include `zh-CN` and `zh-TW`; the latter uses
+Traditional Chinese display copy and the canonical runtime token `zh-Hant`.
 
 ### 3.2 Provider behavior
 
@@ -70,24 +74,27 @@ loader. `types.ts` does not contain a second locale-code list.
 - **Startup restore**: if the stored locale is not en-US, its pack is loaded
   on mount, so the picker and the actual UI never disagree.
 - **Race guard**: a `requestedRef` tracks the latest requested locale; a stale
-  load result (rapid en -> zh -> en switching) is discarded.
+  load result (rapid en -> zh-TW -> en switching) is discarded.
 - Fallback chain in `t()`: `pack[key] ?? enPack[key] ?? fallback ?? key`.
 
 ### 3.3 Missing keys / incomplete community packs
 
-zh-CN may be incomplete; missing keys fall back to English. The test suite
-documents (but does not enforce) the drift, e.g. `[drift] zh-CN missing N of M
-en keys`. Only en-US must be complete.
+Optional locale packs may be incomplete; missing keys fall back to English. The
+test suite documents (but does not enforce) per-locale drift. Only en-US must
+be complete.
 
 ## 4. Runtime / persona language (requirement 3)
 
 Independent of the UI locale:
 
-- Setting: `lib/personaLanguage.ts` — `follow_ui | en | zh`, persisted under
-  `matraix.personaLanguage`. `PersonaLanguagePicker` (Follow UI | English |
-  简体中文) is available in every eval cockpit (chatbot, survey, web, OS app).
+- Setting: `lib/personaLanguage.ts` — `follow_ui | en | zh | zh-Hant`, persisted
+  under `matraix.personaLanguage`. `PersonaLanguagePicker` (Follow UI | English
+  | Simplified Chinese | Traditional Chinese) is available in every eval
+  cockpit (chatbot, survey, web, OS app).
 - Launch: the frontend resolves `follow_ui` against the current UI locale and
-  sends explicit `language` (en|zh) + `languageSource` (follow_ui|explicit).
+  sends explicit `language` (en|zh|zh-Hant) + `languageSource`
+  (follow_ui|explicit). The legacy `zh` token remains supported for existing
+  Simplified Chinese runs; Traditional Chinese is canonicalized as `zh-Hant`.
 - Backend: `HarborJobLaunchRequest` validates the pair (an explicit language
   must carry a source; a null language must not claim one) and writes
   `persona_language` / `persona_language_source` into the agent kwargs.
@@ -109,8 +116,8 @@ loaders, persona label key helpers.
 
 - **en fallback**: `pack[key] ?? enPack[key] ?? fallback` never renders blank;
   only en-US must be complete.
-- **Bundle**: zh-CN ships as a lazy chunk (verified in `vite build` output),
-  the main bundle carries en-US only.
+- **Bundle**: zh-CN and zh-TW ship as lazy chunks (verified in `vite build`
+  output); the main bundle carries en-US only.
 - **Compat**: `useI18n` signature unchanged (`locale/setLocale/locales/t/
   formatNumber/formatDate`); the old binary `toggleLocale` was removed with its
   only consumer (TopBar now uses `LocalePicker`).

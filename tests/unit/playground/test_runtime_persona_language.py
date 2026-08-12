@@ -26,6 +26,7 @@ PERSONA_PATH = ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0001.
     [
         ("en", "zh", "You are "),
         (None, "zh", "你是 "),
+        (None, "zh-Hant", "你是 "),
         (None, None, "You are "),
     ],
 )
@@ -158,3 +159,18 @@ def test_persona_language_scope_is_request_local() -> None:
     assert "你是 " in prompt["personaPrompt"]
     assert "You are " in after_scope["personaPrompt"]
     assert "Do not translate this task body." in prompt["taskPrompt"]
+
+
+def test_traditional_persona_language_reaches_chat_prompt_and_keeps_task_raw() -> None:
+    with persona_language_scope("zh-Hant"):
+        prompt = prompt_bundle(
+            Persona(id="p1", name="Test"),
+            persona_yaml_path=str(PERSONA_PATH),
+            task_bundle=TaskContentBundle(
+                instruction_markdown="Do not translate this Traditional Chinese task test."
+            ),
+        )
+
+    assert "你是 " in prompt["personaPrompt"]
+    assert "## 你是誰" in prompt["personaPrompt"]
+    assert "Do not translate this Traditional Chinese task test." in prompt["taskPrompt"]

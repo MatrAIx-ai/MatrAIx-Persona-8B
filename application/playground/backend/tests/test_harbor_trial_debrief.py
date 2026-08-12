@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from backend.service.harbor_trial_debrief import map_trial_debrief
 
 
@@ -225,8 +227,18 @@ def test_map_trial_debrief_chatbot_enriches_prompts_from_events(tmp_path: Path) 
     assert debrief["instructionMarkdown"].startswith("# Task instruction")
 
 
+@pytest.mark.parametrize(
+    ("language", "summary_heading", "guidance_heading"),
+    [
+        ("zh", "## 个人简介", "## 行为准则"),
+        ("zh-Hant", "## 個人簡介", "## 行為準則"),
+    ],
+)
 def test_map_trial_debrief_rebuilds_missing_persona_prompt_in_recorded_language(
     tmp_path: Path,
+    language: str,
+    summary_heading: str,
+    guidance_heading: str,
 ) -> None:
     repo = tmp_path
     task_dir = repo / "application" / "tasks" / "chat_recai"
@@ -258,7 +270,7 @@ def test_map_trial_debrief_rebuilds_missing_persona_prompt_in_recorded_language(
     )
     trial_dir = repo / "jobs" / "job-zh-prompt" / "trial-zh-prompt"
     (trial_dir / "persona_meta.json").write_text(
-        json.dumps({"effective_language": "zh", "language_source": "explicit"}),
+        json.dumps({"effective_language": language, "language_source": "explicit"}),
         encoding="utf-8",
     )
     (trial_dir / "events.jsonl").write_text(
@@ -283,8 +295,8 @@ def test_map_trial_debrief_rebuilds_missing_persona_prompt_in_recorded_language(
 
     persona_prompt = debrief["prompts"]["personaPrompt"]
     assert "你是 Casey Brooks。" in persona_prompt
-    assert "## 个人简介" in persona_prompt
-    assert "## 行为准则" in persona_prompt
+    assert summary_heading in persona_prompt
+    assert guidance_heading in persona_prompt
     assert (
         "Original task prompt must remain unchanged."
         in debrief["prompts"]["taskPrompt"]

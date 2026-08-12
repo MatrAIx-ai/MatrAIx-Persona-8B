@@ -212,7 +212,7 @@ export const api = {
     useEntirePool?: boolean;
     osAppSubmissionProfile?: string | null;
     osAppBackend?: string | null;
-    language?: "en" | "zh" | null;
+    language?: "en" | "zh" | "zh-Hant" | null;
     languageSource?: "follow_ui" | "explicit" | null;
   }) =>
     request<HarborJobLaunchResponse>("/api/harbor/jobs", {

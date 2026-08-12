@@ -28,7 +28,7 @@ export interface HarborCockpitRunInput<TJob> {
   osAppSubmissionProfile?: string;
   agentName?: string;
   osAppBackend?: string;
-  language?: "en" | "zh" | null;
+  language?: "en" | "zh" | "zh-Hant" | null;
   languageSource?: "follow_ui" | "explicit" | null;
   mapDebrief: (debrief: PlaygroundResult, ctx: { jobName: string; trialName: string }) => TJob;
   mapLive?: (live: HarborCockpitLiveState, ctx: { jobName: string; trialName: string }) => TJob;

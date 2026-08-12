@@ -8,7 +8,8 @@ import {
 
 /**
  * Runtime / persona prompt language setting (upstream review #3):
- * Follow UI | English | 简体中文. Independent of the UI locale picker.
+ * Follow UI | English | Simplified Chinese | Traditional Chinese.
+ * Independent of the UI locale picker.
  */
 export function PersonaLanguagePicker() {
   const { t } = useI18n();
@@ -19,7 +20,11 @@ export function PersonaLanguagePicker() {
   const options: Array<{ value: PersonaLanguageSetting; label: string }> = [
     { value: "follow_ui", label: t("personaLanguage.followUi", "Follow UI") },
     { value: "en", label: t("personaLanguage.english", "English") },
-    { value: "zh", label: t("personaLanguage.chinese", "简体中文") },
+    { value: "zh", label: t("personaLanguage.chinese", "Simplified Chinese") },
+    {
+      value: "zh-Hant",
+      label: t("personaLanguage.traditionalChinese", "Traditional Chinese"),
+    },
   ];
 
   return (

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import enPack from "../messages/packs/en-US";
 import koPack from "../messages/packs/ko-KR";
 import zhPack from "../messages/packs/zh-CN";
+import zhTwPack from "../messages/packs/zh-TW";
 import {
   personaDimensionLabelKey,
   personaSectionLabelKey,
@@ -10,6 +11,12 @@ import {
 import { LOCALE_REGISTRY, localePacks } from "../registry";
 import { interpolate, resolveMessage } from "../resolve";
 import { taskDisplayTitle } from "../../components/cockpit/setup/taskCardLabels";
+import {
+  persistPersonaLanguageSetting,
+  readPersonaLanguageSetting,
+  resolveLaunchLanguage,
+  uiLocaleToLanguage,
+} from "../../lib/personaLanguage";
 
 describe("resolveMessage — fallback chain (pack[key] ?? enPack[key] ?? fallback ?? key)", () => {
   it("returns the zh-CN value when the key exists in the active pack", () => {
@@ -108,14 +115,17 @@ describe("pack integrity and optional locale fallback", () => {
   const enKeys = Object.keys(enPack);
   const koKeys = Object.keys(koPack);
   const zhKeys = Object.keys(zhPack);
+  const zhTwKeys = Object.keys(zhTwPack);
   const enMessages: Readonly<Partial<Record<string, string>>> = enPack;
   const koMessages: Readonly<Partial<Record<string, string>>> = koPack;
   const zhMessages: Readonly<Partial<Record<string, string>>> = zhPack;
+  const zhTwMessages: Readonly<Partial<Record<string, string>>> = zhTwPack;
 
   it("has no duplicate keys within each pack", () => {
     expect(new Set(enKeys).size).toBe(enKeys.length);
     expect(new Set(koKeys).size).toBe(koKeys.length);
     expect(new Set(zhKeys).size).toBe(zhKeys.length);
+    expect(new Set(zhTwKeys).size).toBe(zhTwKeys.length);
   });
 
   it("covers every current English key in the Korean UI pack", () => {
@@ -161,6 +171,20 @@ describe("pack integrity and optional locale fallback", () => {
     }
   });
 
+  it("resolves every current en-US key through the zh-TW pack or English fallback", () => {
+    for (const key of enKeys) {
+      expect(resolveMessage(zhTwPack, enPack, key)).toBe(
+        zhTwMessages[key] ?? enMessages[key],
+      );
+    }
+  });
+
+  it("keeps task title messages identical to English source text", () => {
+    for (const key of enKeys.filter((candidate) => candidate.startsWith("taskDisplay.title."))) {
+      expect(zhTwMessages[key]).toBe(enMessages[key]);
+    }
+  });
+
   it("records the keys present in zh-CN but not in en-US (documented drift)", () => {
     const enMissingZhKeys = zhKeys.filter((key) => !(key in enPack)).sort();
     expect(enMissingZhKeys).toEqual([
@@ -181,6 +205,51 @@ describe("task-owned display content", () => {
         translate,
       ),
     ).toBe("Product Feedback");
+  });
+});
+
+describe("runtime persona language", () => {
+  it("maps the Traditional Chinese UI locale to canonical zh-Hant", () => {
+    expect(uiLocaleToLanguage("zh-TW")).toBe("zh-Hant");
+    expect(resolveLaunchLanguage("follow_ui", "zh-TW")).toEqual({
+      language: "zh-Hant",
+      languageSource: "follow_ui",
+    });
+  });
+
+  it("keeps explicit runtime overrides independent from the UI locale", () => {
+    expect(resolveLaunchLanguage("zh-Hant", "en-US")).toEqual({
+      language: "zh-Hant",
+      languageSource: "explicit",
+    });
+    expect(resolveLaunchLanguage("zh", "zh-TW")).toEqual({
+      language: "zh",
+      languageSource: "explicit",
+    });
+  });
+
+  it("persists the selected runtime language setting", () => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const values = new Map<string, string>();
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        localStorage: {
+          getItem: (key: string) => values.get(key) ?? null,
+          setItem: (key: string, value: string) => values.set(key, value),
+        },
+      },
+    });
+    try {
+      persistPersonaLanguageSetting("zh-Hant");
+      expect(readPersonaLanguageSetting()).toBe("zh-Hant");
+    } finally {
+      if (previous) {
+        Object.defineProperty(globalThis, "window", previous);
+      } else {
+        delete (globalThis as { window?: unknown }).window;
+      }
+    }
   });
 });
 
@@ -215,9 +284,20 @@ describe("registry", () => {
     expect(Object.keys(pack).length).toBeGreaterThan(0);
   });
 
+  it("lazily loads a non-empty zh-TW pack via dynamic import", async () => {
+    const pack = await localePacks["zh-TW"]();
+    expect(pack).toBeTruthy();
+    expect(Object.keys(pack).length).toBeGreaterThan(0);
+  });
+
   it("the dynamically loaded zh-CN pack has identical keys to the static one", async () => {
     const pack = await localePacks["zh-CN"]();
     expect(Object.keys(pack).sort()).toEqual(Object.keys(zhPack).sort());
+  });
+
+  it("the dynamically loaded zh-TW pack has identical keys to the static one", async () => {
+    const pack = await localePacks["zh-TW"]();
+    expect(Object.keys(pack).sort()).toEqual(Object.keys(zhTwPack).sort());
   });
 });
 

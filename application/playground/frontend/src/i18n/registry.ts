@@ -9,6 +9,7 @@ import type { LocaleMeta, MessagePack } from "./types";
 export const LOCALE_REGISTRY = [
   { code: "en-US", label: "English", englishName: "English" },
   { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese" },
+  { code: "zh-TW", label: "繁體中文", englishName: "Traditional Chinese" },
 ] as const satisfies readonly LocaleMeta[];
 
 export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];
@@ -20,4 +21,5 @@ export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];
 export const localePacks = {
   "en-US": () => import("./messages/packs/en-US").then((m) => m.default),
   "zh-CN": () => import("./messages/packs/zh-CN").then((m) => m.default),
+  "zh-TW": () => import("./messages/packs/zh-TW").then((m) => m.default),
 } satisfies { [Code in Locale]: () => Promise<MessagePack> };

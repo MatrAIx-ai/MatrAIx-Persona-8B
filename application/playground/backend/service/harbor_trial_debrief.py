@@ -16,6 +16,7 @@ from backend.service.import_paths import ensure_harbor_source_imports
 from backend.service.survey_types import build_survey_eval_result_from_artifacts
 from backend.service.survey_types import survey_result_view
 from backend.service.survey_types import SurveyEvalConfig, SurveyInstrument, SurveyQuestion
+from matraix.persona_dimension_catalog import normalize_persona_language
 from playground.types import Persona, PlaygroundConfig
 
 if TYPE_CHECKING:
@@ -610,7 +611,14 @@ def _humanize_dimension_key(key: str) -> str:
 def _format_persona_dimensions_from_yaml(
     raw: dict[str, Any], *, persona_language: str | None = None
 ) -> str:
-    localized_zh = str(persona_language or "").strip().lower() == "zh"
+    language = normalize_persona_language(persona_language)
+    localized_zh = language in {"zh", "zh-Hant"}
+    traditional = language == "zh-Hant"
+    labels = {
+        "who": "你是誰" if traditional else "你是谁",
+        "summary": "個人簡介" if traditional else "个人简介",
+        "guidance": "行為準則" if traditional else "行为准则",
+    }
     display_name = str(raw.get("display_name") or "").strip()
     lines: list[str] = []
     if display_name:
@@ -622,7 +630,7 @@ def _format_persona_dimensions_from_yaml(
         lines.append("")
     dims = raw.get("dimensions")
     if isinstance(dims, dict) and dims:
-        lines.append("## 你是谁" if localized_zh else "## Who you are")
+        lines.append("## {}".format(labels["who"]) if localized_zh else "## Who you are")
         lines.append("")
         for key in sorted(dims.keys()):
             value = dims.get(key)
@@ -631,15 +639,15 @@ def _format_persona_dimensions_from_yaml(
             lines.append("- {}: {}".format(_humanize_dimension_key(key), value))
     elif raw.get("system_prompt"):
         if localized_zh and raw.get("summary"):
-            lines.append("## 个人简介")
+            lines.append("## {}".format(labels["summary"]))
             lines.append("")
         if localized_zh:
-            lines.append("## 行为准则")
+            lines.append("## {}".format(labels["guidance"]))
             lines.append("")
         lines.append(str(raw.get("system_prompt")).strip())
     elif raw.get("summary"):
         if localized_zh:
-            lines.append("## 个人简介")
+            lines.append("## {}".format(labels["summary"]))
             lines.append("")
         lines.append(str(raw.get("summary")).strip())
     return "\n".join(lines).strip()
@@ -662,8 +670,10 @@ def _recorded_persona_language(trial_dir: Path) -> str | None:
         meta = _read_json(trial_dir / "persona_meta.json")
     except (OSError, ValueError):
         return None
-    language = str(meta.get("effective_language") or "").strip().lower()
-    return language if language in {"en", "zh"} else None
+    raw_language = meta.get("effective_language")
+    if not raw_language:
+        return None
+    return normalize_persona_language(str(raw_language))
 
 
 def _render_persona_prompt(
@@ -677,9 +687,9 @@ def _render_persona_prompt(
 
     yaml_path = _persona_prompt_abs_path(repo_root, persona_rel)
     raw = _read_persona_yaml_raw(repo_root, persona_rel)
+    normalized_language = normalize_persona_language(persona_language)
     if (
-        persona_language is not None
-        and persona_language.strip().lower() == "zh"
+        normalized_language in {"zh", "zh-Hant"}
         and raw
         and not any(
             raw.get(key)
