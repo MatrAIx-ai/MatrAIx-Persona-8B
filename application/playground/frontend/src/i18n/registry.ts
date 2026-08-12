@@ -7,13 +7,13 @@ import type { LocaleMeta, MessagePack } from "./types";
  * No dual-locale tables anywhere; English stays the source-of-truth pack.
  */
 export const LOCALE_REGISTRY = [
-  { code: "en-US", label: "English", englishName: "English" },
-  { code: "ko-KR", label: "한국어", englishName: "Korean" },
-  { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese" },
-  { code: "zh-TW", label: "繁體中文", englishName: "Traditional Chinese" },
-  { code: "ja-JP", label: "日本語", englishName: "Japanese" },
-  { code: "pt-BR", label: "Português (Brasil)", englishName: "Brazilian Portuguese" },
-  { code: "es-ES", label: "Español", englishName: "Spanish" },
+  { code: "en-US", label: "English", englishName: "English", personaLanguage: "en" },
+  { code: "ko-KR", label: "한국어", englishName: "Korean", personaLanguage: "ko" },
+  { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese", personaLanguage: "zh" },
+  { code: "zh-TW", label: "繁體中文", englishName: "Traditional Chinese", personaLanguage: "zh-Hant" },
+  { code: "ja-JP", label: "日本語", englishName: "Japanese", personaLanguage: "ja" },
+  { code: "pt-BR", label: "Português (Brasil)", englishName: "Brazilian Portuguese", personaLanguage: "pt" },
+  { code: "es-ES", label: "Español", englishName: "Spanish", personaLanguage: "es" },
 ] as const satisfies readonly LocaleMeta[];
 
 export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];

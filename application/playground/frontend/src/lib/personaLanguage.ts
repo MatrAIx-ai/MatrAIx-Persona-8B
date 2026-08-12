@@ -9,36 +9,20 @@
  * never trusts the browser locale itself — the frontend resolves follow-UI.
  */
 
-export type PersonaLanguageCode =
-  | "en"
-  | "ko"
-  | "zh"
-  | "zh-Hant"
-  | "ja"
-  | "pt"
-  | "es";
+import { LOCALE_REGISTRY } from "@/i18n/registry";
+import type { RuntimePersonaLanguage } from "@/i18n/types";
+
+export type PersonaLanguageCode = RuntimePersonaLanguage;
 export type PersonaLanguageSetting = "follow_ui" | PersonaLanguageCode;
 
 const STORAGE_KEY = "matraix.personaLanguage";
 export const DEFAULT_PERSONA_LANGUAGE: PersonaLanguageSetting = "follow_ui";
-const PERSONA_LANGUAGE_CODES = new Set<PersonaLanguageCode>([
-  "en",
-  "ko",
-  "zh",
-  "zh-Hant",
-  "ja",
-  "pt",
-  "es",
-]);
-const UI_LOCALE_LANGUAGE: Record<string, PersonaLanguageCode> = {
-  "en-US": "en",
-  "ko-KR": "ko",
-  "zh-CN": "zh",
-  "zh-TW": "zh-Hant",
-  "ja-JP": "ja",
-  "pt-BR": "pt",
-  "es-ES": "es",
-};
+const PERSONA_LANGUAGE_CODES = new Set<PersonaLanguageCode>(
+  LOCALE_REGISTRY.map(({ personaLanguage }) => personaLanguage),
+);
+const UI_LOCALE_LANGUAGE = new Map<string, PersonaLanguageCode>(
+  LOCALE_REGISTRY.map(({ code, personaLanguage }) => [code, personaLanguage]),
+);
 
 export function readPersonaLanguageSetting(): PersonaLanguageSetting {
   try {
@@ -62,7 +46,7 @@ export function persistPersonaLanguageSetting(setting: PersonaLanguageSetting): 
 
 /** Map a UI locale code to the runtime persona language token. */
 export function uiLocaleToLanguage(uiLocale: string): PersonaLanguageCode {
-  return UI_LOCALE_LANGUAGE[uiLocale] ?? "en";
+  return UI_LOCALE_LANGUAGE.get(uiLocale) ?? "en";
 }
 
 export interface LaunchLanguage {

@@ -4,7 +4,30 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from backend.service.harbor_job_service import HarborJobService, HarborLaunchRecord
+
+
+@pytest.mark.parametrize(
+    ("language", "language_source"),
+    [
+        ("es", None),
+        (None, "explicit"),
+        ("ja", "env"),
+    ],
+)
+def test_launch_rejects_detached_or_untrusted_language_provenance(
+    language, language_source
+):
+    service = object.__new__(HarborJobService)
+
+    with pytest.raises(ValueError, match="language"):
+        service.launch(
+            task_path="application/tasks/example-survey_product-feedback",
+            language=language,
+            language_source=language_source,
+        )
 
 
 def test_launch_writes_job_config(tmp_path, monkeypatch):

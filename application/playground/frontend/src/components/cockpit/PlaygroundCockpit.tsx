@@ -121,7 +121,7 @@ function liveStatusLine(
   if (raw.includes("harbor") || raw.includes("trial")) return t ? t("eval.live.runningTrial", "Running trial…") : "Running trial…";
   if (raw.includes("persona") || raw.includes("user") || raw.includes("simulat"))
     return t ? t("eval.live.typing", "The simulated user is typing…") : "The simulated user is typing…";
-  if (raw.includes("chatbot") || raw.includes("application") || raw.includes("agent") || raw.includes("recai") || raw.includes("turn"))
+  if (raw.includes("chatbot") || raw.includes("application") || raw.includes("agent") || raw.includes("turn"))
     return t ? t("eval.live.thinking", "The app is thinking…") : "The app is thinking…";
   if (raw.includes("eval")) return t ? t("eval.live.scoring", "Scoring how it went…") : "Scoring how it went…";
   if (job?.phase) return `${job.phase.replace(/^harbor_/, "").replace(/_/g, " ")}…`;

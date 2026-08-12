@@ -54,19 +54,20 @@ re-exports the derived type and shared locale interfaces:
 
 ```ts
 export const LOCALE_REGISTRY = [
-  { code: "en-US", label: "English", englishName: "English" },
-  { code: "ko-KR", label: "한국어", englishName: "Korean" },
-  { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese" },
-  { code: "zh-TW", label: "繁體中文", englishName: "Traditional Chinese" },
-  { code: "ja-JP", label: "日本語", englishName: "Japanese" },
-  { code: "pt-BR", label: "Português (Brasil)", englishName: "Brazilian Portuguese" },
-  { code: "es-ES", label: "Español", englishName: "Spanish" },
+  { code: "en-US", label: "English", englishName: "English", personaLanguage: "en" },
+  { code: "ko-KR", label: "한국어", englishName: "Korean", personaLanguage: "ko" },
+  { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese", personaLanguage: "zh" },
+  { code: "zh-TW", label: "繁體中文", englishName: "Traditional Chinese", personaLanguage: "zh-Hant" },
+  { code: "ja-JP", label: "日本語", englishName: "Japanese", personaLanguage: "ja" },
+  { code: "pt-BR", label: "Português (Brasil)", englishName: "Brazilian Portuguese", personaLanguage: "pt" },
+  { code: "es-ES", label: "Español", englishName: "Spanish", personaLanguage: "es" },
 ] as const;
 export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];
 ```
 
-Adding a language means adding one registry entry and one locale pack with its
-loader. `types.ts` does not contain a second locale-code list.
+Adding a language means adding one registry entry (including its canonical
+`personaLanguage`) and one locale pack with its loader. `types.ts` does not
+contain a second locale-code list, and Follow UI derives from the registry.
 
 The shipped packs cover `en-US`, `ko-KR`, `zh-CN`, `zh-TW`, `ja-JP`, `pt-BR`,
 and `es-ES`. `zh-TW` uses Traditional Chinese display copy and the canonical

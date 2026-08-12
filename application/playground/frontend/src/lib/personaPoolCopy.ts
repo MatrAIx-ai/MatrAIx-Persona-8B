@@ -39,15 +39,21 @@ export function isPersonaPoolCoverageError(message: string | null | undefined): 
 }
 
 export function personaPoolCoverageHint(
-  _taskPath?: string | null,
+  taskPath?: string | null,
   t?: PersonaPoolTranslate,
 ): string {
   const fallback =
     "Not enough matching personas in this dataset for the current filters. " +
-    "Widen filters / sources, switch dataset (dev sample vs matraix-persona-1m), " +
-    "or use a saved cohort that already has enough matches. " +
-    "Playground does not synthesize missing personas.";
-  return t?.("catalog.personaStore.poolCoverageHint", fallback) ?? fallback;
+    "Consider switching Dataset to matraix-persona-1m for fuller coverage. " +
+    "Or widen filters / sources, or use a saved cohort that already has enough matches.";
+  const hint = t?.("catalog.personaStore.poolCoverageHint", fallback) ?? fallback;
+  const synthesize = taskPath
+    ? t?.(
+        "catalog.personaStore.poolCoverageSynthesize",
+        " With Task default persona strategy on, you can also Synthesize to fill this task.",
+      ) ?? " With Task default persona strategy on, you can also Synthesize to fill this task."
+    : "";
+  return hint + synthesize;
 }
 
 /** Prefer the API message; fall back to a production-pool recovery hint. */

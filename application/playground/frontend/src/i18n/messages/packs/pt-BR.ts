@@ -2,6 +2,22 @@
 // English remains the source of truth and missing keys fall back to en-US.
 // locale: pt-BR
 export default {
+  "setup.persona.generation": "Generation",
+  "setup.persona.count": "Count",
+  "setup.persona.seed": "Seed",
+  "setup.persona.generate": "Generate",
+  "setup.persona.generateDescription": "Writes a synthetic Full-DAG pool (no quality filter, dedup, or calibrate).",
+  "setup.persona.pull": "Pull cohort",
+  "setup.persona.pulling": "Pulling…",
+  "setup.persona.synthesize": "Synthesize to fill this task",
+  "setup.persona.synthesizing": "Synthesizing…",
+  "setup.persona.generationEmpty": "Generate writes a new pool. Dataset then switches to it so you can Pull or Save.",
+  "setup.persona.allocationPerCellTitle": "Take N personas from every stratify combination",
+  "setup.persona.allocationProportionalTitle": "Allocate sample size by cell population (Hamilton)",
+  "setup.persona.allocationEqualTotalTitle": "Ensure coverage then clip to sample size",
+  "setup.run.runLive": "Run Live",
+  "eval.progress.batchStopped": "Batch stopped",
+  "eval.progress.runStopped": "Run stopped",
   "catalog.catalogDrawer.close": "Fechar catálogo",
   "catalog.catalogDrawer.loaded": "Carregado",
   "catalog.catalogDrawer.searchPlaceholder": "Pesquise ocupação, características, dados demográficos…",
@@ -75,6 +91,7 @@ export default {
   "catalog.personaStore.openHint": "Abra no Playground e escolha uma tarefa.",
   "catalog.personaStore.personasUnit": "personalidades",
   "catalog.personaStore.poolCoverageHint": "Pool coverage is too thin for these filters. Sample from persona/datasets/matraix-persona-1m, widen dimensionFilters / sources, or use a saved cohort with enough matches.",
+  "catalog.personaStore.poolCoverageSynthesize": " Com a estratégia de persona padrão da tarefa, você também pode sintetizar para preencher esta tarefa.",
   "catalog.personaStore.poolDefault": "piscina de personas",
   "catalog.personaStore.poolEmpty": "{pool} is empty or could not be loaded.",
   "catalog.personaStore.retry": "Tentar novamente",
@@ -1779,7 +1796,5 @@ export default {
   "personaLanguage.followUi": "Seguir idioma da interface",
   "personaLanguage.english": "Inglês",
   "personaLanguage.chinese": "Chinês simplificado",
-  "shell.locale.portuguese": "Português",
-  "shell.locale.switchToPortuguese": "Mudar para português",
   "personaLanguage.portuguese": "Português (Brasil)"
 };

@@ -146,21 +146,13 @@ describe("pack integrity and optional locale fallback", () => {
     {
       code: "zh-TW",
       pack: zhTwPack,
-      extraKeys: [
-        "shell.home.subtitle",
-        "shell.preflight.optionalAdaptersNeedAttention",
-        "personaLanguage.traditionalChinese",
-      ],
+      extraKeys: ["personaLanguage.traditionalChinese"],
     },
     { code: "ja-JP", pack: jaPack, extraKeys: [] },
     {
       code: "pt-BR",
       pack: ptPack,
-      extraKeys: [
-        "shell.locale.portuguese",
-        "shell.locale.switchToPortuguese",
-        "personaLanguage.portuguese",
-      ],
+      extraKeys: ["personaLanguage.portuguese"],
     },
     { code: "es-ES", pack: esPack, extraKeys: [] },
   ];

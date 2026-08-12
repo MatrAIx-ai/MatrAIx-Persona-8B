@@ -346,7 +346,14 @@ function TaskStrategySummary({
   const filterBits = dimEntries.length + (sources.length > 0 ? 1 : 0);
   const showAllocation = sampling.mode === "stratified" || stratify.length > 0;
   const sampleType = strategySampleTypeLabel(sampling);
-  const allocLabel = ALLOCATION_LABELS[sampling.allocation] ?? sampling.allocation;
+  const allocLabel = t(
+    sampling.allocation === "perCell"
+      ? "setup.persona.allocationPerCell"
+      : sampling.allocation === "proportional"
+        ? "setup.persona.allocationProportional"
+        : "setup.persona.allocationEqualTotal",
+    ALLOCATION_LABELS[sampling.allocation] ?? sampling.allocation,
+  );
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
   const displayField = (field: string): string => {
     const fallback = humanizeToken(field);
@@ -444,7 +451,14 @@ function TaskStrategySummary({
               {showAllocation ? (
                 <StrategyKvRow
                   label={t("setup.persona.allocation", "Allocation")}
-                  title={ALLOCATION_TITLES[sampling.allocation]}
+                  title={t(
+                    sampling.allocation === "perCell"
+                      ? "setup.persona.allocationPerCellTitle"
+                      : sampling.allocation === "proportional"
+                        ? "setup.persona.allocationProportionalTitle"
+                        : "setup.persona.allocationEqualTotalTitle",
+                    ALLOCATION_TITLES[sampling.allocation],
+                  )}
                 >
                   <span className="font-medium">{allocLabel}</span>
                   <span className="mt-0.5 block text-[11px] leading-snug text-text-dim">
@@ -863,7 +877,7 @@ export function PersonaSamplingRail({
       if (strategyLocked) setStrategySummaryOpen(false);
     } catch (err) {
       const raw = err instanceof ApiError ? err.message : "Could not pull cohort from this dataset.";
-      const formatted = formatPersonaSampleError(raw, taskPath);
+      const formatted = formatPersonaSampleError(raw, taskPath, t);
       setPullError(formatted);
     } finally {
       setPulling(false);
@@ -884,6 +898,7 @@ export function PersonaSamplingRail({
     sourcePool,
     strategyLocked,
     taskPath,
+    t,
   ]);
 
   const applyGeneratedPool = useCallback(
@@ -1184,7 +1199,10 @@ export function PersonaSamplingRail({
                 railSegment === segment ? "cockpit-segment__btn--active" : ""
               }`}
             >
-              {segment === "generation" ? "Generation" : "Dataset"}
+              {t(
+                segment === "generation" ? "setup.persona.generation" : "setup.persona.dataset",
+                segment === "generation" ? "Generation" : "Dataset",
+              )}
             </button>
           ))}
         </div>
@@ -1202,7 +1220,10 @@ export function PersonaSamplingRail({
                     genMode === tab ? "cockpit-segment__btn--active" : ""
                   }`}
                 >
-                  {tab === "random" ? "Random" : "Stratified"}
+                  {t(
+                    tab === "random" ? "setup.persona.random" : "setup.persona.stratified",
+                    tab === "random" ? "Random" : "Stratified",
+                  )}
                 </button>
               ))}
             </div>
@@ -1212,14 +1233,28 @@ export function PersonaSamplingRail({
                   <button
                     key={alloc}
                     type="button"
-                    title={ALLOCATION_TITLES[alloc]}
+                    title={t(
+                      alloc === "perCell"
+                        ? "setup.persona.allocationPerCellTitle"
+                        : alloc === "proportional"
+                          ? "setup.persona.allocationProportionalTitle"
+                          : "setup.persona.allocationEqualTotalTitle",
+                      ALLOCATION_TITLES[alloc],
+                    )}
                     disabled={disabled || generating}
                     onClick={() => setGenAllocation(alloc)}
                     className={`cockpit-segment__btn cockpit-segment__btn--compact w-full ${FOCUS_RING} ${
                       genAllocation === alloc ? "cockpit-segment__btn--active" : ""
                     }`}
                   >
-                    {ALLOCATION_LABELS[alloc]}
+                    {t(
+                      alloc === "perCell"
+                        ? "setup.persona.allocationPerCell"
+                        : alloc === "proportional"
+                          ? "setup.persona.allocationProportional"
+                          : "setup.persona.allocationEqualTotal",
+                      ALLOCATION_LABELS[alloc],
+                    )}
                   </button>
                 ))}
               </div>
@@ -1237,7 +1272,7 @@ export function PersonaSamplingRail({
                 >
                   <Sym name="tune" size={16} className="shrink-0 text-primary" />
                   <span className="min-w-0 flex-1 text-[13px] font-medium text-text-main">
-                    Persona filters
+                    {t("setup.persona.filters", "Persona filters")}
                   </span>
                   {activeFilterCount(genFilters) > 0 ? (
                     <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[11px] text-primary">
@@ -1262,7 +1297,7 @@ export function PersonaSamplingRail({
               {genMode === "random" ? (
                 <>
                   <label className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
-                    <span className="text-[12px] text-text-dim">Count</span>
+                    <span className="text-[12px] text-text-dim">{t("setup.persona.count", "Count")}</span>
                     <input
                       type="number"
                       inputMode="numeric"
@@ -1289,7 +1324,7 @@ export function PersonaSamplingRail({
                     />
                   </label>
                   <label className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
-                    <span className="text-[12px] text-text-dim">Seed</span>
+                    <span className="text-[12px] text-text-dim">{t("setup.persona.seed", "Seed")}</span>
                     <input
                       type="number"
                       inputMode="numeric"
@@ -1303,7 +1338,7 @@ export function PersonaSamplingRail({
                 </>
               ) : genAllocation === "perCell" ? (
                 <label className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
-                  <span className="text-[12px] text-text-dim">Per cell</span>
+                  <span className="text-[12px] text-text-dim">{t("setup.persona.perCell", "Per cell")}</span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -1318,7 +1353,7 @@ export function PersonaSamplingRail({
                 </label>
               ) : (
                 <label className="flex w-[4.25rem] shrink-0 flex-col gap-0.5">
-                  <span className="text-[12px] text-text-dim">Sample</span>
+                  <span className="text-[12px] text-text-dim">{t("setup.persona.sampleLabel", "Sample")}</span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -1345,14 +1380,19 @@ export function PersonaSamplingRail({
                   size={15}
                   className={generating ? "animate-rb-spin text-primary" : "text-primary"}
                 />
-                {generating ? "Generating…" : "Generate"}
+                {generating
+                  ? t("setup.persona.generating", "Generating…")
+                  : t("setup.persona.generate", "Generate")}
               </button>
             </div>
             {generating && generateProgress ? (
               <GenerateProgressBar progress={generateProgress} />
             ) : (
               <p className="text-[11px] leading-snug text-text-dim">
-                Writes a synthetic Full-DAG pool (no quality filter, dedup, or calibrate).
+                {t(
+                  "setup.persona.generateDescription",
+                  "Writes a synthetic Full-DAG pool (no quality filter, dedup, or calibrate).",
+                )}
               </p>
             )}
             {generateError ? (
@@ -1416,7 +1456,9 @@ export function PersonaSamplingRail({
                 size={15}
                 className={pulling ? "animate-rb-spin text-primary" : "text-primary"}
               />
-              {pulling ? "Pulling…" : "Pull cohort"}
+              {pulling
+                ? t("setup.persona.pulling", "Pulling…")
+                : t("setup.persona.pull", "Pull cohort")}
             </button>
             {pullError ? (
               <div className="space-y-1.5 rounded-lg border border-danger/30 bg-danger/5 px-2.5 py-2">
@@ -1434,7 +1476,9 @@ export function PersonaSamplingRail({
                         size={14}
                         className={generating ? "animate-rb-spin" : ""}
                       />
-                      {generating ? "Synthesizing…" : "Synthesize to fill this task"}
+                      {generating
+                        ? t("setup.persona.synthesizing", "Synthesizing…")
+                        : t("setup.persona.synthesize", "Synthesize to fill this task")}
                     </button>
                     {generating && generateProgress ? (
                       <GenerateProgressBar progress={generateProgress} />
@@ -1487,14 +1531,28 @@ export function PersonaSamplingRail({
               <button
                 key={alloc}
                 type="button"
-                title={ALLOCATION_TITLES[alloc]}
+                title={t(
+                  alloc === "perCell"
+                    ? "setup.persona.allocationPerCellTitle"
+                    : alloc === "proportional"
+                      ? "setup.persona.allocationProportionalTitle"
+                      : "setup.persona.allocationEqualTotalTitle",
+                  ALLOCATION_TITLES[alloc],
+                )}
                 disabled={disabled || strategyLocked}
                 onClick={() => onStratifiedAllocationChange(alloc)}
                 className={`cockpit-segment__btn cockpit-segment__btn--compact w-full ${FOCUS_RING} ${
                   panelAllocation === alloc ? "cockpit-segment__btn--active" : ""
                 }`}
               >
-                {ALLOCATION_LABELS[alloc]}
+                {t(
+                  alloc === "perCell"
+                    ? "setup.persona.allocationPerCell"
+                    : alloc === "proportional"
+                      ? "setup.persona.allocationProportional"
+                      : "setup.persona.allocationEqualTotal",
+                  ALLOCATION_LABELS[alloc],
+                )}
               </button>
             ))}
           </div>
@@ -1697,7 +1755,9 @@ export function PersonaSamplingRail({
                         size={14}
                         className={generating ? "animate-rb-spin" : ""}
                       />
-                      {generating ? "Synthesizing…" : "Synthesize to fill this task"}
+                      {generating
+                        ? t("setup.persona.synthesizing", "Synthesizing…")
+                        : t("setup.persona.synthesize", "Synthesize to fill this task")}
                     </button>
                     {generating && generateProgress ? (
                       <GenerateProgressBar progress={generateProgress} />
@@ -1796,7 +1856,10 @@ export function PersonaSamplingRail({
       {railSegment === "generation" ? (
         <div className="flex min-h-0 flex-1 items-center justify-center px-2">
           <p className="rounded-lg border border-dashed border-outline/40 p-4 text-center text-[13px] leading-snug text-text-dim">
-            Generate writes a new pool. Dataset then switches to it so you can Pull or Save.
+            {t(
+              "setup.persona.generationEmpty",
+              "Generate writes a new pool. Dataset then switches to it so you can Pull or Save.",
+            )}
           </p>
         </div>
       ) : (

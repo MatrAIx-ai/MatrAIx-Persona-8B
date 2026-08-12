@@ -1018,6 +1018,12 @@ class HarborJobService:
                     "language must be en, ko, zh, zh-Hant, ja, pt, es, or null "
                     "(follow env/default)"
                 )
+        if (language is None) != (language_source is None):
+            raise ValueError(
+                "language and language_source must be provided together or both be null"
+            )
+        if language_source not in {None, "follow_ui", "explicit"}:
+            raise ValueError("language_source must be follow_ui, explicit, or null")
 
         try:
             resolved_plane = normalize_execution_plane(
@@ -1195,15 +1201,13 @@ class HarborJobService:
 
         # Runtime / persona prompt language: explicit canonical token overrides
         # env MATRAIX_PERSONA_LANGUAGE; None = follow env.
-        if language or language_source:
+        if language is not None:
             for agent in job_config.get("agents", []):
                 if isinstance(agent, dict):
                     kwargs = agent.setdefault("kwargs", {})
                     if isinstance(kwargs, dict):
-                        if language:
-                            kwargs["persona_language"] = language
-                        if language_source:
-                            kwargs["persona_language_source"] = language_source
+                        kwargs["persona_language"] = language
+                        kwargs["persona_language_source"] = language_source
 
         self.generated_configs_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.generated_configs_dir / "{}.yaml".format(resolved_job_name)
