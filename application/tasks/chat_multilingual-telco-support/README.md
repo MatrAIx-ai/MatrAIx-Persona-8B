@@ -216,18 +216,17 @@ chatbot / web variant, which resolves `TESTS_DIR` as well as the verifier output
 directory. The plain `verifier_env.sh` in the same folder omits `TESTS_DIR` and is
 what the computer-use tasks use.
 
-`tests/test.sh` follows the two real chat tasks (`chat_meal-planning-nutrition`,
-`chat_openbb-corporate-action-honesty`) rather than
-`example-chat-api_support_chatbot`. It runs `python3 test_state.py` directly,
+`tests/test.sh` runs `python3 test_state.py` directly rather than under pytest,
 because `structured_output.json` is written by the verifier's `main()` and a bare
-`pytest` invocation never calls it — the reference task's uvx+pytest shape leaves
-the reporting layer empty (issue #37). Following the real tasks also drops an
-`apt-get` and a uv download from the verifier phase, taking the oracle smoke from
-3m16s to 31s.
+`pytest` invocation never calls it. That also keeps an `apt-get` and a uv download
+out of the verifier phase, taking the oracle smoke from 3m16s to 31s.
 
-The verifier command also sits inside the `if` condition so that a failing verifier
-still writes `reward.txt`; five tasks still carry a form where `set -e` makes that
-write unreachable (issue #35).
+The verifier command sits inside the `if` condition so that a failing verifier still
+writes `reward.txt`, which `set -e` would otherwise skip.
+
+Both properties are now the repo-wide convention rather than a deviation: they were
+raised as issues #35 and #37 while this task was being written, and fixed upstream
+in #43 and #41 — `example-chat-api_support_chatbot` uses the same shape today.
 
 `tests/test_state.py` keeps its `test_*` functions so the file can still be run
 under pytest by hand, but the verifier path does not depend on them.

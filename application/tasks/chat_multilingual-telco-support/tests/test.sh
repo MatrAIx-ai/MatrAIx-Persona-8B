@@ -4,16 +4,12 @@ set -euo pipefail
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/verifier_env.sh"
 
-# Runs the verifier module directly, matching chat_meal-planning-nutrition and
-# chat_openbb-corporate-action-honesty. This matters: structured_output.json is
-# written by test_state.py's main(), which a bare `pytest` invocation never calls,
-# so the uvx+pytest shape used by example-chat-api_support_chatbot leaves the
-# reporting layer empty (issue #37).
+# Runs the verifier module rather than pytest: structured_output.json is written by
+# test_state.py's main(), which a bare `pytest` invocation never calls.
 #
-# The command also sits in the `if` condition because commands there are exempt
-# from `set -e`, so the reward file is written on both paths rather than skipped on
-# failure. Five other tasks still carry the unreachable `if [ $? -eq 0 ]` form
-# (issue #35); this task does not copy it.
+# The command sits in the `if` condition because commands there are exempt from
+# `set -e`, so the reward file is written on both paths rather than skipped when the
+# verifier fails.
 if python3 "${TESTS_DIR}/test_state.py"; then
   echo 1 > "${VERIFIER_DIR}/reward.txt"
 else
