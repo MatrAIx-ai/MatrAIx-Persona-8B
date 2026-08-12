@@ -138,7 +138,7 @@ cohort resolves without the 1M pool.
 
 Two constraints explain the numbers, and both are easy to break by accident:
 
-- **`sampleSizePerValueGroup` is 1 because the German cell holds only 2 personas**
+- **`sampling.perCell` is 1 because the German cell holds only 2 personas**
   in the whole dev sample. A smoke cohort exists to show the instrument runs, not
   to carry statistical weight, so one per cell buys headroom in every cell.
   Within-cell variance is the production variant's job. German stays in the
@@ -159,13 +159,17 @@ Two constraints explain the numbers, and both are easy to break by accident:
 {
   "schemaVersion": "1.0",
   "sources": [],
-  "defaultMode": "stratified",
   "pool": "persona/datasets/matraix-persona-1m",
   "dimensionFilters": {
     "primary_language": ["English", "Spanish", "German", "Turkish"]
   },
-  "stratifyFields": ["primary_language"],
-  "sampleSizePerValueGroup": 4
+  "sampling": {
+    "mode": "stratified",
+    "fields": ["primary_language"],
+    "allocation": "perCell",
+    "perCell": 4
+  },
+  "seed": 42
 }
 ```
 

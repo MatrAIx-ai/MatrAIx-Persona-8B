@@ -1,7 +1,6 @@
 {
   "schemaVersion": "1.0",
   "sources": [],
-  "defaultMode": "stratified",
   "dimensionFilters": {
     "primary_language": [
       "English",
@@ -9,8 +8,13 @@
       "German"
     ]
   },
-  "stratifyFields": [
-    "primary_language"
-  ],
-  "sampleSizePerValueGroup": 1
+  "sampling": {
+    "mode": "stratified",
+    "fields": [
+      "primary_language"
+    ],
+    "allocation": "perCell",
+    "perCell": 1
+  },
+  "seed": 42
 }
