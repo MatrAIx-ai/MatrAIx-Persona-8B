@@ -34,6 +34,7 @@ import type {
 } from "./types";
 import { PERSONA_BENCH_POOL, PERSONA_CARD_PREVIEW_LIMIT } from "./types";
 import { normalizePersonaPoolName } from "./personaDisplay";
+import type { PersonaLanguageCode } from "./personaLanguage";
 
 /** Backend `/persona-pool/personas` rejects limit > 500. */
 const PERSONA_POOL_CARDS_LIMIT_MAX = 500;
@@ -212,7 +213,7 @@ export const api = {
     useEntirePool?: boolean;
     osAppSubmissionProfile?: string | null;
     osAppBackend?: string | null;
-    language?: "en" | "zh" | "zh-Hant" | null;
+    language?: PersonaLanguageCode | null;
     languageSource?: "follow_ui" | "explicit" | null;
   }) =>
     request<HarborJobLaunchResponse>("/api/harbor/jobs", {

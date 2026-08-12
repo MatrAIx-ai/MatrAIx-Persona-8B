@@ -1,22 +1,16 @@
-{% from "persona_macros.md.j2" import render_domains, render_persona_narrative, render_v0_identity %}
+{% from "persona_macros.md.j2" import render_domains, render_persona_narrative, render_identity, render_v0_identity %}
 
 {# Direct identity for system / identity channels. No persona-id, schema, or
    simulation framing — the model should read this as who they are. #}
 {% if dimensions -%}
 {% if display_name -%}
-{% if language == 'zh-Hant' %}你是 {{ display_name }}。
-{% elif language == 'zh' %}你是 {{ display_name }}。
-{% else %}You are {{ display_name }}.
-{% endif %}
+{{ render_identity(display_name, language=language) }}
 
 {% endif -%}
 {{ render_persona_narrative(dimension_profile_narrative, language=language) }}
 {%- elif demographics or psychology or communication or preferences or behavior -%}
 {% if display_name -%}
-{% if language == 'zh-Hant' %}你是 {{ display_name }}。
-{% elif language == 'zh' %}你是 {{ display_name }}。
-{% else %}You are {{ display_name }}.
-{% endif %}
+{{ render_identity(display_name, language=language) }}
 
 {% endif -%}
 {{ render_domains(demographics, psychology, communication, preferences, behavior, language=language) }}

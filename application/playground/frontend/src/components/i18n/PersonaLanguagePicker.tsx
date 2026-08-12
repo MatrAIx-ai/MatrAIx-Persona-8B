@@ -3,28 +3,27 @@ import { useI18n } from "@/i18n/I18nProvider";
 import {
   persistPersonaLanguageSetting,
   readPersonaLanguageSetting,
+  uiLocaleToLanguage,
   type PersonaLanguageSetting,
 } from "@/lib/personaLanguage";
 
 /**
  * Runtime / persona prompt language setting (upstream review #3):
- * Follow UI | English | Simplified Chinese | Traditional Chinese.
+ * Follow UI plus every canonical runtime language exposed by the UI locale registry.
  * Independent of the UI locale picker.
  */
 export function PersonaLanguagePicker() {
-  const { t } = useI18n();
+  const { t, locales } = useI18n();
   const [setting, setSetting] = useState<PersonaLanguageSetting>(() =>
     readPersonaLanguageSetting(),
   );
 
   const options: Array<{ value: PersonaLanguageSetting; label: string }> = [
     { value: "follow_ui", label: t("personaLanguage.followUi", "Follow UI") },
-    { value: "en", label: t("personaLanguage.english", "English") },
-    { value: "zh", label: t("personaLanguage.chinese", "Simplified Chinese") },
-    {
-      value: "zh-Hant",
-      label: t("personaLanguage.traditionalChinese", "Traditional Chinese"),
-    },
+    ...locales.map((meta) => ({
+      value: uiLocaleToLanguage(meta.code),
+      label: meta.label,
+    })),
   ];
 
   return (

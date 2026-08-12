@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.service.config import PERSONA_MODEL_OPTIONS
+from matraix.persona_dimension_catalog import normalize_persona_language
 
 __all__ = [
     "HealthResponse",
@@ -736,7 +737,8 @@ class HarborJobLaunchRequest(BaseModel):
     chatApplicationId: Optional[str] = None
     chatApplicationContext: Optional[str] = None
     chatMaxTurns: Optional[int] = None
-    # Runtime / persona prompt language: explicit en|zh|zh-Hant overrides env
+    # Runtime / persona prompt language: canonical en|ko|zh|zh-Hant|ja|pt|es
+    # overrides env
     # MATRAIX_PERSONA_LANGUAGE; None = follow env/default.
     # Backend never trusts the browser locale — the frontend resolves
     # follow-UI itself and records it via languageSource.
@@ -748,14 +750,12 @@ class HarborJobLaunchRequest(BaseModel):
     def _validate_language(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
-        normalized = value.strip()
-        lowered = normalized.lower()
-        if lowered in {"en", "zh"}:
-            return lowered
-        if lowered == "zh-hant":
-            return "zh-Hant"
+        normalized = normalize_persona_language(value)
+        if normalized is not None:
+            return normalized
         raise ValueError(
-            "language must be en, zh, zh-Hant, or null (follow env/default)"
+            "language must be en, ko, zh, zh-Hant, ja, pt, es, or null "
+            "(follow env/default)"
         )
 
     @field_validator("languageSource")

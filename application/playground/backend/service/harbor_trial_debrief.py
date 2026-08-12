@@ -24,6 +24,22 @@ if TYPE_CHECKING:
     from backend.service.web_types import WebEvalTask
 
 
+_DEBRIEF_PERSONA_COPY: dict[str, dict[str, str]] = {
+    "en": {"who": "Who you are", "profile": "Profile", "guidance": "Behavioral guidance", "you_are": "You are ", "you_are_suffix": "."},
+    "ko": {"who": "당신은 누구인가요", "profile": "개인 소개", "guidance": "행동 지침", "you_are": "당신은 ", "you_are_suffix": "입니다."},
+    "zh": {"who": "你是谁", "profile": "个人简介", "guidance": "行为准则", "you_are": "你是 ", "you_are_suffix": "。"},
+    "zh-Hant": {"who": "你是誰", "profile": "個人簡介", "guidance": "行為準則", "you_are": "你是 ", "you_are_suffix": "。"},
+    "ja": {"who": "あなたについて", "profile": "プロフィール", "guidance": "行動指針", "you_are": "あなたは ", "you_are_suffix": "です。"},
+    "pt": {"who": "Quem você é", "profile": "Perfil", "guidance": "Diretrizes de comportamento", "you_are": "Você é ", "you_are_suffix": "."},
+    "es": {"who": "Quién eres", "profile": "Resumen personal", "guidance": "Pautas de comportamiento", "you_are": "Eres ", "you_are_suffix": "."},
+}
+
+
+def _debrief_persona_copy(language: str | None) -> dict[str, str]:
+    normalized = normalize_persona_language(language) or "en"
+    return _DEBRIEF_PERSONA_COPY.get(normalized, _DEBRIEF_PERSONA_COPY["en"])
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -611,26 +627,17 @@ def _humanize_dimension_key(key: str) -> str:
 def _format_persona_dimensions_from_yaml(
     raw: dict[str, Any], *, persona_language: str | None = None
 ) -> str:
-    language = normalize_persona_language(persona_language)
-    localized_zh = language in {"zh", "zh-Hant"}
-    traditional = language == "zh-Hant"
-    labels = {
-        "who": "你是誰" if traditional else "你是谁",
-        "summary": "個人簡介" if traditional else "个人简介",
-        "guidance": "行為準則" if traditional else "行为准则",
-    }
+    language = normalize_persona_language(persona_language) or "en"
+    localized = language != "en"
+    labels = _debrief_persona_copy(language)
     display_name = str(raw.get("display_name") or "").strip()
     lines: list[str] = []
     if display_name:
-        lines.append(
-            "你是 {}。".format(display_name)
-            if localized_zh
-            else "You are {}.".format(display_name)
-        )
+        lines.append("{}{}{}".format(labels["you_are"], display_name, labels["you_are_suffix"]))
         lines.append("")
     dims = raw.get("dimensions")
     if isinstance(dims, dict) and dims:
-        lines.append("## {}".format(labels["who"]) if localized_zh else "## Who you are")
+        lines.append("## {}".format(labels["who"]) if localized else "## Who you are")
         lines.append("")
         for key in sorted(dims.keys()):
             value = dims.get(key)
@@ -638,16 +645,16 @@ def _format_persona_dimensions_from_yaml(
                 continue
             lines.append("- {}: {}".format(_humanize_dimension_key(key), value))
     elif raw.get("system_prompt"):
-        if localized_zh and raw.get("summary"):
-            lines.append("## {}".format(labels["summary"]))
+        if localized and raw.get("summary"):
+            lines.append("## {}".format(labels["profile"]))
             lines.append("")
-        if localized_zh:
+        if localized:
             lines.append("## {}".format(labels["guidance"]))
             lines.append("")
         lines.append(str(raw.get("system_prompt")).strip())
     elif raw.get("summary"):
-        if localized_zh:
-            lines.append("## {}".format(labels["summary"]))
+        if localized:
+            lines.append("## {}".format(labels["profile"]))
             lines.append("")
         lines.append(str(raw.get("summary")).strip())
     return "\n".join(lines).strip()
@@ -689,7 +696,8 @@ def _render_persona_prompt(
     raw = _read_persona_yaml_raw(repo_root, persona_rel)
     normalized_language = normalize_persona_language(persona_language)
     if (
-        normalized_language in {"zh", "zh-Hant"}
+        normalized_language is not None
+        and normalized_language != "en"
         and raw
         and not any(
             raw.get(key)

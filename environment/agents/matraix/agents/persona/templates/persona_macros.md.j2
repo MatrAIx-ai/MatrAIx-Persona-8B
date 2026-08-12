@@ -1,14 +1,113 @@
 {# Shared Jinja macros for persona rendering.
    Agent-facing text must read as direct identity — never mention simulation,
-   persona IDs, schema versions, or "stay in character" roleplay cues. #}
+   persona IDs, schema versions, or "stay in character" roleplay cues.
 
-{% macro localized(language, english, simplified, traditional) -%}
-{% if language == 'zh-Hant' -%}{{ traditional }}{% elif language == 'zh' -%}{{ simplified }}{% else -%}{{ english }}{% endif -%}
+   The copy table keeps locale-specific prompt chrome in one place. Persona
+   values, raw summaries, system prompts, and task text remain untouched.
+#}
+
+{% set COPY = {
+  "en": {
+    "who": "Who you are", "demographics": "Demographics", "age": "Age",
+    "gender": "Gender", "location": "Location", "occupation": "Occupation",
+    "education": "Education", "income": "Income", "lifeStage": "Life stage",
+    "background": "Background", "psychology": "Psychology", "bigFive": "Big Five",
+    "riskTolerance": "Risk tolerance", "opennessToNewTools": "Openness to new tools",
+    "patience": "Patience", "skepticism": "Skepticism", "motivation": "Motivation",
+    "values": "Values", "communication": "Communication", "tone": "Tone",
+    "verbosity": "Verbosity", "formality": "Formality", "language": "Language",
+    "technicalFluency": "Technical fluency", "attentionSpan": "Attention span",
+    "learningStyle": "Learning style", "preferences": "Preferences", "hobbies": "Hobbies",
+    "brands": "Brands", "priceSensitivity": "Price sensitivity", "aesthetic": "Aesthetic",
+    "behavior": "Behavior", "youAre": "You are ", "youAreSuffix": ".",
+    "profile": "Profile", "guidance": "Behavioral guidance"
+  },
+  "ko": {
+    "who": "당신은 누구인가요", "demographics": "인구통계", "age": "나이",
+    "gender": "성별", "location": "위치", "occupation": "직업", "education": "교육",
+    "income": "소득", "lifeStage": "생애 단계", "background": "배경", "psychology": "심리 특성",
+    "bigFive": "5요인 성격", "riskTolerance": "위험 감수 성향", "opennessToNewTools": "새 도구에 대한 개방성",
+    "patience": "인내심", "skepticism": "회의성", "motivation": "동기", "values": "가치관",
+    "communication": "의사소통 방식", "tone": "어조", "verbosity": "상세도", "formality": "격식",
+    "language": "언어", "technicalFluency": "기술 숙련도", "attentionSpan": "주의 지속 시간",
+    "learningStyle": "학습 방식", "preferences": "선호", "hobbies": "취미", "brands": "브랜드",
+    "priceSensitivity": "가격 민감도", "aesthetic": "미적 취향", "behavior": "행동 방식",
+    "youAre": "당신은 ", "youAreSuffix": "입니다.", "profile": "개인 소개", "guidance": "행동 지침"
+  },
+  "zh": {
+    "who": "你是谁", "demographics": "人口统计", "age": "年龄", "gender": "性别",
+    "location": "所在地", "occupation": "职业", "education": "教育程度", "income": "收入区间",
+    "lifeStage": "人生阶段", "background": "文化背景", "psychology": "心理特征", "bigFive": "大五人格",
+    "riskTolerance": "风险承受度", "opennessToNewTools": "对新工具的开放度", "patience": "耐心程度",
+    "skepticism": "怀疑程度", "motivation": "动机", "values": "价值观", "communication": "沟通方式",
+    "tone": "语气", "verbosity": "详细程度", "formality": "正式程度", "language": "语言水平",
+    "technicalFluency": "技术熟练度", "attentionSpan": "注意力持续时间", "learningStyle": "学习方式",
+    "preferences": "偏好", "hobbies": "兴趣爱好", "brands": "品牌偏好", "priceSensitivity": "价格敏感度",
+    "aesthetic": "审美偏好", "behavior": "行为方式", "youAre": "你是 ", "youAreSuffix": "。",
+    "profile": "个人简介", "guidance": "行为准则"
+  },
+  "zh-Hant": {
+    "who": "你是誰", "demographics": "人口統計", "age": "年齡", "gender": "性別",
+    "location": "所在地", "occupation": "職業", "education": "教育程度", "income": "收入區間",
+    "lifeStage": "人生階段", "background": "文化背景", "psychology": "心理特徵", "bigFive": "大五人格",
+    "riskTolerance": "風險承受度", "opennessToNewTools": "對新工具的開放度", "patience": "耐心程度",
+    "skepticism": "懷疑程度", "motivation": "動機", "values": "價值觀", "communication": "溝通方式",
+    "tone": "語氣", "verbosity": "詳細程度", "formality": "正式程度", "language": "語言程度",
+    "technicalFluency": "技術熟練度", "attentionSpan": "注意力持續時間", "learningStyle": "學習方式",
+    "preferences": "偏好", "hobbies": "興趣愛好", "brands": "品牌偏好", "priceSensitivity": "價格敏感度",
+    "aesthetic": "審美偏好", "behavior": "行為方式", "youAre": "你是 ", "youAreSuffix": "。",
+    "profile": "個人簡介", "guidance": "行為準則"
+  },
+  "ja": {
+    "who": "あなたについて", "demographics": "人口統計", "age": "年齢", "gender": "性別",
+    "location": "所在地", "occupation": "職業", "education": "教育", "income": "収入",
+    "lifeStage": "ライフステージ", "background": "背景", "psychology": "心理", "bigFive": "ビッグファイブ",
+    "riskTolerance": "リスク許容度", "opennessToNewTools": "新しいツールへの開放性", "patience": "忍耐力",
+    "skepticism": "懐疑心", "motivation": "動機", "values": "価値観", "communication": "コミュニケーション",
+    "tone": "口調", "verbosity": "詳細さ", "formality": "形式性", "language": "言語",
+    "technicalFluency": "技術的な習熟度", "attentionSpan": "集中力", "learningStyle": "学習スタイル",
+    "preferences": "好み", "hobbies": "趣味", "brands": "ブランド", "priceSensitivity": "価格感度",
+    "aesthetic": "美的嗜好", "behavior": "行動", "youAre": "あなたは ", "youAreSuffix": "です。",
+    "profile": "プロフィール", "guidance": "行動指針"
+  },
+  "pt": {
+    "who": "Quem você é", "demographics": "Dados demográficos", "age": "Idade", "gender": "Gênero",
+    "location": "Localização", "occupation": "Ocupação", "education": "Educação", "income": "Faixa de renda",
+    "lifeStage": "Estágio de vida", "background": "Origem cultural", "psychology": "Psicologia", "bigFive": "Cinco Grandes",
+    "riskTolerance": "Tolerância a riscos", "opennessToNewTools": "Abertura a novas ferramentas", "patience": "Paciência",
+    "skepticism": "Ceticismo", "motivation": "Motivação", "values": "Valores", "communication": "Comunicação",
+    "tone": "Tom", "verbosity": "Nível de detalhe", "formality": "Formalidade", "language": "Idioma",
+    "technicalFluency": "Fluência técnica", "attentionSpan": "Capacidade de atenção", "learningStyle": "Estilo de aprendizagem",
+    "preferences": "Preferências", "hobbies": "Interesses", "brands": "Marcas", "priceSensitivity": "Sensibilidade a preço",
+    "aesthetic": "Estética", "behavior": "Comportamento", "youAre": "Você é ", "youAreSuffix": ".",
+    "profile": "Perfil", "guidance": "Diretrizes de comportamento"
+  },
+  "es": {
+    "who": "Quién eres", "demographics": "Demografía", "age": "Edad", "gender": "Género",
+    "location": "Ubicación", "occupation": "Ocupación", "education": "Educación", "income": "Ingresos",
+    "lifeStage": "Etapa de vida", "background": "Antecedentes", "psychology": "Psicología", "bigFive": "Cinco grandes",
+    "riskTolerance": "Tolerancia al riesgo", "opennessToNewTools": "Apertura a nuevas herramientas", "patience": "Paciencia",
+    "skepticism": "Escepticismo", "motivation": "Motivación", "values": "Valores", "communication": "Comunicación",
+    "tone": "Tono", "verbosity": "Nivel de detalle", "formality": "Formalidad", "language": "Idioma",
+    "technicalFluency": "Fluidez técnica", "attentionSpan": "Capacidad de atención", "learningStyle": "Estilo de aprendizaje",
+    "preferences": "Preferencias", "hobbies": "Aficiones", "brands": "Marcas", "priceSensitivity": "Sensibilidad al precio",
+    "aesthetic": "Estética", "behavior": "Comportamiento", "youAre": "Eres ", "youAreSuffix": ".",
+    "profile": "Resumen personal", "guidance": "Pautas de comportamiento"
+  }
+} %}
+
+{% macro localized(language, key, fallback='') -%}
+{%- set copy = COPY.get(language, COPY['en']) -%}
+{{ copy.get(key, COPY['en'].get(key, fallback or key)) }}
+{%- endmacro %}
+
+{% macro render_identity(display_name, language='en') -%}
+{% if display_name %}{{ localized(language, 'youAre') }}{{ display_name }}{{ localized(language, 'youAreSuffix') }}{% endif -%}
 {%- endmacro %}
 
 {% macro render_persona_narrative(paragraphs, language='en') -%}
 {% if paragraphs %}
-## {{ localized(language, 'Who you are', '你是谁', '你是誰') }}
+## {{ localized(language, 'who') }}
 
 {% for paragraph in paragraphs -%}
 {{ paragraph }}
@@ -19,90 +118,90 @@
 
 {% macro render_demographics(d, language='en') -%}
 {% if d %}
-## {{ localized(language, 'Demographics', '人口统计', '人口統計') }}
-{% if d.age is defined %}- {{ localized(language, 'Age', '年龄', '年齡') }}: {{ d.age }}
+## {{ localized(language, 'demographics') }}
+{% if d.age is defined %}- {{ localized(language, 'age') }}: {{ d.age }}
 {% endif -%}
-{% if d.gender is defined %}- {{ localized(language, 'Gender', '性别', '性別') }}: {{ d.gender }}
+{% if d.gender is defined %}- {{ localized(language, 'gender') }}: {{ d.gender }}
 {% endif -%}
-{% if d.location is defined %}- {{ localized(language, 'Location', '所在地', '所在地') }}: {{ d.location }}
+{% if d.location is defined %}- {{ localized(language, 'location') }}: {{ d.location }}
 {% endif -%}
-{% if d.occupation is defined %}- {{ localized(language, 'Occupation', '职业', '職業') }}: {{ d.occupation }}
+{% if d.occupation is defined %}- {{ localized(language, 'occupation') }}: {{ d.occupation }}
 {% endif -%}
-{% if d.education is defined %}- {{ localized(language, 'Education', '教育程度', '教育程度') }}: {{ d.education }}
+{% if d.education is defined %}- {{ localized(language, 'education') }}: {{ d.education }}
 {% endif -%}
-{% if d.income_bracket is defined %}- {{ localized(language, 'Income', '收入区间', '收入區間') }}: {{ d.income_bracket }}
+{% if d.income_bracket is defined %}- {{ localized(language, 'income') }}: {{ d.income_bracket }}
 {% endif -%}
-{% if d.life_stage is defined %}- {{ localized(language, 'Life stage', '人生阶段', '人生階段') }}: {{ d.life_stage }}
+{% if d.life_stage is defined %}- {{ localized(language, 'lifeStage') }}: {{ d.life_stage }}
 {% endif -%}
-{% if d.cultural_background is defined %}- {{ localized(language, 'Background', '文化背景', '文化背景') }}: {{ d.cultural_background }}
+{% if d.cultural_background is defined %}- {{ localized(language, 'background') }}: {{ d.cultural_background }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_psychology(p, language='en') -%}
 {% if p %}
-## {{ localized(language, 'Psychology', '心理特征', '心理特徵') }}
+## {{ localized(language, 'psychology') }}
 {% if p.big_five is defined and p.big_five %}
-- {{ localized(language, 'Big Five', '大五人格', '大五人格') }}: openness={{ p.big_five.openness }}, conscientiousness={{ p.big_five.conscientiousness }}, extraversion={{ p.big_five.extraversion }}, agreeableness={{ p.big_five.agreeableness }}, neuroticism={{ p.big_five.neuroticism }}
+- {{ localized(language, 'bigFive') }}: openness={{ p.big_five.openness }}, conscientiousness={{ p.big_five.conscientiousness }}, extraversion={{ p.big_five.extraversion }}, agreeableness={{ p.big_five.agreeableness }}, neuroticism={{ p.big_five.neuroticism }}
 {% endif -%}
-{% if p.risk_tolerance is defined %}- {{ localized(language, 'Risk tolerance', '风险承受度', '風險承受度') }}: {{ p.risk_tolerance }}
+{% if p.risk_tolerance is defined %}- {{ localized(language, 'riskTolerance') }}: {{ p.risk_tolerance }}
 {% endif -%}
-{% if p.openness_to_new_tools is defined %}- {{ localized(language, 'Openness to new tools', '对新工具的开放度', '對新工具的開放度') }}: {{ p.openness_to_new_tools }}
+{% if p.openness_to_new_tools is defined %}- {{ localized(language, 'opennessToNewTools') }}: {{ p.openness_to_new_tools }}
 {% endif -%}
-{% if p.patience is defined %}- {{ localized(language, 'Patience', '耐心程度', '耐心程度') }}: {{ p.patience }}
+{% if p.patience is defined %}- {{ localized(language, 'patience') }}: {{ p.patience }}
 {% endif -%}
-{% if p.skepticism is defined %}- {{ localized(language, 'Skepticism', '怀疑程度', '懷疑程度') }}: {{ p.skepticism }}
+{% if p.skepticism is defined %}- {{ localized(language, 'skepticism') }}: {{ p.skepticism }}
 {% endif -%}
 {% if p.motivation_drivers is defined and p.motivation_drivers %}
-- {{ localized(language, 'Motivation', '动机', '動機') }}: {{ p.motivation_drivers | join(', ') }}
+- {{ localized(language, 'motivation') }}: {{ p.motivation_drivers | join(', ') }}
 {% endif -%}
 {% if 'values' in p and p['values'] %}
-- {{ localized(language, 'Values', '价值观', '價值觀') }}: {{ p['values'] | join(', ') }}
+- {{ localized(language, 'values') }}: {{ p['values'] | join(', ') }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_communication(c, language='en') -%}
 {% if c %}
-## {{ localized(language, 'Communication', '沟通方式', '溝通方式') }}
-{% if c.tone is defined %}- {{ localized(language, 'Tone', '语气', '語氣') }}: {{ c.tone }}
+## {{ localized(language, 'communication') }}
+{% if c.tone is defined %}- {{ localized(language, 'tone') }}: {{ c.tone }}
 {% endif -%}
-{% if c.verbosity is defined %}- {{ localized(language, 'Verbosity', '详细程度', '詳細程度') }}: {{ c.verbosity }}
+{% if c.verbosity is defined %}- {{ localized(language, 'verbosity') }}: {{ c.verbosity }}
 {% endif -%}
-{% if c.formality is defined %}- {{ localized(language, 'Formality', '正式程度', '正式程度') }}: {{ c.formality }}
+{% if c.formality is defined %}- {{ localized(language, 'formality') }}: {{ c.formality }}
 {% endif -%}
-{% if c.language_level is defined %}- {{ localized(language, 'Language', '语言水平', '語言程度') }}: {{ c.language_level }}
+{% if c.language_level is defined %}- {{ localized(language, 'language') }}: {{ c.language_level }}
 {% endif -%}
-{% if c.technical_fluency is defined %}- {{ localized(language, 'Technical fluency', '技术熟练度', '技術熟練度') }}: {{ c.technical_fluency }}
+{% if c.technical_fluency is defined %}- {{ localized(language, 'technicalFluency') }}: {{ c.technical_fluency }}
 {% endif -%}
-{% if c.attention_span is defined %}- {{ localized(language, 'Attention span', '注意力持续时间', '注意力持續時間') }}: {{ c.attention_span }}
+{% if c.attention_span is defined %}- {{ localized(language, 'attentionSpan') }}: {{ c.attention_span }}
 {% endif -%}
-{% if c.learning_style is defined %}- {{ localized(language, 'Learning style', '学习方式', '學習方式') }}: {{ c.learning_style }}
+{% if c.learning_style is defined %}- {{ localized(language, 'learningStyle') }}: {{ c.learning_style }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_preferences(p, language='en') -%}
 {% if p %}
-## {{ localized(language, 'Preferences', '偏好', '偏好') }}
+## {{ localized(language, 'preferences') }}
 {% if p.hobbies is defined and p.hobbies %}
-- {{ localized(language, 'Hobbies', '兴趣爱好', '興趣愛好') }}: {{ p.hobbies | join(', ') }}
+- {{ localized(language, 'hobbies') }}: {{ p.hobbies | join(', ') }}
 {% endif -%}
 {% if p.brand_affinities is defined and p.brand_affinities %}
-- {{ localized(language, 'Brands', '品牌偏好', '品牌偏好') }}: {{ p.brand_affinities | join(', ') }}
+- {{ localized(language, 'brands') }}: {{ p.brand_affinities | join(', ') }}
 {% endif -%}
-{% if p.price_sensitivity is defined %}- {{ localized(language, 'Price sensitivity', '价格敏感度', '價格敏感度') }}: {{ p.price_sensitivity }}
+{% if p.price_sensitivity is defined %}- {{ localized(language, 'priceSensitivity') }}: {{ p.price_sensitivity }}
 {% endif -%}
-{% if p.aesthetic_taste is defined %}- {{ localized(language, 'Aesthetic', '审美偏好', '審美') }}: {{ p.aesthetic_taste }}
+{% if p.aesthetic_taste is defined %}- {{ localized(language, 'aesthetic') }}: {{ p.aesthetic_taste }}
 {% endif -%}
 {% endif -%}
 {% endmacro %}
 
 {% macro render_behavior(b, language='en') -%}
 {% if b %}
-## {{ localized(language, 'Behavior', '行为方式', '行為方式') }}
+## {{ localized(language, 'behavior') }}
 {% for key, value in b.items() %}
-- {{ key | replace('_', ' ') | title }}: {% if value is iterable and value is not string %}{{ value | join(', ') }}{% else %}{{ value }}{% endif %}
+- {{ localized(language, key, key | replace('_', ' ') | title) }}: {% if value is iterable and value is not string %}{{ value | join(', ') }}{% else %}{{ value }}{% endif %}
 {% endfor -%}
 {% endif -%}
 {% endmacro %}
@@ -116,19 +215,16 @@
 {% endmacro %}
 
 {% macro render_v0_identity(display_name, summary, system_prompt, language='en') -%}
-{% if display_name %}{{ localized(language, 'You are ' ~ display_name ~ '.', '你是 ' ~ display_name ~ '。', '你是 ' ~ display_name ~ '。') }}
-{% endif -%}
+{{ render_identity(display_name, language=language) }}
 {% if summary %}
 
-{% if language == 'zh-Hant' %}## 個人簡介
-{% elif language == 'zh' %}## 个人简介
+{% if language != 'en' %}## {{ localized(language, 'profile') }}
 {% endif -%}
 {{ summary }}
 {% endif -%}
 {% if system_prompt %}
 
-{% if language == 'zh-Hant' %}## 行為準則
-{% elif language == 'zh' %}## 行为准则
+{% if language != 'en' %}## {{ localized(language, 'guidance') }}
 {% endif -%}
 {{ system_prompt }}
 {% endif -%}

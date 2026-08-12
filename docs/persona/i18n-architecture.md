@@ -15,9 +15,9 @@ Status: **implemented**. This document describes the shipped architecture.
 
 | # | Requirement | Acceptance |
 |---|---|---|
-| 1 | Independent language dimension | One flat pack per locale (`messages/packs/<code>.ts`); `LOCALE_REGISTRY`; generic `LocalePicker`; lazy loading (zh-CN and zh-TW ship as separate chunks); missing keys fall back to English |
+| 1 | Independent language dimension | One flat pack per locale (`messages/packs/<code>.ts`); `LOCALE_REGISTRY`; registry-driven picker; lazy loading for every non-English pack; missing keys fall back to English |
 | 2 | UI locale vs runtime/persona language decoupled | UI i18n covers chrome only; persona/prompt language is a separate setting (`matraix.personaLanguage`) resolved at launch, never coupled to the UI locale |
-| 3 | Overridable default + recorded | Default `follow_ui`; explicit `en`/`zh`/`zh-Hant` override; every run persists `effective_language` + `language_source` in `persona_meta.json`; backend never reads the browser locale |
+| 3 | Overridable default + recorded | Default `follow_ui`; explicit `en`/`ko`/`zh`/`zh-Hant`/`ja`/`pt`/`es` override; every run persists `effective_language` + `language_source` in `persona_meta.json`; backend never reads the browser locale |
 | 4 | English-first | `DEFAULT_LOCALE = "en-US"`; en-US is the always-resident source pack; missing keys fall back to it |
 
 ## 2. Layout
@@ -33,7 +33,12 @@ application/playground/frontend/src/i18n/
 └── messages/
     └── packs/
         ├── en-US.ts         # Flat single-locale pack (source of truth)
-        └── zh-CN.ts         # Flat single-locale pack (additive; may be incomplete)
+        ├── ko-KR.ts
+        ├── zh-CN.ts
+        ├── zh-TW.ts
+        ├── ja-JP.ts
+        ├── pt-BR.ts
+        └── es-ES.ts
 ```
 
 No dual-locale tables anywhere. `messages/sections/*` and the eager
@@ -50,8 +55,12 @@ re-exports the derived type and shared locale interfaces:
 ```ts
 export const LOCALE_REGISTRY = [
   { code: "en-US", label: "English", englishName: "English" },
+  { code: "ko-KR", label: "한국어", englishName: "Korean" },
   { code: "zh-CN", label: "简体中文", englishName: "Simplified Chinese" },
   { code: "zh-TW", label: "繁體中文", englishName: "Traditional Chinese" },
+  { code: "ja-JP", label: "日本語", englishName: "Japanese" },
+  { code: "pt-BR", label: "Português (Brasil)", englishName: "Brazilian Portuguese" },
+  { code: "es-ES", label: "Español", englishName: "Spanish" },
 ] as const;
 export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];
 ```
@@ -59,8 +68,10 @@ export type Locale = (typeof LOCALE_REGISTRY)[number]["code"];
 Adding a language means adding one registry entry and one locale pack with its
 loader. `types.ts` does not contain a second locale-code list.
 
-The shipped optional packs include `zh-CN` and `zh-TW`; the latter uses
-Traditional Chinese display copy and the canonical runtime token `zh-Hant`.
+The shipped packs cover `en-US`, `ko-KR`, `zh-CN`, `zh-TW`, `ja-JP`, `pt-BR`,
+and `es-ES`. `zh-TW` uses Traditional Chinese display copy and the canonical
+runtime token `zh-Hant`. The five added locale packs keep exact English source
+key parity; explicitly documented locale-only self-name keys are allowed.
 
 ### 3.2 Provider behavior
 
@@ -79,20 +90,21 @@ Traditional Chinese display copy and the canonical runtime token `zh-Hant`.
 
 ### 3.3 Missing keys / incomplete community packs
 
-Optional locale packs may be incomplete; missing keys fall back to English. The
-test suite documents (but does not enforce) per-locale drift. Only en-US must
-be complete.
+Future optional locale packs may be incomplete; missing keys fall back to English.
+The currently shipped seven-locale set is source-key complete for the current
+English pack. Tests allow only explicitly documented locale-only extras, so new
+source keys cannot silently become English fallback in a shipped pack.
 
 ## 4. Runtime / persona language (requirement 3)
 
 Independent of the UI locale:
 
-- Setting: `lib/personaLanguage.ts` — `follow_ui | en | zh | zh-Hant`, persisted
-  under `matraix.personaLanguage`. `PersonaLanguagePicker` (Follow UI | English
-  | Simplified Chinese | Traditional Chinese) is available in every eval
-  cockpit (chatbot, survey, web, OS app).
+- Setting: `lib/personaLanguage.ts` — `follow_ui | en | ko | zh | zh-Hant | ja |
+  pt | es`, persisted under `matraix.personaLanguage`. `PersonaLanguagePicker`
+  generates its options from the UI locale registry and is available in every
+  eval cockpit (chatbot, survey, web, OS app).
 - Launch: the frontend resolves `follow_ui` against the current UI locale and
-  sends explicit `language` (en|zh|zh-Hant) + `languageSource`
+  sends explicit `language` (en|ko|zh|zh-Hant|ja|pt|es) + `languageSource`
   (follow_ui|explicit). The legacy `zh` token remains supported for existing
   Simplified Chinese runs; Traditional Chinese is canonicalized as `zh-Hant`.
 - Backend: `HarborJobLaunchRequest` validates the pair (an explicit language
@@ -109,15 +121,18 @@ Independent of the UI locale:
 ## 5. Tests
 
 `src/i18n/__tests__/i18n.test.ts` (vitest, `npm test`): fallback chain,
-interpolate, pack integrity (no duplicate keys; zh drift documented), registry
-loaders, persona label key helpers.
+interpolate, parameterized seven-locale registry/lazy-loader checks, exact
+English key parity for the five added packs, new source-key placeholders, runtime
+language mapping, and persona label key helpers. Python focused suites cover all
+six non-English persona schema packs (1,290 dimensions each), template chrome,
+request validation, job persistence, and debrief reconstruction.
 
 ## 6. Risks and compatibility
 
 - **en fallback**: `pack[key] ?? enPack[key] ?? fallback` never renders blank;
   only en-US must be complete.
-- **Bundle**: zh-CN and zh-TW ship as lazy chunks (verified in `vite build`
-  output); the main bundle carries en-US only.
+- **Bundle**: ko-KR, zh-CN, zh-TW, ja-JP, pt-BR, and es-ES ship as separate lazy
+  chunks (verified in `vite build` output); the main bundle carries en-US only.
 - **Compat**: `useI18n` signature unchanged (`locale/setLocale/locales/t/
   formatNumber/formatDate`); the old binary `toggleLocale` was removed with its
   only consumer (TopBar now uses `LocalePicker`).

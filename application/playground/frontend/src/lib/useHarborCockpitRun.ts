@@ -11,6 +11,7 @@ import {
   type HarborCockpitTaskKind,
 } from "./harborCockpitMappers";
 import type { PlaygroundResult } from "./types";
+import type { PersonaLanguageCode } from "./personaLanguage";
 import { useUrlState } from "./useUrlState";
 
 export type HarborLaunchMode = "auto" | "force_docker" | "smoke";
@@ -28,7 +29,7 @@ export interface HarborCockpitRunInput<TJob> {
   osAppSubmissionProfile?: string;
   agentName?: string;
   osAppBackend?: string;
-  language?: "en" | "zh" | "zh-Hant" | null;
+  language?: PersonaLanguageCode | null;
   languageSource?: "follow_ui" | "explicit" | null;
   mapDebrief: (debrief: PlaygroundResult, ctx: { jobName: string; trialName: string }) => TJob;
   mapLive?: (live: HarborCockpitLiveState, ctx: { jobName: string; trialName: string }) => TJob;

@@ -19,6 +19,16 @@ from typing import Any
 DEFAULT_CATALOG_PATH = "persona/schema/dimensions.json"
 DEFAULT_ZH_LABELS_PATH = "persona/schema/labels_zh.json"
 DEFAULT_ZH_HANT_LABELS_PATH = "persona/schema/labels_zh-TW.json"
+DEFAULT_LABEL_PATHS = {
+    "ko": "persona/schema/labels_ko.json",
+    "ja": "persona/schema/labels_ja.json",
+    "pt": "persona/schema/labels_pt.json",
+    "es": "persona/schema/labels_es.json",
+}
+
+# Canonical runtime/persona language tokens. UI locale codes are mapped to
+# these tokens by the frontend; prompt and artifact layers only use this set.
+PERSONA_LANGUAGE_CODES = ("en", "ko", "zh", "zh-Hant", "ja", "pt", "es")
 
 # Chinese section headings, keyed by the English _SECTIONS heading.
 _ZH_SECTIONS: dict[str, str] = {
@@ -49,12 +59,72 @@ _ZH_HANT_SECTIONS: dict[str, str] = {
     "Other attributes": "其他屬性",
 }
 
+_KO_SECTIONS: dict[str, str] = {
+    "Identity": "정체성",
+    "Career & education": "경력 및 교육",
+    "Language & communication": "언어 및 의사소통",
+    "Personality & values": "성격 및 가치관",
+    "Current interaction state": "현재 상호작용 상태",
+    "Worldview": "세계관",
+    "Interests": "관심사",
+    "Skills & expertise": "기술 및 전문성",
+    "Lifestyle & health": "생활 방식 및 건강",
+    "Developer & AI": "개발자 및 AI",
+    "Other attributes": "기타 속성",
+}
+
+_JA_SECTIONS: dict[str, str] = {
+    "Identity": "アイデンティティ",
+    "Career & education": "キャリアと教育",
+    "Language & communication": "言語とコミュニケーション",
+    "Personality & values": "性格と価値観",
+    "Current interaction state": "現在のインタラクション状態",
+    "Worldview": "世界観",
+    "Interests": "興味・関心",
+    "Skills & expertise": "スキルと専門知識",
+    "Lifestyle & health": "ライフスタイルと健康",
+    "Developer & AI": "開発者とAI",
+    "Other attributes": "その他の属性",
+}
+
+_PT_SECTIONS: dict[str, str] = {
+    "Identity": "Identidade",
+    "Career & education": "Carreira e educação",
+    "Language & communication": "Idioma e comunicação",
+    "Personality & values": "Personalidade e valores",
+    "Current interaction state": "Estado atual da interação",
+    "Worldview": "Visão de mundo",
+    "Interests": "Interesses",
+    "Skills & expertise": "Habilidades e especialidades",
+    "Lifestyle & health": "Estilo de vida e saúde",
+    "Developer & AI": "Desenvolvimento e IA",
+    "Other attributes": "Outros atributos",
+}
+
+_ES_SECTIONS: dict[str, str] = {
+    "Identity": "Identidad",
+    "Career & education": "Carrera y educación",
+    "Language & communication": "Idioma y comunicación",
+    "Personality & values": "Personalidad y valores",
+    "Current interaction state": "Estado actual de la interacción",
+    "Worldview": "Cosmovisión",
+    "Interests": "Intereses",
+    "Skills & expertise": "Habilidades y experiencia",
+    "Lifestyle & health": "Estilo de vida y salud",
+    "Developer & AI": "Desarrollo e IA",
+    "Other attributes": "Otros atributos",
+}
+
 _PERSONA_SECTION_LABELS: dict[str, dict[str, str]] = {
     "zh": _ZH_SECTIONS,
     "zh-Hant": _ZH_HANT_SECTIONS,
+    "ko": _KO_SECTIONS,
+    "ja": _JA_SECTIONS,
+    "pt": _PT_SECTIONS,
+    "es": _ES_SECTIONS,
 }
 
-_ZH_LABELS_CACHE: dict[str, dict[str, dict]] = {}
+_LABELS_CACHE: dict[str, dict[str, dict]] = {}
 
 
 def normalize_persona_language(language: str | None) -> str | None:
@@ -63,7 +133,7 @@ def normalize_persona_language(language: str | None) -> str | None:
         return None
     normalized = str(language).strip()
     lowered = normalized.lower()
-    if lowered in {"en", "zh"}:
+    if lowered in {"en", "ko", "zh", "ja", "pt", "es"}:
         return lowered
     if lowered == "zh-hant":
         return "zh-Hant"
@@ -75,7 +145,7 @@ def _load_labels_path(labels_path: str) -> dict[str, dict]:
     if not path.is_absolute():
         path = _repo_root() / path
     key = str(path.resolve())
-    cached = _ZH_LABELS_CACHE.get(key)
+    cached = _LABELS_CACHE.get(key)
     if cached is not None:
         return cached
     labels: dict[str, dict] = {}
@@ -85,7 +155,7 @@ def _load_labels_path(labels_path: str) -> dict[str, dict]:
             labels = payload if isinstance(payload, dict) else {}
         except (OSError, ValueError):
             labels = {}
-    _ZH_LABELS_CACHE[key] = labels
+    _LABELS_CACHE[key] = labels
     return labels
 
 
@@ -104,12 +174,44 @@ def load_zh_hant_labels(
 
 
 def load_persona_labels(language: str | None) -> dict[str, dict]:
-    """Load the label/value pack for a normalized runtime language."""
-    if language == "zh":
+    """Load a locale label/value pack, with English fallback for gaps."""
+    normalized = normalize_persona_language(language)
+    if normalized in {None, "en"}:
+        return {}
+    if normalized == "zh":
         return load_zh_labels()
-    if language == "zh-Hant":
+    if normalized == "zh-Hant":
         return load_zh_hant_labels()
-    return {}
+    return _load_labels_path(DEFAULT_LABEL_PATHS[normalized])
+
+
+def load_locale_labels(
+    language: str,
+    labels_path: str | None = None,
+) -> dict[str, dict]:
+    """Load a supported locale pack, optionally from an explicit path."""
+    normalized = normalize_persona_language(language)
+    if normalized in {None, "en"}:
+        return {}
+    if labels_path is not None:
+        return _load_labels_path(labels_path)
+    return load_persona_labels(normalized)
+
+
+def load_ko_labels(labels_path: str = DEFAULT_LABEL_PATHS["ko"]) -> dict[str, dict]:
+    return load_locale_labels("ko", labels_path)
+
+
+def load_ja_labels(labels_path: str = DEFAULT_LABEL_PATHS["ja"]) -> dict[str, dict]:
+    return load_locale_labels("ja", labels_path)
+
+
+def load_pt_labels(labels_path: str = DEFAULT_LABEL_PATHS["pt"]) -> dict[str, dict]:
+    return load_locale_labels("pt", labels_path)
+
+
+def load_es_labels(labels_path: str = DEFAULT_LABEL_PATHS["es"]) -> dict[str, dict]:
+    return load_locale_labels("es", labels_path)
 
 
 def resolve_persona_language(language: str | None) -> str:
@@ -354,10 +456,12 @@ def _section_for(dim_id: str, category: str) -> str:
 def _label_for(
     dim_id: str,
     meta: dict[str, Any] | None,
+    labels: dict | None = None,
     zh_labels: dict | None = None,
 ) -> str:
-    if zh_labels:
-        entry = zh_labels.get(dim_id)
+    active_labels = labels if labels is not None else zh_labels
+    if active_labels:
+        entry = active_labels.get(dim_id)
         if entry and entry.get("label"):
             return str(entry["label"]).strip()
     if meta and meta.get("label"):
@@ -365,11 +469,11 @@ def _label_for(
     return dim_id.replace("_", " ")
 
 
-def _zh_value(dim_id: str, raw: str, zh_labels: dict | None) -> str:
-    """Translate a raw dimension value when a Chinese mapping exists."""
-    if not zh_labels:
+def _localized_value(dim_id: str, raw: str, labels: dict | None) -> str:
+    """Translate a raw dimension value when a locale mapping exists."""
+    if not labels:
         return raw
-    entry = zh_labels.get(dim_id)
+    entry = labels.get(dim_id)
     if not isinstance(entry, dict):
         return raw
     table = entry.get("values")
@@ -379,13 +483,21 @@ def _zh_value(dim_id: str, raw: str, zh_labels: dict | None) -> str:
     return str(translated) if translated else raw
 
 
+def _zh_value(dim_id: str, raw: str, zh_labels: dict | None) -> str:
+    """Backward-compatible Chinese value helper."""
+    return _localized_value(dim_id, raw, zh_labels)
+
+
 def _format_section(
     heading: str,
     items: list[tuple[str, str]],
     zh_labels: dict | None = None,
     section_labels: dict[str, str] | None = None,
 ) -> str:
-    display = section_labels.get(heading, heading) if section_labels else heading
+    active_section_labels = section_labels
+    if active_section_labels is None and zh_labels:
+        active_section_labels = _ZH_SECTIONS
+    display = (active_section_labels or {}).get(heading, heading)
     lines = [f"### {display}"]
     for label, value in items:
         lines.append(f"- {label}: {value}")
@@ -412,9 +524,11 @@ def collect_dimension_items(
     dimensions: dict[str, Any],
     *,
     catalog_path: str = DEFAULT_CATALOG_PATH,
+    labels: dict | None = None,
     zh_labels: dict | None = None,
 ) -> dict[str, list[tuple[str, str, str]]]:
     """Group keepable dims, translating labels and values when requested."""
+    active_labels = labels if labels is not None else zh_labels
     catalog = load_dimension_catalog(catalog_path)
     by_id: dict[str, dict[str, Any]] = catalog["by_id"]
     grouped: dict[str, list[tuple[str, str, str]]] = {h: [] for h, _ in _SECTIONS}
@@ -440,8 +554,8 @@ def collect_dimension_items(
 
         category = str((meta or {}).get("category") or "")
         heading = _section_for(dim_id, category)
-        label = _label_for(dim_id, meta, zh_labels=zh_labels)
-        value = _zh_value(dim_id, text, zh_labels)
+        label = _label_for(dim_id, meta, labels=active_labels)
+        value = _localized_value(dim_id, text, active_labels)
         grouped.setdefault(heading, []).append((dim_id, label, value))
 
     return {key: value for key, value in grouped.items() if value}
@@ -465,7 +579,7 @@ def build_dimension_narrative(
     grouped = collect_dimension_items(
         dimensions,
         catalog_path=catalog_path,
-        zh_labels=persona_labels,
+        labels=persona_labels,
     )
     if not grouped:
         return []
@@ -503,14 +617,12 @@ def build_dimension_narrative(
             block = _format_section(
                 heading,
                 fitted,
-                zh_labels=persona_labels,
                 section_labels=section_labels,
             )
         else:
             block = _format_section(
                 heading,
                 [(label, value) for _dim_id, label, value in items],
-                zh_labels=persona_labels,
                 section_labels=section_labels,
             )
 

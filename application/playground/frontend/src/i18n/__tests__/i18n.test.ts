@@ -4,6 +4,9 @@ import enPack from "../messages/packs/en-US";
 import koPack from "../messages/packs/ko-KR";
 import zhPack from "../messages/packs/zh-CN";
 import zhTwPack from "../messages/packs/zh-TW";
+import jaPack from "../messages/packs/ja-JP";
+import ptPack from "../messages/packs/pt-BR";
+import esPack from "../messages/packs/es-ES";
 import {
   personaDimensionLabelKey,
   personaSectionLabelKey,
@@ -17,6 +20,23 @@ import {
   resolveLaunchLanguage,
   uiLocaleToLanguage,
 } from "../../lib/personaLanguage";
+
+const NEW_SOURCE_KEYS = [
+  "reports.strategy.allocation",
+  "reports.strategy.allocationTitle",
+  "reports.strategy.perCell",
+  "reports.strategy.perCellTitle",
+  "setup.filters.axis",
+  "setup.filters.axes",
+  "setup.filters.filter",
+  "setup.filters.filters",
+  "setup.filters.stratifyAxes",
+  "setup.filters.stratifyHint",
+  "setup.persona.allocation",
+  "setup.persona.allocationEqualTotal",
+  "setup.persona.allocationPerCell",
+  "setup.persona.allocationProportional",
+] as const;
 
 describe("resolveMessage — fallback chain (pack[key] ?? enPack[key] ?? fallback ?? key)", () => {
   it("returns the zh-CN value when the key exists in the active pack", () => {
@@ -113,36 +133,67 @@ describe("interpolate", () => {
 
 describe("pack integrity and optional locale fallback", () => {
   const enKeys = Object.keys(enPack);
-  const koKeys = Object.keys(koPack);
   const zhKeys = Object.keys(zhPack);
-  const zhTwKeys = Object.keys(zhTwPack);
   const enMessages: Readonly<Partial<Record<string, string>>> = enPack;
-  const koMessages: Readonly<Partial<Record<string, string>>> = koPack;
   const zhMessages: Readonly<Partial<Record<string, string>>> = zhPack;
   const zhTwMessages: Readonly<Partial<Record<string, string>>> = zhTwPack;
+  const localizedPacks: ReadonlyArray<{
+    code: string;
+    pack: Readonly<Record<string, string>>;
+    extraKeys: readonly string[];
+  }> = [
+    { code: "ko-KR", pack: koPack, extraKeys: [] },
+    {
+      code: "zh-TW",
+      pack: zhTwPack,
+      extraKeys: [
+        "shell.home.subtitle",
+        "shell.preflight.optionalAdaptersNeedAttention",
+        "personaLanguage.traditionalChinese",
+      ],
+    },
+    { code: "ja-JP", pack: jaPack, extraKeys: [] },
+    {
+      code: "pt-BR",
+      pack: ptPack,
+      extraKeys: [
+        "shell.locale.portuguese",
+        "shell.locale.switchToPortuguese",
+        "personaLanguage.portuguese",
+      ],
+    },
+    { code: "es-ES", pack: esPack, extraKeys: [] },
+  ];
 
-  it("has no duplicate keys within each pack", () => {
+  it("has no duplicate keys within every supported non-English pack", () => {
     expect(new Set(enKeys).size).toBe(enKeys.length);
-    expect(new Set(koKeys).size).toBe(koKeys.length);
-    expect(new Set(zhKeys).size).toBe(zhKeys.length);
-    expect(new Set(zhTwKeys).size).toBe(zhTwKeys.length);
-  });
-
-  it("covers every current English key in the Korean UI pack", () => {
-    expect(koKeys.sort()).toEqual(enKeys.sort());
-    for (const key of enKeys) {
-      expect(koMessages[key]).toBeTruthy();
-      expect(resolveMessage(koPack, enPack, key)).toBe(koMessages[key]);
+    for (const { pack } of localizedPacks) {
+      const keys = Object.keys(pack);
+      expect(new Set(keys).size).toBe(keys.length);
     }
   });
 
-  it("preserves UI message placeholders in the Korean pack", () => {
+  it("keeps every non-English pack at English source-key parity, with only documented extras", () => {
+    for (const { code, pack, extraKeys } of localizedPacks) {
+      const keys = Object.keys(pack);
+      const expectedKeys = [...enKeys, ...extraKeys].sort();
+      expect(keys.sort(), code).toEqual(expectedKeys);
+      for (const key of enKeys) {
+        expect(pack[key], `${code}:${key}`).toBeTruthy();
+        expect(resolveMessage(pack, enPack, key), `${code}:${key}`).toBe(pack[key]);
+      }
+    }
+  });
+
+  it("preserves placeholders for every newly translated source key", () => {
     const placeholders = (message: string) =>
       [...message.matchAll(/\{[^{}]+\}/g)].map((match) => match[0]).sort();
-    for (const key of enKeys) {
-      expect(placeholders(koMessages[key] ?? "")).toEqual(
-        placeholders(enMessages[key] ?? ""),
-      );
+    for (const { code, pack } of localizedPacks) {
+      for (const key of NEW_SOURCE_KEYS) {
+        expect(placeholders(pack[key] ?? ""), `${code}:${key}`).toEqual(
+          placeholders(enMessages[key] ?? ""),
+        );
+      }
     }
   });
 
@@ -179,6 +230,14 @@ describe("pack integrity and optional locale fallback", () => {
     }
   });
 
+  it("resolves every current en-US key through every registered non-English pack", () => {
+    for (const { code, pack } of localizedPacks) {
+      for (const key of enKeys) {
+        expect(resolveMessage(pack, enPack, key), `${code}:${key}`).toBe(pack[key]);
+      }
+    }
+  });
+
   it("keeps task title messages identical to English source text", () => {
     for (const key of enKeys.filter((candidate) => candidate.startsWith("taskDisplay.title."))) {
       expect(zhTwMessages[key]).toBe(enMessages[key]);
@@ -209,10 +268,20 @@ describe("task-owned display content", () => {
 });
 
 describe("runtime persona language", () => {
-  it("maps the Traditional Chinese UI locale to canonical zh-Hant", () => {
-    expect(uiLocaleToLanguage("zh-TW")).toBe("zh-Hant");
-    expect(resolveLaunchLanguage("follow_ui", "zh-TW")).toEqual({
-      language: "zh-Hant",
+  const localeLanguagePairs = [
+    ["en-US", "en"],
+    ["ko-KR", "ko"],
+    ["zh-CN", "zh"],
+    ["zh-TW", "zh-Hant"],
+    ["ja-JP", "ja"],
+    ["pt-BR", "pt"],
+    ["es-ES", "es"],
+  ] as const;
+
+  it.each(localeLanguagePairs)("maps %s to canonical runtime language %s", (locale, language) => {
+    expect(uiLocaleToLanguage(locale)).toBe(language);
+    expect(resolveLaunchLanguage("follow_ui", locale)).toEqual({
+      language,
       languageSource: "follow_ui",
     });
   });
@@ -272,32 +341,12 @@ describe("registry", () => {
     expect(LOCALE_REGISTRY[0].label).toBe("English");
   });
 
-  it("lazily loads a non-empty en-US pack via dynamic import", async () => {
-    const pack = await localePacks["en-US"]();
-    expect(pack).toBeTruthy();
-    expect(Object.keys(pack).length).toBeGreaterThan(0);
-  });
-
-  it("lazily loads a non-empty zh-CN pack via dynamic import", async () => {
-    const pack = await localePacks["zh-CN"]();
-    expect(pack).toBeTruthy();
-    expect(Object.keys(pack).length).toBeGreaterThan(0);
-  });
-
-  it("lazily loads a non-empty zh-TW pack via dynamic import", async () => {
-    const pack = await localePacks["zh-TW"]();
-    expect(pack).toBeTruthy();
-    expect(Object.keys(pack).length).toBeGreaterThan(0);
-  });
-
-  it("the dynamically loaded zh-CN pack has identical keys to the static one", async () => {
-    const pack = await localePacks["zh-CN"]();
-    expect(Object.keys(pack).sort()).toEqual(Object.keys(zhPack).sort());
-  });
-
-  it("the dynamically loaded zh-TW pack has identical keys to the static one", async () => {
-    const pack = await localePacks["zh-TW"]();
-    expect(Object.keys(pack).sort()).toEqual(Object.keys(zhTwPack).sort());
+  it("lazily loads every registered non-empty locale pack with stable keys", async () => {
+    for (const meta of LOCALE_REGISTRY) {
+      const pack = await localePacks[meta.code]();
+      expect(pack, meta.code).toBeTruthy();
+      expect(Object.keys(pack).length, meta.code).toBeGreaterThan(0);
+    }
   });
 });
 

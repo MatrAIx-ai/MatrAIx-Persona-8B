@@ -42,6 +42,7 @@ from matraix.application_job import (
     build_application_job_config,
     resolve_job_environment,
 )
+from matraix.persona_dimension_catalog import normalize_persona_language
 
 DEFAULT_AGENT_BY_TYPE: dict[str, str] = {
     # Keys here stay canonical; ``normalize_metadata_type()`` handles legacy
@@ -1010,6 +1011,14 @@ class HarborJobService:
             remote_runner_configured,
         )
 
+        if language is not None:
+            language = normalize_persona_language(language)
+            if language is None:
+                raise ValueError(
+                    "language must be en, ko, zh, zh-Hant, ja, pt, es, or null "
+                    "(follow env/default)"
+                )
+
         try:
             resolved_plane = normalize_execution_plane(
                 execution_plane or default_execution_plane()
@@ -1184,8 +1193,8 @@ class HarborJobService:
                         kwargs.setdefault("max_steps", 100)
         job_meta = job_config.pop("_job_meta", None)
 
-        # Runtime / persona prompt language (official review #3): explicit
-        # en|zh|zh-Hant overrides env MATRAIX_PERSONA_LANGUAGE; None = follow env.
+        # Runtime / persona prompt language: explicit canonical token overrides
+        # env MATRAIX_PERSONA_LANGUAGE; None = follow env.
         if language or language_source:
             for agent in job_config.get("agents", []):
                 if isinstance(agent, dict):
