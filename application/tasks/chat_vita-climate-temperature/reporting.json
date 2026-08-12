@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0",
+  "contextRules": [
+    {
+      "match": {"contextType": "task_outcome"},
+      "distributions": [
+        {
+          "id": "vita_climate.outcome_by_driver",
+          "facetKey": "outcome_status",
+          "title": "Climate-control outcome"
+        }
+      ]
+    },
+    {
+      "match": {"contextType": "vehicle_state_transition"},
+      "distributions": [
+        {
+          "id": "vita_climate.state_match_by_driver",
+          "facetKey": "state_match",
+          "title": "Vehicle state matched the request"
+        }
+      ]
+    },
+    {
+      "match": {"contextType": "vita_coverage"},
+      "distributions": [
+        {
+          "id": "vita_climate.capability_compliance",
+          "facetKey": "capability_compliance",
+          "title": "Capability compliance"
+        },
+        {
+          "id": "vita_climate.coverage_by_context",
+          "facetKey": "runtime_context",
+          "title": "Feature × Capability × Context coverage"
+        }
+      ]
+    },
+    {
+      "match": {"contextType": "user_feedback"},
+      "distributions": [
+        {
+          "id": "vita_climate.rating_by_driver",
+          "facetKey": "overall_experience_rating",
+          "title": "Vita experience rating"
+        }
+      ]
+    }
+  ]
+}

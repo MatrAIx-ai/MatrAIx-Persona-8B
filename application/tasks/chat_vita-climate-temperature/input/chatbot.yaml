@@ -1,0 +1,62 @@
+transport: sidecar_http
+runtimeDefaults:
+  applicationId: vita_climate
+  applicationContext: automotive_climate_control
+  domain: automotive
+  maxTurns: 4
+capabilities:
+  - text_chat
+connection:
+  baseUrlEnv: VITA_CHATBOT_API_URL
+  baseUrl: http://127.0.0.1:8907
+  healthPath: /ready
+protocol:
+  sendMessage:
+    method: POST
+    path: /v1/messages
+    sessionIdField: sessionId
+    messageField: message
+    titleField: ""
+    botTypeField: ""
+    staticBody:
+      scenarioId: climate-temperature
+      runtimeContext:
+        vehicleMotion: driving
+        assistantMode: normal
+        network: offline
+        language: vi
+        audioState: media
+        inputModality: voice
+  response:
+    sessionIdField: sessionId
+    replyField: reply
+structuredExposure:
+  fields:
+    - key: decision
+      label: Vita decision
+      selector: decision
+      format: text
+    - key: vehicle_state
+      label: Vehicle state
+      selector: vehicleState
+      format: json
+    - key: action
+      label: Vehicle action
+      selector: action
+      format: json
+    - key: capability_ids
+      label: Vita capability evidence
+      selector: capabilityIds
+      format: json
+    - key: runtime_context
+      label: Runtime context
+      selector: runtimeContext
+      format: json
+    - key: tool_result
+      label: Tool result
+      selector: toolResult
+      format: json
+artifacts:
+  transcript: transcript.json
+  applicationResult: application_result.json
+  feedback: user_feedback.json

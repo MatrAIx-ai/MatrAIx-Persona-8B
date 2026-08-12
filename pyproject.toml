@@ -134,6 +134,8 @@ packages = [
     "matraix.agents",
     "matraix.agents.installed",
     "matraix.agents.persona",
+    "matraix.vita",
+    "matraix.vita.skills",
 ]
 
 [tool.setuptools.package-dir]
@@ -155,6 +157,7 @@ harbor = [
 ]
 matraix = [
     "agents/persona/templates/*.j2",
+    "vita/*.yaml",
 ]
 
 [tool.pytest.ini_options]

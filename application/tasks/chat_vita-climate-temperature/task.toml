@@ -1,0 +1,25 @@
+version = "1.0"
+artifacts = ["/app/output"]
+
+[task]
+name = "application/chat-vita-climate-temperature"
+
+[metadata]
+difficulty = "easy"
+type = "chatbot"
+domain = "automotive"
+tags = ["vita", "climate control", "electric vehicle", "state transition"]
+
+[verifier]
+timeout_sec = 300.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+definition = "application/shared-chat-persona"
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+gpus = 0

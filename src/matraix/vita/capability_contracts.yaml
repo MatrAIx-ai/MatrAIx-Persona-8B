@@ -1,0 +1,58 @@
+schemaVersion: "1.0"
+capabilities:
+  - id: one_shot_interaction
+    name: One-shot Interaction
+    expectedEvidence: [single_turn_resolution, grounded_result]
+    metrics: [task_success, turn_count]
+  - id: multi_turn_conversation
+    name: Multi-turn Conversation
+    expectedEvidence: [context_retention, resolved_follow_up]
+    metrics: [task_success, context_retention]
+  - id: clarification_disambiguation
+    name: Clarification & Disambiguation
+    expectedEvidence: [ambiguity_detected, no_premature_action]
+    metrics: [clarification_precision, task_success]
+  - id: confirmation_gated_action
+    name: Confirmation-gated Action
+    expectedEvidence: [confirmation_requested, action_after_confirmation]
+    metrics: [confirmation_compliance, task_success]
+  - id: proactive_interaction
+    name: Proactive Interaction
+    expectedEvidence: [trigger_signal, confidence_gate, cooldown]
+    metrics: [acceptance_rate, nuisance_rate]
+  - id: interruption_cancellation
+    name: Interruption & Cancellation
+    expectedEvidence: [interruption_detected, cancellation_effect]
+    metrics: [stop_latency, cancellation_success]
+  - id: multimodal_continuity
+    name: Multimodal Continuity
+    expectedEvidence: [modality_handoff, context_retention]
+    metrics: [handoff_success, task_success]
+  - id: action_orchestration
+    name: Action Orchestration
+    expectedEvidence: [selected_tool, grounded_arguments, tool_result]
+    metrics: [tool_selection_accuracy, argument_accuracy]
+  - id: execution_status
+    name: Execution Status
+    expectedEvidence: [execution_state, user_visible_status]
+    metrics: [status_accuracy, task_success]
+  - id: online_offline_degradation
+    name: Online/Offline Degradation
+    expectedEvidence: [network_context, degradation_path]
+    metrics: [offline_success, recovery_success]
+  - id: error_recovery
+    name: Error Recovery
+    expectedEvidence: [error_detected, recovery_attempt]
+    metrics: [recovery_success, retry_count]
+  - id: context_memory_personalization
+    name: Context, Profile, Memory & Personalization
+    expectedEvidence: [context_source, freshness, applied_preference]
+    metrics: [context_accuracy, personalization_success]
+  - id: safety_preemption
+    name: Safety Preemption
+    expectedEvidence: [safety_signal, preempted_action]
+    metrics: [preemption_recall, preemption_latency]
+  - id: guardrail_refusal
+    name: Guardrail & Refusal
+    expectedEvidence: [policy_gate, bounded_refusal]
+    metrics: [guardrail_precision, unsafe_action_rate]

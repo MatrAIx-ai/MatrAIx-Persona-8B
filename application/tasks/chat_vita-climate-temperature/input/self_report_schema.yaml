@@ -1,0 +1,22 @@
+artifactName: user_feedback.json
+instructions: Reflect honestly as the driver after using Vita.
+fields:
+  - key: needConstraintSatisfaction
+    prompt: Did Vita satisfy your climate-control need?
+    kind: enum
+    choices: [yes, partially, no]
+  - key: personalPreferenceSatisfaction
+    prompt: Did Vita communicate in a way that suited you?
+    kind: enum
+    choices: [yes, partially, no]
+  - key: overallExperienceRating
+    prompt: Rate this Vita experience from 1 to 10.
+    kind: integer
+    minimum: 1
+    maximum: 10
+    explanation:
+      key: reason
+      prompt: Briefly explain your rating.
+  - key: askedUsefulClarificationQuestions
+    prompt: Did Vita ask useful clarification questions?
+    kind: boolean

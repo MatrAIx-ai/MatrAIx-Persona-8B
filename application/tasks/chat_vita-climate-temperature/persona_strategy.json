@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "sources": [],
+  "defaultMode": "stratified",
+  "dimensionFilters": {
+    "demo_driver_status": ["Daily driver", "Occasional driver"],
+    "skill_driving": ["Beginner", "Intermediate", "Advanced"],
+    "att_new_technology": ["Positive", "Neutral", "Skeptical"]
+  },
+  "stratifyFields": ["skill_driving", "att_new_technology"],
+  "sampleSize": 18,
+  "seed": 42
+}

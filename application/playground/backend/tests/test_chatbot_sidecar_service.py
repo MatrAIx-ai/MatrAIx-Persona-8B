@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.service import apple_container_sidecar
 from backend.service import chatbot_sidecar_service as svc
 
 
@@ -40,6 +41,7 @@ def test_list_sidecar_statuses(monkeypatch: pytest.MonkeyPatch) -> None:
         "meal_planning_nutrition",
         "deeptutor",
         "prescreening_assistant",
+        "vita_climate",
     }
     assert all(item["ok"] for item in statuses)
     by_id = {item["applicationId"]: item for item in statuses}
@@ -51,6 +53,49 @@ def test_list_sidecar_statuses(monkeypatch: pytest.MonkeyPatch) -> None:
     assert by_id["meal_planning_nutrition"]["canStart"] is True
     assert by_id["deeptutor"]["canStart"] is True
     assert by_id["prescreening_assistant"]["canStart"] is True
+    assert by_id["vita_climate"]["canStart"] is True
+
+
+def test_start_vita_sidecar_uses_only_apple_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    commands: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(command, **_kwargs):  # noqa: ANN001
+        commands.append(list(command))
+        return Result()
+
+    monkeypatch.setattr(apple_container_sidecar.subprocess, "run", fake_run)
+    monkeypatch.setattr(svc, "_wait_for_sidecar_probe", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        svc,
+        "sidecar_status",
+        lambda *_args, **_kwargs: {
+            "applicationId": "vita_climate",
+            "ok": True,
+            "healthUrl": "http://127.0.0.1:8907",
+            "canStart": True,
+            "detail": "ready",
+        },
+    )
+
+    # When
+    result = svc.start_sidecar("vita_climate")
+
+    # Then
+    assert result["started"] is True
+    assert commands
+    assert all(command[0] != "docker" for command in commands)
+    assert any(command[:3] == ["uv", "pip", "install"] for command in commands)
+    assert any("--python-version" in command and "3.12" in command for command in commands)
+    assert any(command[1] == "build" for command in commands)
+    assert any(command[1] == "run" and "8907:8000" in command for command in commands)
 
 
 def test_start_sidecar_runs_compose_for_sidecar_only(
