@@ -33,11 +33,7 @@ import { OsAppEvalCockpit } from "./OsAppEvalCockpit";
 import { type PlaygroundTaskType } from "./TaskTypeSwitch";
 import { CockpitSetupShell } from "./setup/CockpitSetupShell";
 import { PersonaSamplingRail } from "./setup/PersonaSamplingRail";
-import {
-  buildPersonaLaunchFields,
-  hasLaunchableCohort,
-  resolveCohortSize,
-} from "./setup/personaLaunchFields";
+import { resolveCohortSize } from "./setup/personaLaunchFields";
 import { CockpitPipelineDiagram } from "./setup/CockpitPipelineDiagram";
 import { TaskSelectionRail, type ChatTransport, type TaskCardModel } from "./setup/TaskSelectionRail";
 import { BatchTrialGrid } from "./setup/BatchTrialGrid";
@@ -49,13 +45,12 @@ import {
   BATCH_RUN_COMPLETE_HINT,
   formatBatchProgressLabel,
   resolveRunLaunchPhase,
-  useCockpitBatchJob,
 } from "./setup/useCockpitBatchJob";
 import { readCockpitBatch } from "./setup/cockpitBatchStorage";
-import { useSetupPersonaSampling } from "./setup/useSetupPersonaSampling";
+import { useCockpitLaunch } from "./setup/useCockpitLaunch";
 import { useCockpitRunCancel } from "./setup/useCockpitRunCancel";
 import { useCockpitSetupLock } from "./setup/useCockpitSetupLock";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useHarborCockpitRun, type HarborCockpitPhase } from "@/lib/useHarborCockpitRun";
 import { useUrlState } from "@/lib/useUrlState";
 import { usePgTaskIdDeepLink } from "@/lib/usePgTaskIdDeepLink";
@@ -314,66 +309,71 @@ function ChatbotEvalCockpit({
   const setupTaskPath =
     chatbotTasks.find((task) => task.id === selectedTaskId)?.taskPath ?? null;
   const {
-    persona,
-    personaModel,
-    setPersonaModel,
-    personaModelOptions,
-    samplingMode,
-    setSamplingMode,
-    selectedPersonaIds,
-    setSelectedPersonaIds,
-    selectedCount,
-    setSelectedCount,
-    useEntirePool,
-    setUseEntirePool,
-    groupFilters,
-    setGroupFilters,
-    fields,
-    setFields,
-    stratifiedAllocation,
-    setStratifiedAllocation,
-    sampleSize,
-    setSampleSize,
-    perCell,
-    setPerCell,
-    seed,
-    parallelTrials,
-    setParallelTrials,
-    personaPool,
-    setPersonaPool,
-    isBatchRun,
-    hasTaskStrategy,
-    taskPersonaStrategy,
-    useTaskDefaultStrategy,
-    setUseTaskDefaultStrategy,
-  } = useSetupPersonaSampling(options, "chatbot", setupTaskPath, isActive);
+    sampling: {
+      persona,
+      personaModel,
+      setPersonaModel,
+      personaModelOptions,
+      samplingMode,
+      setSamplingMode,
+      selectedPersonaIds,
+      setSelectedPersonaIds,
+      selectedCount,
+      setSelectedCount,
+      useEntirePool,
+      setUseEntirePool,
+      groupFilters,
+      setGroupFilters,
+      fields,
+      setFields,
+      stratifiedAllocation,
+      setStratifiedAllocation,
+      sampleSize,
+      setSampleSize,
+      perCell,
+      setPerCell,
+      seed,
+      parallelTrials,
+      setParallelTrials,
+      personaPool,
+      setPersonaPool,
+      isBatchRun,
+      hasTaskStrategy,
+      taskPersonaStrategy,
+      useTaskDefaultStrategy,
+      setUseTaskDefaultStrategy,
+    },
+    batch: {
+      batchJobName,
+      batchTaskId,
+      batchPersonaIds,
+      batchPersonaPool,
+      clearBatch,
+      cancelBatch,
+      cancelBusy,
+      batchCancelled,
+      retryFailed,
+      retryBusy,
+      retryError,
+      failedTrials,
+      isBatchActive,
+      batchComplete,
+      batchGridCells,
+      completedTrials: batchCompletedTrials,
+      expectedTrialCount,
+      personaById,
+      batchError,
+    },
+    launchError,
+    setLaunchError,
+    clearLaunchError,
+    canLaunchCohort,
+    launchBatch,
+  } = useCockpitLaunch(options, "chatbot", setupTaskPath, isActive);
   const pipelinePersonaModelLabel = useMemo(
     () => personaModelPipelineLabel(personaModel, personaModelOptions),
     [personaModel, personaModelOptions],
   );
-  const [launchError, setLaunchError] = useState<string | null>(null);
-  const {
-    batchJobName,
-    batchTaskId,
-    batchPersonaIds,
-    batchPersonaPool,
-    setBatchJobName,
-    clearBatch,
-    cancelBatch,
-    cancelBusy,
-    batchCancelled,
-    retryFailed,
-    retryBusy,
-    retryError,
-    failedTrials,
-    isBatchActive,
-    batchComplete,
-    batchGridCells,
-    completedTrials: batchCompletedTrials,
-    expectedTrialCount,
-    personaById,
-    batchError,
-  } = useCockpitBatchJob(selectedPersonaIds, parallelTrials, "chatbot", selectedCount, personaPool);
   const [exportSnapshot, setExportSnapshot] = useState<ExportSnapshot | null>(null);
 
   // After navigating away/back, single-trial restore brings back the transcript
@@ -564,62 +564,35 @@ function ChatbotEvalCockpit({
   ]);
 
   const handleLaunch = useCallback(async () => {
-    if (
-      !hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) ||
-      isRunning ||
-      !chatTaskPath ||
-      !selectedTask
-    ) {
+    if (!canLaunchCohort || isRunning || !chatTaskPath || !selectedTask) {
       return;
     }
     if (isBatchRun) {
-      setLaunchError(null);
-      try {
-        const personaFields = buildPersonaLaunchFields({
-          personaPool,
-          selectedPersonaIds,
-          selectedCount,
-          useEntirePool,
-          parallelTrials,
-        });
-        const launched = await api.launchHarborJob({
-          taskPath: chatTaskPath,
-          seed,
-          personaModel,
-          ...personaFields,
-          mode: "auto",
+      await launchBatch({
+        taskPath: chatTaskPath,
+        taskId: selectedTask.id,
+        overrides: {
           chatDomain: requestDomain,
           chatApplicationId: knownLaunchApplicationId ?? undefined,
           chatApplicationContext: launchChatApplicationContext,
           chatMaxTurns: maxTurns,
-        });
-        setBatchJobName(launched.jobName, { taskId: selectedTask.id, personaPool });
-      } catch (exc) {
-        const message = exc instanceof ApiError ? exc.message : exc instanceof Error ? exc.message : String(exc);
-        setLaunchError(message);
-      }
+        },
+      });
       return;
     }
     handleRun();
   }, [
-    selectedPersonaIds,
-    selectedCount,
-    useEntirePool,
+    canLaunchCohort,
     isRunning,
     isBatchRun,
-    applicationId,
-    seed,
-    personaModel,
-    parallelTrials,
-    personaPool,
     requestDomain,
     knownLaunchApplicationId,
     launchChatApplicationContext,
     maxTurns,
     chatTaskPath,
     selectedTask,
+    launchBatch,
     handleRun,
-    setBatchJobName,
   ]);
 
   const handleRetry = useCallback(() => {
@@ -630,10 +603,10 @@ function ChatbotEvalCockpit({
   const handleNewRun = useCallback(() => {
     reset();
     clearBatch();
-    setLaunchError(null);
+    clearLaunchError();
     setFocusedTurnIndex(null);
     setExpandedTurns(new Set());
-  }, [reset, clearBatch]);
+  }, [reset, clearBatch, clearLaunchError]);
 
   const { onCancelRun, cancelRunBusy } = useCockpitRunCancel({
     batchJobName,
@@ -932,7 +905,7 @@ function ChatbotEvalCockpit({
           )}
           <RunLaunchBar
             canRun={
-              hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) &&
+              canLaunchCohort &&
               Boolean(chatTaskPath) &&
               !runBusy
             }
