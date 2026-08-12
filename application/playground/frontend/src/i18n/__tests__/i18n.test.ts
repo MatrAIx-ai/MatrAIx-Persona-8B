@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import enPack from "../messages/packs/en-US";
+import koPack from "../messages/packs/ko-KR";
 import zhPack from "../messages/packs/zh-CN";
 import {
   personaDimensionLabelKey,
@@ -105,13 +106,44 @@ describe("interpolate", () => {
 
 describe("pack integrity and optional locale fallback", () => {
   const enKeys = Object.keys(enPack);
+  const koKeys = Object.keys(koPack);
   const zhKeys = Object.keys(zhPack);
   const enMessages: Readonly<Partial<Record<string, string>>> = enPack;
+  const koMessages: Readonly<Partial<Record<string, string>>> = koPack;
   const zhMessages: Readonly<Partial<Record<string, string>>> = zhPack;
 
   it("has no duplicate keys within each pack", () => {
     expect(new Set(enKeys).size).toBe(enKeys.length);
+    expect(new Set(koKeys).size).toBe(koKeys.length);
     expect(new Set(zhKeys).size).toBe(zhKeys.length);
+  });
+
+  it("covers every current English key in the Korean UI pack", () => {
+    expect(koKeys.sort()).toEqual(enKeys.sort());
+    for (const key of enKeys) {
+      expect(koMessages[key]).toBeTruthy();
+      expect(resolveMessage(koPack, enPack, key)).toBe(koMessages[key]);
+    }
+  });
+
+  it("preserves UI message placeholders in the Korean pack", () => {
+    const placeholders = (message: string) =>
+      [...message.matchAll(/\{[^{}]+\}/g)].map((match) => match[0]).sort();
+    for (const key of enKeys) {
+      expect(placeholders(koMessages[key] ?? "")).toEqual(
+        placeholders(enMessages[key] ?? ""),
+      );
+    }
+  });
+
+  it("contains representative Korean UI copy and preserves raw platform labels", () => {
+    expect(koPack["shell.locale.picker"]).toBe("언어");
+    expect(koPack["catalog.catalogDrawer.loaded"]).toBe("로드됨");
+    expect(koPack["personaLanguage.followUi"]).toBe("UI 따르기");
+    expect(koPack["taskDisplay.os.ios"]).toBe("iOS");
+    expect(koPack["cockpit.environment.default.personaModel"]).toBe(
+      "anthropic/claude-haiku-4-5",
+    );
   });
 
   it("allows an incomplete optional locale to fall back to en-US", () => {
