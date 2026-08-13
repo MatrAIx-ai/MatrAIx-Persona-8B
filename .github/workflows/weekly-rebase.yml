@@ -1,0 +1,174 @@
+name: Weekly Rebase
+
+on:
+  schedule:
+    # Mondays, 07:17 UTC. Off-the-hour to dodge GitHub's cron congestion.
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report what would change without pushing
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: weekly-rebase
+  cancel-in-progress: false
+
+env:
+  BASE_BRANCH: main
+  # Branches that must never be rebased onto main.
+  # gh-pages carries an unrelated history; rebasing it would destroy the site.
+  PROTECTED_BRANCHES: "main gh-pages"
+  DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.REBASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Rebase in-repo branches
+        run: |
+          set -euo pipefail
+          git fetch origin --prune --quiet
+          base_sha=$(git rev-parse "origin/$BASE_BRANCH")
+          echo "### In-repo branches" >> "$GITHUB_STEP_SUMMARY"
+
+          git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin \
+            | grep -v '^HEAD$' > /tmp/branches.txt
+
+          while read -r branch; do
+            case " $PROTECTED_BRANCHES " in
+              *" $branch "*) echo "- \`$branch\` — protected, skipped" >> "$GITHUB_STEP_SUMMARY"; continue ;;
+            esac
+
+            old_sha=$(git rev-parse "origin/$branch")
+            ahead=$(git rev-list --count "$base_sha..origin/$branch")
+            behind=$(git rev-list --count "origin/$branch..$base_sha")
+
+            if [ "$behind" -eq 0 ]; then
+              echo "- \`$branch\` — already current" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            if [ "$ahead" -eq 0 ]; then
+              # No unique commits: this is a fast-forward, no force needed.
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "- \`$branch\` — would fast-forward $behind commits (dry run)" >> "$GITHUB_STEP_SUMMARY"
+              else
+                git push origin "$base_sha:refs/heads/$branch"
+                echo "- \`$branch\` — fast-forwarded $behind commits" >> "$GITHUB_STEP_SUMMARY"
+              fi
+              continue
+            fi
+
+            git checkout --quiet -B _rebase_tmp "origin/$branch"
+            if git rebase "$base_sha" >/tmp/rebase.log 2>&1; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "- \`$branch\` — would rebase $ahead commit(s) over $behind (dry run)" >> "$GITHUB_STEP_SUMMARY"
+              else
+                git push --force-with-lease="refs/heads/$branch:$old_sha" \
+                  origin "HEAD:refs/heads/$branch"
+                echo "- \`$branch\` — rebased $ahead commit(s) over $behind" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            else
+              git rebase --abort || true
+              echo "- \`$branch\` — :warning: conflict, left untouched" >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::Rebase conflict on $branch; resolve by hand."
+            fi
+            git checkout --quiet "$BASE_BRANCH"
+          done < /tmp/branches.txt
+
+      - name: Rebase open pull request branches
+        env:
+          GH_TOKEN: ${{ secrets.REBASE_TOKEN || secrets.GITHUB_TOKEN }}
+          REBASE_TOKEN: ${{ secrets.REBASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "### Pull requests" >> "$GITHUB_STEP_SUMMARY"
+          base_sha=$(git rev-parse "origin/$BASE_BRANCH")
+
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open \
+            --base "$BASE_BRANCH" --json number --jq '.[].number' > /tmp/prs.txt
+
+          while read -r pr; do
+            [ -n "$pr" ] || continue
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$pr" > /tmp/pr.json
+            # Never interpolate fork-controlled values into the shell directly.
+            head_ref=$(jq -r '.head.ref' /tmp/pr.json)
+            head_repo=$(jq -r '.head.repo.full_name // ""' /tmp/pr.json)
+            head_sha=$(jq -r '.head.sha' /tmp/pr.json)
+            can_modify=$(jq -r '.maintainer_can_modify' /tmp/pr.json)
+            is_fork=$([ "$head_repo" = "$GITHUB_REPOSITORY" ] && echo false || echo true)
+
+            if [ -z "$head_repo" ]; then
+              echo "- #$pr — fork deleted, skipped" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            if [ "$is_fork" = "true" ]; then
+              if [ -z "${REBASE_TOKEN:-}" ]; then
+                echo "- #$pr — :warning: needs REBASE_TOKEN, skipped" >> "$GITHUB_STEP_SUMMARY"
+                echo "::warning::PR #$pr is from a fork; set REBASE_TOKEN to rebase it."
+                continue
+              fi
+              if [ "$can_modify" != "true" ]; then
+                echo "- #$pr — :warning: 'Allow edits by maintainers' is off, skipped" >> "$GITHUB_STEP_SUMMARY"
+                continue
+              fi
+              git remote remove fork 2>/dev/null || true
+              git remote add fork "https://x-access-token:${REBASE_TOKEN}@github.com/${head_repo}.git"
+              remote=fork
+            else
+              remote=origin
+            fi
+
+            git fetch --quiet "$remote" "$head_ref"
+            behind=$(git rev-list --count "FETCH_HEAD..$base_sha")
+            if [ "$behind" -eq 0 ]; then
+              echo "- #$pr — already current" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            ahead=$(git rev-list --count "$base_sha..FETCH_HEAD")
+            git checkout --quiet -B _rebase_pr FETCH_HEAD
+            if git rebase "$base_sha" >/tmp/rebase.log 2>&1; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "- #$pr — would rebase $ahead commit(s) over $behind (dry run)" >> "$GITHUB_STEP_SUMMARY"
+              elif git push --force-with-lease="refs/heads/$head_ref:$head_sha" \
+                     "$remote" "HEAD:refs/heads/$head_ref" 2>/tmp/push.log; then
+                echo "- #$pr — rebased $ahead commit(s) over $behind" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "- #$pr — :warning: push rejected (see log)" >> "$GITHUB_STEP_SUMMARY"
+                echo "::warning::Push rejected for PR #$pr."
+              fi
+            else
+              git rebase --abort || true
+              echo "- #$pr — :warning: conflict with $BASE_BRANCH" >> "$GITHUB_STEP_SUMMARY"
+              if [ "$DRY_RUN" != "true" ]; then
+                "$GITHUB_WORKSPACE/.github/scripts/upsert-rebase-comment.sh" \
+                  "$pr" "$head_sha" "$base_sha"
+              fi
+            fi
+            git checkout --quiet "$BASE_BRANCH"
+          done < /tmp/prs.txt
+
+      - name: Clean up credentials
+        if: always()
+        run: git remote remove fork 2>/dev/null || true
