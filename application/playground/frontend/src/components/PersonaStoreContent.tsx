@@ -78,7 +78,7 @@ function PersonaSearchField({
 }: {
   value: string;
   onDebouncedChange: (value: string) => void;
-  inputRef?: React.RefObject<HTMLInputElement | null>;
+  inputRef?: React.RefObject<HTMLInputElement>;
   placeholder: string;
 }) {
   const [local, setLocal] = useState(value);
