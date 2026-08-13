@@ -70,3 +70,9 @@ Read the result as follows:
   problem worth acting on.
 
 Either way the answer is useful; only one of them is a finding about people.
+
+## Outcome
+
+Both arms have been run. The rate held — 28/99 control versus 27/99 treatment,
+with 92 of 99 personas choosing the identical tier in both. Salience is not the
+constraint. See [RESULTS.md](RESULTS.md).

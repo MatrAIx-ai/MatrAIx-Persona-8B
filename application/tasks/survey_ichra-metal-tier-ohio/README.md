@@ -32,6 +32,15 @@ difference the two.
 `q_tier_if_more` adds a +$250 counterfactual, giving a one-step elasticity read
 without a full within-subject battery.
 
+## Known result
+
+In the first run of this task, 28 of 100 personas chose a metal tier strictly
+worse than one their allowance also covered in full — the leftover allowance is
+forfeited, so the richer plan was free to them. A paired A/B against
+[`survey_ichra-metal-tier-ohio-salient`](../survey_ichra-metal-tier-ohio-salient/RESULTS.md)
+showed the rate is not an artifact of how this task words the forfeit rule:
+making the rule prominent moved it 28% → 27%.
+
 ## Premium anchors
 
 `input/context.md` carries real Ohio plan-year-2026 figures — median
