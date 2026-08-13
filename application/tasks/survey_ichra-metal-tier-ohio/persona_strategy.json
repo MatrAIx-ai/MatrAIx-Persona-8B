@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "sources": [],
+  "dimensionFilters": {
+    "age_bracket": [
+      "25-34",
+      "35-44",
+      "45-54",
+      "55-64"
+    ],
+    "region": [
+      "North America"
+    ],
+    "demo_employment_status": [
+      "Full-time",
+      "Part-time"
+    ]
+  },
+  "sampling": {
+    "mode": "stratified",
+    "fields": [
+      "age_bracket"
+    ],
+    "perCell": 25,
+    "sampleSize": 100
+  }
+}

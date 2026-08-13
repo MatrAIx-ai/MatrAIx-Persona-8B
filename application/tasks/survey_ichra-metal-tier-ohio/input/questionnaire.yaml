@@ -1,0 +1,158 @@
+schemaVersion: "1.0"
+id: ichra_metal_tier_ohio_v1
+title: "ICHRA Metal Tier Choice — Ohio"
+description: "Which metal tier a worker buys when an employer replaces its group plan with an ICHRA whose monthly allowance is scaled by age band."
+questions:
+  - id: q_allowance_band
+    prompt: "Based on your own age, which monthly allowance does your employer give you?"
+    type: single_choice
+    construct: allowance_band
+    required: true
+    options:
+      - id: "band_500"
+        label: "$500 a month (I am 27-35)."
+      - id: "band_1000"
+        label: "$1,000 a month (I am 36-45)."
+      - id: "band_1500"
+        label: "$1,500 a month (I am 46-64)."
+
+  - id: q_tier_choice
+    prompt: "With that allowance, which plan do you buy?"
+    type: single_choice
+    construct: tier_choice
+    required: true
+    askRationale: true
+    options:
+      - id: "bronze"
+        label: "Bronze — lowest premium, highest deductible."
+      - id: "silver"
+        label: "Silver — middle premium, middle deductible."
+      - id: "gold"
+        label: "Gold — highest premium, lowest deductible."
+      - id: "decline"
+        label: "I turn down the ICHRA and go without employer help."
+
+  - id: q_allowance_adequacy
+    prompt: "My allowance covers the kind of plan I actually want."
+    type: likert
+    construct: allowance_adequacy
+    required: true
+    minValue: 1
+    maxValue: 5
+
+  - id: q_tier_if_more
+    prompt: "If your employer raised your allowance by $250 a month, would you change your plan?"
+    type: single_choice
+    construct: tier_elasticity
+    required: true
+    askRationale: true
+    options:
+      - id: "move_up"
+        label: "Yes, I would move up a tier."
+      - id: "same_tier_better_plan"
+        label: "I would stay in the same tier but pick a better plan in it."
+      - id: "no_change"
+        label: "No, I would keep the same plan and pay less myself."
+      - id: "would_enroll"
+        label: "I would enroll where I otherwise would have declined."
+
+  - id: q_out_of_pocket_ceiling
+    prompt: "How much of your own money, per month, are you willing to add on top of the allowance?"
+    type: single_choice
+    construct: payroll_tolerance
+    required: true
+    options:
+      - id: "none"
+        label: "Nothing. The plan has to fit inside the allowance."
+      - id: "under_100"
+        label: "Up to $100 a month."
+      - id: "100_250"
+        label: "$100 to $250 a month."
+      - id: "250_500"
+        label: "$250 to $500 a month."
+      - id: "over_500"
+        label: "More than $500 a month if the plan is right."
+
+  - id: q_deductible_reaction
+    prompt: "A Bronze plan in Ohio carries roughly a $7,500 deductible. You pay that yourself before most coverage starts."
+    type: likert
+    construct: deductible_pain
+    required: true
+    minValue: 1
+    maxValue: 5
+
+  - id: q_switch_driver
+    prompt: "What matters most when you pick between these plans?"
+    type: single_choice
+    construct: decision_driver
+    required: true
+    askRationale: true
+    options:
+      - id: "monthly_premium"
+        label: "The monthly premium. I budget month to month."
+      - id: "deductible"
+        label: "The deductible. I do not want a big bill before coverage kicks in."
+      - id: "oop_max"
+        label: "The out-of-pocket maximum. I care about the worst case."
+      - id: "doctors"
+        label: "Whether my doctors are in the network."
+      - id: "prescriptions"
+        label: "How my prescriptions are covered."
+
+  - id: q_expected_use
+    prompt: "How much medical care do you expect to use in the next year?"
+    type: single_choice
+    construct: expected_utilization
+    required: true
+    options:
+      - id: "almost_none"
+        label: "Almost none. Maybe one checkup."
+      - id: "routine"
+        label: "Routine care and a prescription or two."
+      - id: "regular"
+        label: "Regular care for an ongoing condition."
+      - id: "heavy"
+        label: "A lot. Surgery, specialists, or a chronic condition being managed."
+
+  - id: q_subsidy_tradeoff
+    prompt: "Taking the ICHRA money means giving up any marketplace subsidy you might have qualified for. Knowing that, would you still take the employer allowance?"
+    type: single_choice
+    construct: subsidy_awareness
+    required: true
+    askRationale: true
+    options:
+      - id: "take_ichra"
+        label: "Yes, take the allowance."
+      - id: "check_subsidy_first"
+        label: "Only after I check what the subsidy would have been worth."
+      - id: "prefer_subsidy"
+        label: "No, I would rather keep my subsidy eligibility."
+      - id: "did_not_know"
+        label: "I did not know that, and it changes my answer."
+
+  - id: q_verify_before_enrolling
+    prompt: "What do you check before you actually enroll? (Select all that apply)"
+    type: multi_choice
+    construct: pre_enrollment_checks
+    required: true
+    options:
+      - id: "doctor_in_network"
+        label: "Whether my current doctors take the plan."
+      - id: "drug_formulary"
+        label: "Whether my prescriptions are on the drug list."
+      - id: "hospital"
+        label: "Which hospitals are covered."
+      - id: "total_cost"
+        label: "Premium plus deductible added together for the year."
+      - id: "carrier_reputation"
+        label: "The insurance company's reputation."
+      - id: "nothing"
+        label: "Nothing. I pick on price and move on."
+
+  - id: q_confidence_in_choice
+    prompt: "I feel confident I picked the right plan for my situation."
+    type: likert
+    construct: choice_confidence
+    required: true
+    minValue: 1
+    maxValue: 5

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "1.0",
+  "contextRules": [
+    {
+      "match": {
+        "contextType": "question_response",
+        "key": "question.q_tier_choice"
+      },
+      "summaryAnalyses": [
+        {
+          "id": "tier_choice.rationale_themes",
+          "title": "Why personas landed on their tier",
+          "targetFacetKey": "rationale",
+          "groupByMode": "none",
+          "summaryKind": "llm_bucket_summary"
+        }
+      ]
+    },
+    {
+      "match": {
+        "contextType": "question_response",
+        "key": "question.q_tier_if_more"
+      },
+      "summaryAnalyses": [
+        {
+          "id": "tier_elasticity.rationale_themes",
+          "title": "What another $250 a month would change",
+          "targetFacetKey": "rationale",
+          "groupByMode": "none",
+          "summaryKind": "llm_bucket_summary"
+        }
+      ]
+    },
+    {
+      "match": {
+        "contextType": "question_response",
+        "key": "question.q_switch_driver"
+      },
+      "summaryAnalyses": [
+        {
+          "id": "switch_driver.rationale_themes",
+          "title": "What drives the tier decision",
+          "targetFacetKey": "rationale",
+          "groupByMode": "none",
+          "summaryKind": "llm_bucket_summary"
+        }
+      ]
+    },
+    {
+      "match": {
+        "contextType": "question_response",
+        "key": "question.q_subsidy_tradeoff"
+      },
+      "summaryAnalyses": [
+        {
+          "id": "subsidy_tradeoff.rationale_themes",
+          "title": "Reactions to losing subsidy eligibility",
+          "targetFacetKey": "rationale",
+          "groupByMode": "none",
+          "summaryKind": "llm_bucket_summary"
+        }
+      ]
+    }
+  ]
+}
