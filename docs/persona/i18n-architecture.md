@@ -71,7 +71,7 @@ contain a second locale-code list, and Follow UI derives from the registry.
 
 The shipped packs cover `en-US`, `ko-KR`, `zh-CN`, `zh-TW`, `ja-JP`, `pt-BR`,
 and `es-ES`. `zh-TW` uses Traditional Chinese display copy and the canonical
-runtime token `zh-Hant`. The five added locale packs keep exact English source
+runtime token `zh-Hant`. The six non-English locale packs keep exact English source
 key parity; explicitly documented locale-only self-name keys are allowed.
 
 ### 3.2 Provider behavior
@@ -118,12 +118,15 @@ Independent of the UI locale:
 - Persistence: every run writes `persona_meta.json` with `effective_language`
   and `language_source` (explicit | follow_ui | env | default). The backend
   never reads the browser locale.
+- Remote execution resolves environment fallback from the remote worker's own
+  `MATRAIX_PERSONA_LANGUAGE`. The dispatcher deliberately does not forward the
+  host process environment across the Remote Runner HTTP boundary.
 
 ## 5. Tests
 
 `src/i18n/__tests__/i18n.test.ts` (vitest, `npm test`): fallback chain,
 interpolate, parameterized seven-locale registry/lazy-loader checks, exact
-English key parity for the five added packs, new source-key placeholders, runtime
+English key parity for the six non-English packs, new source-key placeholders, runtime
 language mapping, and persona label key helpers. Python focused suites cover all
 six non-English persona schema packs (1,290 dimensions each), template chrome,
 request validation, job persistence, and debrief reconstruction.
