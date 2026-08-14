@@ -76,6 +76,17 @@ covered plan, rather than showing premiums and expecting the employee to reason
 from allowance to dominance. That is a different manipulation — presentation of
 the choice set, not disclosure of a rule — and would need its own arm.
 
+## Raw rationales
+
+Every quote above is drawn from the 796 free-text rationales the two runs
+produced — 100 personas across two arms, four `askRationale` questions each,
+all non-empty. They live in the job artifacts under `jobs/`, which is
+gitignored; [README.md](README.md) documents how to reconstruct them and the
+derivation of the dominated-choice flag.
+
+A flat CSV of all 796 was deliberately not committed, to stay inside the
+repository's data policy on generated dumps.
+
 ## Scope
 
 Simulated North American working adults reasoning about a real Ohio PY2026
