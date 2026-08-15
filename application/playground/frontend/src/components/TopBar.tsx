@@ -5,6 +5,7 @@
  * Equal-width slots keep Home visually centered despite uneven label lengths.
  */
 import { PreflightChip } from "./PreflightChip";
+import { LocalePopover } from "./LocalePopover";
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
 import { MatrAIxLogo } from "./studio/MatrAIxLogo";
 import { useTheme } from "@/hooks/useTheme";
@@ -93,6 +94,8 @@ export function TopBar({
 
         <div className="flex flex-shrink-0 items-center justify-end gap-2.5">
           <PreflightChip />
+
+          <LocalePopover />
 
           <button
             type="button"

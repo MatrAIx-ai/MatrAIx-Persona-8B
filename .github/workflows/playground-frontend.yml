@@ -28,6 +28,6 @@ jobs:
           cache-dependency-path: application/playground/frontend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      # No test script exists yet; this activates automatically once one lands.
-      - run: npm run test --if-present
+      - run: npm run i18n:check
+      - run: npm test
       - run: npm run build

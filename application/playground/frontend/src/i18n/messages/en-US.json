@@ -1,0 +1,8 @@
+{
+  "locale.buttonLabel": "Change language",
+  "locale.current": "Current language",
+  "locale.english": "English",
+  "locale.loadError": "Could not load the selected language. The current language remains active.",
+  "locale.loading": "Loading language…",
+  "locale.popoverTitle": "Language"
+}
