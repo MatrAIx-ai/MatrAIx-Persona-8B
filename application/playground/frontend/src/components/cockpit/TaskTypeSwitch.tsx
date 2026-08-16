@@ -11,7 +11,7 @@
  * unchanged (`value` / `onChange` / `disabled`); `showLabel` + `className` are
  * optional presentation knobs.
  */
-import { OS_APP_TAB_LABEL } from "@/lib/personaAgentCatalog";
+import { useI18n } from "@/i18n/I18nProvider";
 import { FOCUS_RING, Sym } from "./cockpitShared";
 
 export type PlaygroundTaskType = "chatbot" | "survey" | "web" | "os-app";
@@ -25,26 +25,43 @@ export interface TaskTypeSwitchProps {
   className?: string;
 }
 
-const OPTIONS: ReadonlyArray<{ value: PlaygroundTaskType; label: string; icon: string; hint: string }> = [
-  { value: "survey", label: "Survey", icon: "fact_check", hint: "A fixed questionnaire the user fills out." },
-  { value: "chatbot", label: "Chatbot", icon: "forum", hint: "A back-and-forth conversation." },
-  { value: "web", label: "Web", icon: "language", hint: "A real browser task the user completes." },
-  { value: "os-app", label: OS_APP_TAB_LABEL, icon: "apps", hint: "Native apps on Linux, macOS, or iOS (computer-use simulation)." },
+const OPTIONS: ReadonlyArray<{ value: PlaygroundTaskType; icon: string }> = [
+  { value: "survey", icon: "fact_check" },
+  { value: "chatbot", icon: "forum" },
+  { value: "web", icon: "language" },
+  { value: "os-app", icon: "apps" },
 ];
 
+type Translate = ReturnType<typeof useI18n>["t"];
+
+function optionCopy(t: Translate, type: PlaygroundTaskType): { label: string; hint: string } {
+  switch (type) {
+    case "survey":
+      return { label: t("cockpit.taskType.survey"), hint: t("cockpit.taskType.surveyHint") };
+    case "chatbot":
+      return { label: t("cockpit.taskType.chatbot"), hint: t("cockpit.taskType.chatbotHint") };
+    case "web":
+      return { label: t("cockpit.taskType.web"), hint: t("cockpit.taskType.webHint") };
+    case "os-app":
+      return { label: t("cockpit.taskType.osApp"), hint: t("cockpit.taskType.osAppHint") };
+  }
+}
+
 export function TaskTypeSwitch({ value, onChange, disabled, showLabel = true, className = "" }: TaskTypeSwitchProps) {
+  const { t } = useI18n();
   return (
     <div className={className}>
-      {showLabel && <div className="hud mb-1.5 text-[11px] text-primary">Application type</div>}
+      {showLabel && <div className="hud mb-1.5 text-[11px] text-primary">{t("cockpit.taskType.label")}</div>}
       <div className="cockpit-segment inline-flex">
         {OPTIONS.map((option) => {
           const selected = option.value === value;
+          const copy = optionCopy(t, option.value);
           return (
             <button
               key={option.value}
               type="button"
               disabled={disabled}
-              title={option.hint}
+              title={copy.hint}
               aria-pressed={selected}
               onClick={() => onChange(option.value)}
               className={`cockpit-segment__btn flex items-center gap-1.5 px-3 py-1.5 text-[14px] transition ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 ${FOCUS_RING} ${
@@ -52,7 +69,7 @@ export function TaskTypeSwitch({ value, onChange, disabled, showLabel = true, cl
               }`}
             >
               <Sym name={option.icon} fill={selected ? 1 : 0} size={14} />
-              {option.label}
+              {copy.label}
             </button>
           );
         })}

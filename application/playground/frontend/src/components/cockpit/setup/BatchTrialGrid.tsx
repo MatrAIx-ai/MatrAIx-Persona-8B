@@ -1,7 +1,12 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 
+import { useI18n } from "@/i18n/I18nProvider";
+import {
+  isMachinePersonaName,
+  personaDisplayId,
+  personaPrimaryName,
+} from "@/lib/personaDisplay";
 import { formatBatchCellStatusLabel } from "@/lib/trialStatus";
-import { isMachinePersonaName, personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import type { PersonaPoolPersonaCard } from "@/lib/types";
 
 import { BatchMosaicCanvas, MOSAIC_STATUS_COLORS } from "./BatchMosaicCanvas";
@@ -21,7 +26,8 @@ export interface BatchTrialCell {
   id: string;
   label: string;
   status: BatchTrialStatus;
-  statusLabel?: string;
+  statusStage?: string | null;
+  statusPhase?: string | null;
   persona?: BatchTrialPersonaMeta;
 }
 
@@ -59,10 +65,15 @@ export interface BatchTrialGridProps {
   className?: string;
 }
 
-function statusBadgeLabel(trial: BatchTrialCell): string {
-  return (
-    trial.statusLabel ??
-    formatBatchCellStatusLabel(trial.status, null, null)
+function statusBadgeLabel(
+  trial: BatchTrialCell,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  return formatBatchCellStatusLabel(
+    trial.status,
+    trial.statusStage,
+    trial.statusPhase,
+    t,
   );
 }
 
@@ -80,12 +91,18 @@ function BatchTrialCellView({
   trial: BatchTrialCell;
   rowHeight: number;
 }) {
+  const { t } = useI18n();
   const style = STATUS_STYLES[trial.status];
   const dimensions = trial.persona?.dimensions ?? {};
-  const rawPersonaId = (trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")).trim();
+  const rawPersonaId = (
+    trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")
+  ).trim();
   const personaId = personaDisplayId(rawPersonaId || null);
-  const statusLabel = statusBadgeLabel(trial);
-  const displayName = personaPrimaryName(trial.persona?.name, rawPersonaId, dimensions) || trial.label || personaId;
+  const statusLabel = statusBadgeLabel(trial, t);
+  const displayName =
+    personaPrimaryName(trial.persona?.name, rawPersonaId, dimensions) ||
+    trial.label ||
+    personaId;
   const avatarMuted = trial.status === "pending";
   const portrait = rowHeight >= 96;
 
@@ -102,7 +119,11 @@ function BatchTrialCellView({
         dimensions={dimensions}
         size={portrait ? "lg" : "sm"}
         muted={avatarMuted}
-        className={trial.status === "running" ? "relative z-[1] ring-1 ring-amber-400/35" : ""}
+        className={
+          trial.status === "running"
+            ? "relative z-[1] ring-1 ring-amber-400/35"
+            : ""
+        }
       />
     </span>
   );
@@ -187,13 +208,18 @@ function chipDotClass(status: BatchTrialStatus): string {
 
 /** Compact fixed-height chip — used for mid-size cohorts (virtualized rows). */
 function BatchTrialChipView({ trial }: { trial: BatchTrialCell }) {
+  const { t } = useI18n();
   const style = STATUS_STYLES[trial.status];
   const dimensions = trial.persona?.dimensions ?? {};
-  const rawPersonaId = (trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")).trim();
+  const rawPersonaId = (
+    trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")
+  ).trim();
   const personaId = personaDisplayId(rawPersonaId || null);
-  const statusLabel = statusBadgeLabel(trial);
+  const statusLabel = statusBadgeLabel(trial, t);
   const displayName =
-    personaPrimaryName(trial.persona?.name, rawPersonaId, dimensions) || trial.label || personaId;
+    personaPrimaryName(trial.persona?.name, rawPersonaId, dimensions) ||
+    trial.label ||
+    personaId;
 
   return (
     <article
@@ -210,7 +236,9 @@ function BatchTrialChipView({ trial }: { trial: BatchTrialCell }) {
         <p className="truncate font-display text-[12px] font-semibold leading-tight text-text-main">
           {displayName}
         </p>
-        <p className="truncate font-mono text-[10px] leading-tight text-text-dim">{personaId}</p>
+        <p className="truncate font-mono text-[10px] leading-tight text-text-dim">
+          {personaId}
+        </p>
       </div>
       <span
         className={`h-2 w-2 shrink-0 rounded-full ${chipDotClass(trial.status)} ${
@@ -222,10 +250,21 @@ function BatchTrialChipView({ trial }: { trial: BatchTrialCell }) {
   );
 }
 
-type CohortCounts = { done: number; running: number; pending: number; failed: number };
+type CohortCounts = {
+  done: number;
+  running: number;
+  pending: number;
+  failed: number;
+};
 
 /** Aggregate signal for large cohorts — the individual cell stops being readable. */
-function CohortProgressBar({ counts, total }: { counts: CohortCounts; total: number }) {
+function CohortProgressBar({
+  counts,
+  total,
+}: {
+  counts: CohortCounts;
+  total: number;
+}) {
   if (total <= 0) return null;
   const pct = (n: number) => `${(n / total) * 100}%`;
   return (
@@ -235,12 +274,27 @@ function CohortProgressBar({ counts, total }: { counts: CohortCounts; total: num
       aria-valuenow={counts.done}
       aria-valuemax={total}
     >
-      <span className="h-full" style={{ width: pct(counts.done), backgroundColor: MOSAIC_STATUS_COLORS.done }} />
+      <span
+        className="h-full"
+        style={{
+          width: pct(counts.done),
+          backgroundColor: MOSAIC_STATUS_COLORS.done,
+        }}
+      />
       <span
         className="h-full animate-batch-heartbeat-dot"
-        style={{ width: pct(counts.running), backgroundColor: MOSAIC_STATUS_COLORS.running }}
+        style={{
+          width: pct(counts.running),
+          backgroundColor: MOSAIC_STATUS_COLORS.running,
+        }}
       />
-      <span className="h-full" style={{ width: pct(counts.failed), backgroundColor: MOSAIC_STATUS_COLORS.error }} />
+      <span
+        className="h-full"
+        style={{
+          width: pct(counts.failed),
+          backgroundColor: MOSAIC_STATUS_COLORS.error,
+        }}
+      />
     </div>
   );
 }
@@ -267,7 +321,13 @@ function BatchChipGrid({
   });
 
   return (
-    <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+    <div
+      style={{
+        height: virtualizer.getTotalSize(),
+        position: "relative",
+        width: "100%",
+      }}
+    >
       {virtualizer.getVirtualItems().map((virtualRow) => {
         const start = virtualRow.index * cols;
         const rowTrials = trials.slice(start, start + cols);
@@ -293,7 +353,12 @@ function BatchChipGrid({
 }
 
 /** Adaptive roster: full portraits → compact chips → aggregate pixel-wall as cohort grows. */
-export function BatchTrialGrid({ trials, jobLabel, className = "" }: BatchTrialGridProps) {
+export function BatchTrialGrid({
+  trials,
+  jobLabel,
+  className = "",
+}: BatchTrialGridProps) {
+  const { t } = useI18n();
   const counts: CohortCounts = {
     done: trials.filter((t) => t.status === "done").length,
     running: trials.filter((t) => t.status === "running").length,
@@ -304,24 +369,58 @@ export function BatchTrialGrid({ trials, jobLabel, className = "" }: BatchTrialG
   const isAggregate = layout.mode !== "cards";
 
   return (
-    <div className={`flex h-full min-h-0 w-full flex-col overflow-hidden ${className}`}>
+    <div
+      className={`flex h-full min-h-0 w-full flex-col overflow-hidden ${className}`}
+    >
       <header className="mb-2 flex shrink-0 flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-outline/25 pb-2">
-        <p className="hud text-[11px] text-primary">Simulated cohort</p>
+        <p className="hud text-[11px] text-primary">
+          {t("cockpitSetup.batch.simulatedCohort")}
+        </p>
         <p className="font-display text-[15px] font-bold tracking-tight text-text-main">
-          {trials.length.toLocaleString()} {trials.length === 1 ? "person" : "people"}
+          {t("cockpitSetup.batch.peopleCount", { count: trials.length })}
         </p>
         {jobLabel ? (
-          <p className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-dim" title={jobLabel}>
+          <p
+            className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-dim"
+            title={jobLabel}
+          >
             {jobLabel}
           </p>
         ) : null}
         <div className="ml-auto flex flex-wrap justify-end gap-1">
-          {counts.pending > 0 && <CohortStat tone="dim" label={`${counts.pending.toLocaleString()} waiting`} />}
-          {counts.running > 0 && (
-            <CohortStat tone="amber" label={`${counts.running.toLocaleString()} active`} pulse />
+          {counts.pending > 0 && (
+            <CohortStat
+              tone="dim"
+              label={t("cockpitSetup.batch.waitingCount", {
+                count: counts.pending,
+              })}
+            />
           )}
-          {counts.done > 0 && <CohortStat tone="secondary" label={`${counts.done.toLocaleString()} finished`} />}
-          {counts.failed > 0 && <CohortStat tone="danger" label={`${counts.failed.toLocaleString()} failed`} />}
+          {counts.running > 0 && (
+            <CohortStat
+              tone="amber"
+              label={t("cockpitSetup.batch.activeCount", {
+                count: counts.running,
+              })}
+              pulse
+            />
+          )}
+          {counts.done > 0 && (
+            <CohortStat
+              tone="secondary"
+              label={t("cockpitSetup.batch.finishedCount", {
+                count: counts.done,
+              })}
+            />
+          )}
+          {counts.failed > 0 && (
+            <CohortStat
+              tone="danger"
+              label={t("cockpitSetup.batch.failedCount", {
+                count: counts.failed,
+              })}
+            />
+          )}
         </div>
       </header>
 
@@ -339,7 +438,11 @@ export function BatchTrialGrid({ trials, jobLabel, className = "" }: BatchTrialG
           className={`min-h-0 flex-1 ${layout.scroll ? "overflow-y-auto overflow-x-hidden pr-0.5" : "overflow-hidden"}`}
         >
           {layout.mode === "chips" && layout.scroll ? (
-            <BatchChipGrid trials={trials} layout={layout} scrollRef={container} />
+            <BatchChipGrid
+              trials={trials}
+              layout={layout}
+              scrollRef={container}
+            />
           ) : (
             <div
               className="grid w-full"
@@ -357,7 +460,11 @@ export function BatchTrialGrid({ trials, jobLabel, className = "" }: BatchTrialG
                 layout.mode === "chips" ? (
                   <BatchTrialChipView key={trial.id} trial={trial} />
                 ) : (
-                  <BatchTrialCellView key={trial.id} trial={trial} rowHeight={layout.rowHeight} />
+                  <BatchTrialCellView
+                    key={trial.id}
+                    trial={trial}
+                    rowHeight={layout.rowHeight}
+                  />
                 ),
               )}
             </div>
@@ -385,7 +492,9 @@ type BatchGridSlot = {
   trial?: HarborTrialRow;
 };
 
-function personaMetaFromCard(card: PersonaPoolPersonaCard | undefined): BatchTrialPersonaMeta | undefined {
+function personaMetaFromCard(
+  card: PersonaPoolPersonaCard | undefined,
+): BatchTrialPersonaMeta | undefined {
   if (!card) return undefined;
   return {
     personaId: card.personaId,
@@ -403,7 +512,11 @@ function lookupPersonaCard(
 ): PersonaPoolPersonaCard | undefined {
   const raw = (personaId ?? "").trim();
   if (!raw) return undefined;
-  return personaById[raw] ?? personaById[personaDisplayId(raw)] ?? personaById[raw.replace(/^persona[-_]/i, "")];
+  return (
+    personaById[raw] ??
+    personaById[personaDisplayId(raw)] ??
+    personaById[raw.replace(/^persona[-_]/i, "")]
+  );
 }
 
 function resolveBatchGridSlots(
@@ -438,7 +551,9 @@ function resolveBatchGridSlots(
     const slotCount = Math.max(personaIds.length, expectedTotal, trials.length);
     return Array.from({ length: slotCount }, (_, index) => {
       const personaId = personaIds[index];
-      let trial = personaId ? byPersona.get(personaDisplayId(personaId)) : undefined;
+      let trial = personaId
+        ? byPersona.get(personaDisplayId(personaId))
+        : undefined;
       if (!trial && nextLeftover < leftovers.length) {
         trial = leftovers[nextLeftover++];
       }
@@ -448,10 +563,13 @@ function resolveBatchGridSlots(
         // persona_meta lands.
         trial = unmatched[nextUnmatched++];
       }
-      const id = personaId ?? trial?.personaId ?? trial?.trialName ?? `pending-${index}`;
+      const id =
+        personaId ?? trial?.personaId ?? trial?.trialName ?? `pending-${index}`;
       return {
         personaId: id,
-        label: trial?.personaName ?? (personaId ? `persona-${personaId}` : `persona-${index + 1}`),
+        label:
+          trial?.personaName ??
+          (personaId ? `persona-${personaId}` : `persona-${index + 1}`),
         trial,
       };
     });
@@ -499,11 +617,9 @@ export function buildBatchGridCells(
       label: persona?.name ?? card?.name ?? slot.label,
       status,
       persona,
-      statusLabel: formatBatchCellStatusLabel(
-        status,
+      statusStage:
         trial?.stage ?? (status === "running" ? "starting_env" : null),
-        trial?.phase,
-      ),
+      statusPhase: trial?.phase,
     };
   });
 }
@@ -545,7 +661,9 @@ export function buildBatchCellsFromStatus(
     // Feed names are machine ids ("persona-wiki-…") until real names land —
     // never surface those; prefer the cohort card's display name.
     const feedName = snapshot.personaNames[i] ?? undefined;
-    const name = card?.name ?? (feedName && !isMachinePersonaName(feedName) ? feedName : undefined);
+    const name =
+      card?.name ??
+      (feedName && !isMachinePersonaName(feedName) ? feedName : undefined);
     cells.push({
       id: snapshot.trialNames[i] ?? `trial-${i}`,
       label: name ?? personaId ?? `#${i + 1}`,
@@ -594,5 +712,8 @@ export function harborTrialsToGridCells(
     personaIds && personaIds.length >= trials.length
       ? personaIds
       : trials.map((trial, index) => personaIds?.[index] ?? trial.trialName);
-  return buildBatchGridCells(ids, trials, { jobStarted, parallelTrials: trials.length });
+  return buildBatchGridCells(ids, trials, {
+    jobStarted,
+    parallelTrials: trials.length,
+  });
 }

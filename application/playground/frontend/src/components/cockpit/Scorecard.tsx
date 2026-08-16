@@ -15,7 +15,10 @@
  * States: a skeleton while a run is in progress, and a plain teaching empty
  * state before any run / when a run finished without an evaluation.
  */
+import type { ReactNode } from "react";
+
 import { SCORE_BAND_CLASS, Sym, scoreBand } from "./cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
 import type { PlaygroundMetricScores, PlaygroundQuestionnaire } from "@/lib/types";
 import type { PlaygroundRunPhase } from "@/lib/usePlayground";
 
@@ -32,6 +35,7 @@ function clamp(value: number, max: number): number {
 }
 
 export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
+  const { rich, t } = useI18n();
   const running = phase === "building" || phase === "running";
 
   if (running && !questionnaire) return <ScorecardSkeleton />;
@@ -43,8 +47,8 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           <Sym name="fact_check" size={28} className="text-text-dim" />
           <p className="mt-2 text-[15px] leading-relaxed text-text-variant">
             {phase === "error" || phase === "timeout"
-              ? "This run stopped before it could be scored."
-              : "Run a simulation and the scores will appear here."}
+              ? t("scorecards.empty.failed")
+              : t("scorecards.empty.ready")}
           </p>
         </div>
       </div>
@@ -70,11 +74,11 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
         <div className="flex items-center justify-between border-b border-outline bg-surface-low px-3 py-2.5">
           <div className="flex items-center gap-2">
             <Sym name="verified" fill={1} size={18} className="text-primary" />
-            <h3 className="hud text-[13px] text-primary">Scorecard</h3>
+            <h3 className="hud text-[13px] text-primary">{t("scorecards.header")}</h3>
           </div>
           <span className="flex items-center gap-1 hud text-[12px] text-text-dim">
             <span className="h-2 w-2 rounded-full bg-secondary" aria-hidden />
-            Scored
+            {t("scorecards.scored")}
           </span>
         </div>
 
@@ -82,14 +86,14 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           {/* Overall score + quote */}
           <div className="mb-3 flex items-start gap-3">
             <div className="flex flex-shrink-0 flex-col items-center">
-              <div className="flex items-baseline gap-0.5" aria-label={`Overall rating ${overall} out of 10`}>
+              <div className="flex items-baseline gap-0.5" aria-label={t("scorecards.aria.overallRating", { overall, max: 10 })}>
                 <span className={`font-display text-[44px] font-bold leading-none tracking-tight tabular-nums ${overallColor.text}`}>
                   {overall}
                 </span>
-                <span className="text-[15px] text-text-dim">/ 10</span>
+                <span className="text-[15px] text-text-dim">{t("scorecards.outOf", { max: 10 })}</span>
               </div>
               <span className="mt-1 text-center hud text-[12px] text-text-dim">
-                How the user rated it
+                {t("scorecards.rating.userRated")}
               </span>
             </div>
             {questionnaire.ratingReason && (
@@ -105,7 +109,7 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           <div className="mb-3 space-y-2.5">
             {(questionnaire.constraintSatisfaction ?? 0) > 0 ? (
               <CriterionRow
-                label="Did it respect the must-haves?"
+                label={t("scorecards.criteria.mustHaves")}
                 score={questionnaire.constraintSatisfaction}
                 max={5}
                 rationale={questionnaire.constraintRationale}
@@ -113,7 +117,7 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
             ) : null}
             {(questionnaire.preferenceSatisfaction ?? 0) > 0 ? (
               <CriterionRow
-                label="Did it match their tastes?"
+                label={t("scorecards.criteria.tastes")}
                 score={questionnaire.preferenceSatisfaction}
                 max={5}
                 rationale={questionnaire.preferenceRationale}
@@ -130,13 +134,16 @@ export function Scorecard({ questionnaire, metrics, phase }: ScorecardProps) {
           ) : null}
           {/* Metrics strip: real counts only (no tokens / cost). */}
           <div className="mt-3 grid grid-cols-1 gap-2">
-            <MetricTile value={String(metrics.numTurns)} caption="Total turns" />
+            <MetricTile value={String(metrics.numTurns)} caption={t("scorecards.metrics.totalTurns")} />
           </div>
 
           {/* Scale hint: what the colours mean. */}
           <p className="mt-3 text-[12px] leading-relaxed text-text-dim">
-            Scores read <span className="text-secondary">green</span> when the app did well,{" "}
-            <span className="text-warn">amber</span> when so-so, <span className="text-danger">red</span> when it missed.
+            {rich("scorecards.scale.legend", {
+              green: (chunks) => <span className="text-secondary">{chunks}</span>,
+              amber: (chunks) => <span className="text-warn">{chunks}</span>,
+              red: (chunks) => <span className="text-danger">{chunks}</span>,
+            })}
           </p>
         </div>
       </div>
@@ -188,6 +195,19 @@ function CriterionRow({
 
 /** The clarifying-questions callout (mint when useful, neutral when not). */
 function ClarifyingLine({ asked, notes }: { asked: boolean; notes: string }) {
+  const { rich } = useI18n();
+  const values = {
+    label: (chunks: ReactNode) => <span className="font-semibold">{chunks}</span>,
+    notes,
+  };
+  const message = asked
+    ? notes
+      ? rich("scorecards.followUp.askedWithNotes", values)
+      : rich("scorecards.followUp.asked", values)
+    : notes
+      ? rich("scorecards.followUp.notAskedWithNotes", values)
+      : rich("scorecards.followUp.notAsked", values);
+
   return (
     <div
       className={`flex items-start gap-2 rounded-md px-3 py-2 ${
@@ -201,9 +221,7 @@ function ClarifyingLine({ asked, notes }: { asked: boolean; notes: string }) {
         className={`mt-0.5 ${asked ? "text-secondary" : "text-text-dim"}`}
       />
       <span className="text-[14px] text-text-main">
-        <span className="font-semibold">Follow-up questions</span>
-        {asked ? ": asked helpful ones" : ": didn't ask any"}
-        {notes ? `. ${notes}` : "."}
+        {message}
       </span>
     </div>
   );

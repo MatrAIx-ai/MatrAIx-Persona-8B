@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import type { PersonaCohortDetail, PersonaPoolCatalog } from "@/lib/types";
 import { FOCUS_RING } from "./cockpitShared";
@@ -45,6 +46,7 @@ export function PersonaGroupBuilder({
   onSampleSizeChange,
   onCohortChange,
 }: PersonaGroupBuilderProps) {
+  const { rich, t } = useI18n();
   const queryClient = useQueryClient();
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -91,9 +93,9 @@ export function PersonaGroupBuilder({
       setPreviewError(null);
     } catch (err) {
       setMatchedCount(null);
-      setPreviewError(err instanceof ApiError ? err.message : "Could not preview sample.");
+      setPreviewError(err instanceof ApiError ? err.message : t("personaGroups.previewError"));
     }
-  }, [filters.dimensionFilters, filters.sources, sampleSize, seed]);
+  }, [filters.dimensionFilters, filters.sources, sampleSize, seed, t]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -124,7 +126,7 @@ export function PersonaGroupBuilder({
       onCohortChange?.(cohort.cohortId);
     },
     onError: (err: unknown) => {
-      setSaveError(err instanceof ApiError ? err.message : "Could not save cohort.");
+      setSaveError(err instanceof ApiError ? err.message : t("personaGroups.saveError"));
     },
   });
 
@@ -141,10 +143,10 @@ export function PersonaGroupBuilder({
         onSampleSizeChange?.(cohort.sampleSize);
         onCohortChange?.(cohort.cohortId);
       } catch (err) {
-        setPreviewError(err instanceof ApiError ? err.message : "Could not load cohort.");
+        setPreviewError(err instanceof ApiError ? err.message : t("personaGroups.loadError"));
       }
     },
-    [onCohortChange, onFiltersChange, onSampleSizeChange, onSeedChange],
+    [onCohortChange, onFiltersChange, onSampleSizeChange, onSeedChange, t],
   );
 
   const toggleSource = (source: string) => {
@@ -165,28 +167,32 @@ export function PersonaGroupBuilder({
 
   const poolSummary = useMemo(() => {
     if (!catalog) return null;
-    return `${catalog.count} personas · smoke ${catalog.smokePersonaId ?? "—"}`;
-  }, [catalog]);
+    return t("personaGroups.poolSummary", { count: catalog.count, smoke: catalog.smokePersonaId ?? "—" });
+  }, [catalog, t]);
 
   return (
     <div className="mt-3 rounded-md border border-outline/70 bg-surface px-3 py-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[14px] font-medium text-text-main">Persona group</p>
+        <p className="text-[14px] font-medium text-text-main">{t("personaGroups.title")}</p>
         {poolSummary && <p className="font-mono text-[13px] text-text-dim">{poolSummary}</p>}
       </div>
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-[13px] text-text-variant">
-          Saved cohort
+          {t("personaGroups.savedCohort")}
           <select
             value={selectedCohortId ?? ""}
             onChange={(e) => void loadCohort(e.target.value)}
             className="h-8 rounded border border-outline bg-surface px-2 text-[14px] text-text-main"
           >
-            <option value="">(none — ad hoc filters)</option>
+            <option value="">{t("personaGroups.noneAdHoc")}</option>
             {cohorts.map((cohort) => (
               <option key={cohort.cohortId} value={cohort.cohortId}>
-                {cohort.name} · {cohort.kind} · n={cohort.sampleSize}
+                {t("personaGroups.cohortOption", {
+                  name: cohort.name,
+                  kind: cohort.kind,
+                  count: cohort.sampleSize,
+                })}
               </option>
             ))}
           </select>
@@ -199,14 +205,14 @@ export function PersonaGroupBuilder({
           }}
           className={`h-8 rounded-md border border-outline px-3 text-[13px] text-text-main hover:bg-surface-low ${FOCUS_RING}`}
         >
-          {saveOpen ? "Cancel save" : "Save cohort…"}
+          {saveOpen ? t("personaGroups.cancelSave") : t("personaGroups.saveCohort")}
         </button>
       </div>
 
       {saveOpen && (
         <div className="mb-3 grid gap-2 rounded border border-outline/60 p-2 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-[13px] text-text-variant">
-            Cohort id
+            {t("personaGroups.cohortId")}
             <input
               value={saveId}
               onChange={(e) => setSaveId(e.target.value)}
@@ -215,23 +221,23 @@ export function PersonaGroupBuilder({
             />
           </label>
           <label className="flex flex-col gap-1 text-[13px] text-text-variant">
-            Display name
+            {t("personaGroups.displayName")}
             <input
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
-              placeholder="Optional label"
+              placeholder={t("misc.optionalLabel")}
               className="h-8 rounded border border-outline bg-surface px-2 text-[14px]"
             />
           </label>
           <label className="flex flex-col gap-1 text-[13px] text-text-variant">
-            Kind
+            {t("personaGroups.kind")}
             <select
               value={saveKind}
               onChange={(e) => setSaveKind(e.target.value as "recipe" | "frozen")}
               className="h-8 rounded border border-outline bg-surface px-2 text-[14px]"
             >
-              <option value="recipe">recipe (re-sample on launch)</option>
-              <option value="frozen">frozen (fixed persona list)</option>
+              <option value="recipe">{t("personaGroups.kindRecipe", { kind: "recipe" })}</option>
+              <option value="frozen">{t("personaGroups.kindFrozen", { kind: "frozen" })}</option>
             </select>
           </label>
           <div className="flex items-end">
@@ -241,7 +247,13 @@ export function PersonaGroupBuilder({
               onClick={() => saveMutation.mutate()}
               className={`h-8 rounded-md bg-primary px-3 text-[13px] text-on-primary disabled:opacity-55 ${FOCUS_RING}`}
             >
-              {saveMutation.isPending ? "Saving…" : "Save to persona/datasets/saved-cohorts/"}
+              {saveMutation.isPending ? (
+                t("personaGroups.saving")
+              ) : (
+                <>
+                  {t("personaGroups.saveTo")} <span className="font-mono">persona/datasets/saved-cohorts/</span>
+                </>
+              )}
             </button>
           </div>
           {saveError && <p className="text-[13px] text-danger sm:col-span-2">{saveError}</p>}
@@ -249,16 +261,16 @@ export function PersonaGroupBuilder({
       )}
 
       {catalogQuery.isLoading && (
-        <p className="text-[13px] text-text-variant">Loading dev persona catalog…</p>
+        <p className="text-[13px] text-text-variant">{t("personaGroups.loadingCatalog")}</p>
       )}
       {catalogQuery.isError && (
-        <p className="text-[13px] text-danger">Could not load persona pool catalog.</p>
+        <p className="text-[13px] text-danger">{t("personaGroups.catalogError")}</p>
       )}
 
       {catalog && (
         <>
           <div className="mb-3">
-            <p className="mb-1.5 text-[13px] text-text-variant">Provenance</p>
+            <p className="mb-1.5 text-[13px] text-text-variant">{t("personaGroups.provenance")}</p>
             <div className="flex flex-wrap gap-1.5">
               {sources.map((source) => {
                 const active = filters.sources.includes(source);
@@ -283,7 +295,7 @@ export function PersonaGroupBuilder({
           </div>
 
           <div className="space-y-2">
-            <p className="text-[13px] text-text-variant">Dimension filters (dev profile)</p>
+            <p className="text-[13px] text-text-variant">{t("personaGroups.dimensionFilters")}</p>
             {groups.map((group) => {
               const open = expandedGroup === group.id;
               const groupActive = group.dimensions.some(
@@ -314,7 +326,7 @@ export function PersonaGroupBuilder({
                             onChange={(e) => setDimensionFilter(dim.id, e.target.value)}
                             className="h-8 rounded border border-outline bg-surface px-2 text-[14px] text-text-main"
                           >
-                            <option value="">Any</option>
+                            <option value="">{t("personaGroups.any")}</option>
                             {dim.values.map((value) => (
                               <option key={value} value={value}>
                                 {value}
@@ -333,21 +345,22 @@ export function PersonaGroupBuilder({
           <p className="mt-3 text-[13px] text-text-variant">
             {selectedCohortId ? (
               <>
-                Using cohort <span className="font-mono text-text-main">{selectedCohortId}</span>
+                {t("personaGroups.usingCohort", { cohort: selectedCohortId })}
               </>
             ) : activeFilterCount > 0 ? (
               <>
                 {matchedCount !== null ? (
                   <>
-                    <span className="font-mono text-text-main">{matchedCount}</span> personas match
-                    filters
+                    {rich("personaGroups.matchingFilters", {
+                      count: (chunks) => <span className="font-mono text-text-main">{chunks}</span>,
+                    })}
                   </>
                 ) : (
-                  "Checking match count…"
+                  t("personaGroups.checkingMatchCount")
                 )}
               </>
             ) : (
-              <>No filters — random sample from full pool.</>
+              <>{t("personaGroups.noFilters")}</>
             )}
             {previewError && <span className="ml-2 text-danger">{previewError}</span>}
           </p>

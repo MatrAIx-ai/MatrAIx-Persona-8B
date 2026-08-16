@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import {
@@ -35,7 +36,9 @@ export interface BenchPersonaDetailPanelProps {
   className?: string;
 }
 
-function spotlightDotClass(tone: ReturnType<typeof personaDimChipTone>): string {
+function spotlightDotClass(
+  tone: ReturnType<typeof personaDimChipTone>,
+): string {
   switch (tone) {
     case "primary":
       return "bg-primary/70";
@@ -52,7 +55,13 @@ function spotlightDotClass(tone: ReturnType<typeof personaDimChipTone>): string 
   }
 }
 
-function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
+function TaxonomyTree({
+  groups,
+  t,
+}: {
+  groups: PersonaDimensionGroup[];
+  t: ReturnType<typeof useI18n>["t"];
+}) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     groups.forEach((group, index) => {
@@ -61,7 +70,9 @@ function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
     });
     return initial;
   });
-  const [openSubgroups, setOpenSubgroups] = useState<Record<string, boolean>>({});
+  const [openSubgroups, setOpenSubgroups] = useState<Record<string, boolean>>(
+    {},
+  );
 
   useEffect(() => {
     const next: Record<string, boolean> = {};
@@ -74,7 +85,9 @@ function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
 
   if (groups.length === 0) {
     return (
-      <p className="mt-4 text-[13px] leading-relaxed text-text-dim">No dimension values available.</p>
+      <p className="mt-4 text-[13px] leading-relaxed text-text-dim">
+        {t("cockpitSetup.persona.noDimensionValues")}
+      </p>
     );
   }
 
@@ -100,8 +113,10 @@ function TaxonomyTree({ groups }: { groups: PersonaDimensionGroup[] }) {
                   {group.label}
                 </span>
                 <span className="mt-1 block text-[12px] text-text-dim">
-                  {group.count.toLocaleString()} attributes · {group.subgroups.length}{" "}
-                  subgroups
+                  {t("cockpitSetup.persona.attributesAndSubgroups", {
+                    count: group.count,
+                    subgroups: group.subgroups.length,
+                  })}
                 </span>
               </span>
               <Sym
@@ -179,11 +194,12 @@ export function BenchPersonaDetailPanel({
   pool = PERSONA_BENCH_POOL,
   onClose,
   onUse,
-  useLabel = "Use persona",
+  useLabel,
   coverRail = false,
   embedded = false,
   className = "",
 }: BenchPersonaDetailPanelProps) {
+  const { t } = useI18n();
   const personaId = persona?.personaId ?? null;
   const activePool = pool?.trim() || PERSONA_BENCH_POOL;
   const detailQuery = useQuery({
@@ -203,12 +219,12 @@ export function BenchPersonaDetailPanel({
     return [
       {
         id: "all",
-        label: "Attributes",
+        label: t("cockpitSetup.persona.attributes"),
         count: entries.length,
         subgroups: [
           {
             id: "flat",
-            label: "All dimensions",
+            label: t("cockpitSetup.persona.allDimensions"),
             count: entries.length,
             items: entries.map(([id, value]) => ({
               id,
@@ -219,10 +235,13 @@ export function BenchPersonaDetailPanel({
         ],
       },
     ];
-  }, [detailQuery.data?.dimensionGroups, dims]);
+  }, [detailQuery.data?.dimensionGroups, dims, t]);
 
   const spotlight = useMemo(
-    () => SPOTLIGHT.map((item) => ({ ...item, value: dims[item.key] })).filter((item) => item.value),
+    () =>
+      SPOTLIGHT.map((item) => ({ ...item, value: dims[item.key] })).filter(
+        (item) => item.value,
+      ),
     [dims],
   );
 
@@ -241,8 +260,10 @@ export function BenchPersonaDetailPanel({
     detailQuery.data?.path?.trim() ||
     activePool;
   const filledCount =
-    detailQuery.data?.dimensionGroups?.reduce((sum, group) => sum + group.count, 0) ??
-    Object.keys(dims).length;
+    detailQuery.data?.dimensionGroups?.reduce(
+      (sum, group) => sum + group.count,
+      0,
+    ) ?? Object.keys(dims).length;
 
   const shellClass = coverRail
     ? `flex h-full min-h-0 w-full flex-col overflow-hidden ${className}`
@@ -251,7 +272,10 @@ export function BenchPersonaDetailPanel({
       : `glass-panel flex h-full max-h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl ${className}`;
 
   return (
-    <aside className={shellClass} aria-label={`Persona details for ${displayName}`}>
+    <aside
+      className={shellClass}
+      aria-label={t("cockpitSetup.persona.detailsFor", { name: displayName })}
+    >
       <div className="shrink-0 border-b border-outline/20 px-1 pb-3 pt-0.5">
         <div className="flex items-center justify-between gap-2">
           <button
@@ -260,15 +284,15 @@ export function BenchPersonaDetailPanel({
             className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-text-dim transition hover:bg-surface-high hover:text-text-main ${FOCUS_RING}`}
           >
             <Sym name="arrow_back" size={16} />
-            Back
+            {t("cockpitSetup.common.back")}
           </button>
           <p className="cockpit-field-label text-[11px] tracking-[0.08em] text-text-dim">
-            Persona profile
+            {t("cockpitSetup.persona.profile")}
           </p>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close persona details"
+            aria-label={t("cockpitSetup.persona.closeDetails")}
             className={`shrink-0 rounded-md p-1.5 text-text-dim transition hover:bg-surface-high hover:text-text-main ${FOCUS_RING}`}
           >
             <Sym name="close" size={18} />
@@ -278,7 +302,11 @@ export function BenchPersonaDetailPanel({
 
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pt-5">
         <div className="flex items-start gap-4">
-          <PersonaAvatar personaId={persona.personaId} dimensions={dims} size="lg" />
+          <PersonaAvatar
+            personaId={persona.personaId}
+            dimensions={dims}
+            size="lg"
+          />
           <div className="min-w-0 flex-1 pt-0.5">
             <h2 className="font-display text-[20px] font-semibold leading-tight text-text-main">
               {displayName}
@@ -298,7 +326,11 @@ export function BenchPersonaDetailPanel({
                   <span className="text-outline/80" aria-hidden>
                     ·
                   </span>
-                  <span>{filledCount.toLocaleString()} dimensions</span>
+                  <span>
+                    {t("cockpitSetup.persona.dimensionsCount", {
+                      count: filledCount,
+                    })}
+                  </span>
                 </>
               ) : null}
             </p>
@@ -306,13 +338,18 @@ export function BenchPersonaDetailPanel({
         </div>
 
         {blurb ? (
-          <p className="mt-4 text-[14px] leading-relaxed text-text-variant">{blurb}</p>
+          <p className="mt-4 text-[14px] leading-relaxed text-text-variant">
+            {blurb}
+          </p>
         ) : null}
 
         {spotlight.length > 0 ? (
           <dl className="mt-5 space-y-3 border-y border-outline/20 py-4">
             {spotlight.map(({ key, label, value }, index) => (
-              <div key={key} className="grid grid-cols-[5.5rem_1fr] items-baseline gap-x-3">
+              <div
+                key={key}
+                className="grid grid-cols-[5.5rem_1fr] items-baseline gap-x-3"
+              >
                 <dt className="text-[12px] text-text-dim">
                   <span
                     className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${spotlightDotClass(personaDimChipTone(key, index))}`}
@@ -320,7 +357,10 @@ export function BenchPersonaDetailPanel({
                   />
                   {label}
                 </dt>
-                <dd className="min-w-0 text-[14px] leading-snug text-text-main" title={value}>
+                <dd
+                  className="min-w-0 text-[14px] leading-snug text-text-main"
+                  title={value}
+                >
                   {value}
                 </dd>
               </div>
@@ -330,25 +370,33 @@ export function BenchPersonaDetailPanel({
 
         <div className="mt-6">
           <div>
-            <p className="font-display text-[15px] font-semibold text-text-main">Taxonomy</p>
+            <p className="font-display text-[15px] font-semibold text-text-main">
+              {t("cockpitSetup.persona.taxonomy")}
+            </p>
             <p className="mt-1 text-[12px] leading-relaxed text-text-dim">
-              {groups.length} groups · expand a category to browse attributes
+              {t("cockpitSetup.persona.groupsBrowse", { count: groups.length })}
             </p>
           </div>
           {detailQuery.isPending ? (
-            <p className="mt-4 text-[13px] text-text-dim">Loading full dimensions…</p>
+            <p className="mt-4 text-[13px] text-text-dim">
+              {t("cockpitSetup.persona.loadingDimensions")}
+            </p>
           ) : null}
           {detailQuery.isError ? (
             <p className="mt-4 text-[13px] text-danger">
               {detailQuery.error instanceof ApiError
                 ? detailQuery.error.message
-                : "Could not load persona record."}
+                : t("cockpitSetup.persona.loadRecordFailed")}
             </p>
           ) : null}
-          {!detailQuery.isPending ? <TaxonomyTree groups={groups} /> : null}
+          {!detailQuery.isPending ? (
+            <TaxonomyTree groups={groups} t={t} />
+          ) : null}
         </div>
 
-        <p className="mt-6 pb-4 font-mono text-[11px] leading-relaxed text-text-dim">{poolLabel}</p>
+        <p className="mt-6 pb-4 font-mono text-[11px] leading-relaxed text-text-dim">
+          {poolLabel}
+        </p>
       </div>
 
       {onUse ? (
@@ -358,7 +406,7 @@ export function BenchPersonaDetailPanel({
             onClick={() => onUse(persona)}
             className={`inline-flex h-10 w-full items-center justify-center rounded-md bg-primary text-[14px] font-medium text-on-primary transition hover:bg-primary/90 ${FOCUS_RING}`}
           >
-            {useLabel}
+            {useLabel ?? t("cockpitSetup.persona.use")}
           </button>
         </div>
       ) : null}

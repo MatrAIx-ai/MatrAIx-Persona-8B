@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { listSurveyHarborTasks, api } from "@/lib/api";
 import { personaModelPipelineLabel } from "@/lib/personaAgentCatalog";
 import type {
@@ -36,7 +37,8 @@ import { useHarborCockpitRun, type HarborCockpitPhase } from "@/lib/useHarborCoc
 import { usePgTaskIdDeepLink } from "@/lib/usePgTaskIdDeepLink";
 import { useUrlState } from "@/lib/useUrlState";
 import { useCockpitInstruction } from "@/lib/useCockpitInstruction";
-import { mapSurveyDebriefToJobView, mapSurveyLiveToJobView, isRewardOnlyTrialFailure } from "@/lib/harborCockpitMappers";
+import { mapSurveyDebriefToJobView, mapSurveyLiveToJobView, isRewardOnlyTrialFailure, classifyCockpitRunError } from "@/lib/harborCockpitMappers";
+import { localizeCockpitRunError } from "./cockpitRunErrorPresentation";
 import {
   formatSurveyTrajectoryValue,
   groupSurveyTrajectory,
@@ -63,7 +65,6 @@ import { CockpitRunCenter } from "./setup/CockpitRunCenter";
 import { useCockpitLaunch } from "./setup/useCockpitLaunch";
 import {
   batchProgressPct as computeBatchProgressPct,
-  BATCH_RUN_COMPLETE_HINT,
   formatBatchProgressLabel,
   resolveRunLaunchPhase,
 } from "./setup/useCockpitBatchJob";
@@ -78,6 +79,7 @@ import {
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
 import { HARBOR_TASK_PATHS } from "@/lib/types";
 
+type Translate = ReturnType<typeof useI18n>["t"];
 export interface SurveyEvalCockpitProps {
   options: ConfigOptionsResponse | null;
   taskType: PlaygroundTaskType;
@@ -96,41 +98,42 @@ export interface SurveyEvalCockpitProps {
 function surveyStatusLine(
   phase: HarborCockpitPhase,
   jobPhase: string | null | undefined,
-  harborPhase?: string | null,
+  harborPhase: string | null | undefined,
+  t: Translate,
 ): string | null {
-  if (phase === "launching") return "Launching batch…";
+  if (phase === "launching") return t("eval.survey.status.launching");
   if (phase !== "running") return null;
   const raw = (harborPhase ?? jobPhase ?? "").toLowerCase();
-  if (raw.includes("harbor") || raw.includes("trial")) return "Running survey trial…";
-  if (raw.includes("collect")) return "Saving the answers…";
-  if (raw.includes("survey")) return "The simulated user is filling out the questionnaire…";
-  return "Running the questionnaire…";
+  if (raw.includes("harbor") || raw.includes("trial")) return t("eval.survey.status.trial");
+  if (raw.includes("collect")) return t("eval.survey.status.collecting");
+  if (raw.includes("survey")) return t("eval.survey.status.answering");
+  return t("eval.survey.status.running");
 }
 
 /** Friendly chip word + tint + tooltip for a survey question type. Presentation only. */
-function questionTypeMeta(type: string): { label: string; tone: string; tooltip: string } {
-  const label = surveyQuestionTypeLabel(type);
+function questionTypeMeta(type: string, t: Translate): { label: string; tone: string; tooltip: string } {
+  const label = surveyQuestionTypeLabel(type, t);
   const tone = surveyQuestionTypeChipClass(type);
   switch (type) {
     case "likert":
-      return { label, tone, tooltip: "Rate on a numeric scale" };
+      return { label, tone, tooltip: t("eval.survey.tooltip.likert") };
     case "single_choice":
-      return { label, tone, tooltip: "Choose one option" };
+      return { label, tone, tooltip: t("eval.survey.tooltip.singleChoice") };
     case "multi_choice":
-      return { label, tone, tooltip: "Choose all that apply" };
+      return { label, tone, tooltip: t("eval.survey.tooltip.multiChoice") };
     case "free_text":
-      return { label, tone, tooltip: "Answer in their own words" };
+      return { label, tone, tooltip: t("eval.survey.tooltip.freeText") };
     default:
-      return { label, tone, tooltip: type || "Question" };
+      return { label, tone, tooltip: type || t("eval.survey.questionType") };
   }
 }
 
 /** Friendly actor name for a trajectory row. Presentation only. */
-function trajectoryActor(actor: string): string {
+function trajectoryActor(actor: string, t: Translate): string {
   const value = actor.toLowerCase();
-  if (value === "agent") return "Simulated user";
-  if (value === "system") return "System";
-  if (value === "scorer") return "Scorer";
+  if (value === "agent") return t("eval.survey.actor.agent");
+  if (value === "system") return t("eval.survey.actor.system");
+  if (value === "scorer") return t("eval.survey.actor.scorer");
   return actor;
 }
 
@@ -162,6 +165,7 @@ export function SurveyEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: SurveyEvalCockpitProps) {
+  const { t } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<SurveyEvalJobView>({ taskKind: "survey" });
@@ -301,19 +305,23 @@ export function SurveyEvalCockpit({
   useEffect(() => {
     if (!isActive) return;
     onFooterContextChange?.(
-      `survey · ${harborTask?.title ?? activeQuestionnaire?.title ?? "Questionnaire"}`,
+      `survey · ${harborTask?.title ?? activeQuestionnaire?.title ?? t("eval.survey.titleFallback")}`,
     );
-  }, [isActive, harborTask, activeQuestionnaire, onFooterContextChange]);
+  }, [isActive, harborTask, activeQuestionnaire, onFooterContextChange, t]);
 
   const surveyResult = job?.surveyResult ?? null;
   const verifier = job?.verifier ?? null;
   const verifierOnlyFailure = isRewardOnlyTrialFailure(error ?? job?.error ?? null, {
     surveyResult: surveyResult ?? undefined,
   });
+  const displayError = localizeCockpitRunError(
+    classifyCockpitRunError(error ?? job?.error ?? null),
+    t,
+  );
   const failed =
     !verifierOnlyFailure &&
     (phase === "error" || phase === "timeout" || job?.status === "error");
-  const status = surveyStatusLine(phase, job?.phase, harborPhase);
+  const status = surveyStatusLine(phase, job?.phase, harborPhase, t);
   const setupInstructionMarkdown = useMemo(() => {
     const instruction = selectedTaskDetailQuery.data?.instructionMarkdown?.trim();
     if (instruction) return instruction;
@@ -488,32 +496,33 @@ export function SurveyEvalCockpit({
             : 0;
   const runProgressLabel = batchJobName
     ? batchCancelled
-      ? "Batch stopped"
+      ? t("eval.progress.batchStopped")
       : formatBatchProgressLabel(
+          t,
           batchCompletedTrials,
           expectedTrialCount,
         )
     : phase === "launching"
-      ? "Launching survey trial…"
+      ? t("eval.survey.progress.launching")
       : phase === "running"
         ? questionTotal > 0
-          ? `Answering · ${questionAnswered}/${questionTotal} questions`
-          : (status ?? "Persona is answering…")
+          ? t("eval.survey.progress.answering", { answered: questionAnswered, total: questionTotal })
+          : (status ?? t("eval.survey.progress.persona"))
         : phase === "done"
-          ? `Survey complete · ${questionAnswered} answers`
+          ? t("eval.survey.progress.complete", { count: questionAnswered })
           : failed
             ? error?.startsWith("Run stopped")
-              ? "Run stopped"
-              : error ?? "The questionnaire didn't finish."
+              ? t("eval.progress.runStopped")
+              : displayError ?? t("eval.survey.progress.error")
             : undefined;
   const canExport = exportSnapshot !== null && surveyResult !== null;
 
   const surveyLiveContent =
     phase === "done" && !surveyResult && !runBusy ? (
       <div className="rounded-md border border-outline bg-surface-lowest p-5 text-[15px] text-text-variant">
-        <p className="font-medium text-text-main">Survey finished, but no answers were loaded.</p>
+        <p className="font-medium text-text-main">{t("eval.survey.finishedNoAnswers")}</p>
         <p className="mt-2">
-          {error ?? job?.error ?? "Try Reset and run again, or open this trial in Runs for the saved debrief."}
+          {displayError ?? t("eval.survey.finishedNoAnswersBody")}
         </p>
       </div>
     ) : phase !== "idle" || surveyResult ? (
@@ -521,7 +530,7 @@ export function SurveyEvalCockpit({
         instrument={activeQuestionnaire}
         result={surveyResult}
         phase={failed ? "error" : phase}
-        error={error ?? job?.error ?? null}
+        error={displayError}
         instructionMarkdown={centerInstructionMarkdown}
         onRetry={handleRetry}
       />
@@ -584,7 +593,9 @@ export function SurveyEvalCockpit({
           progressPct={runProgressPct}
           progressLabel={runProgressLabel}
           progressSublabel={
-            batchJobName && batchComplete ? BATCH_RUN_COMPLETE_HINT : undefined
+            batchJobName && batchComplete
+              ? t("eval.progress.batchCompleteHint")
+              : undefined
           }
           canRun={
             canLaunchCohort &&
@@ -600,7 +611,12 @@ export function SurveyEvalCockpit({
           onParallelTrialsChange={setParallelTrials}
           runBusy={runBusy}
           onRun={() => void handleLaunch()}
-          error={launchError ?? error ?? batchError ?? retryError}
+          error={
+            launchError ??
+            displayError ??
+            (batchCancelled ? t("eval.progress.batchStoppedReset") : batchError) ??
+            retryError
+          }
           onNewRun={showLiveCenter ? handleNewRun : undefined}
           onCancelRun={onCancelRun}
           cancelRunBusy={cancelRunBusy}
@@ -630,7 +646,7 @@ export function SurveyEvalCockpit({
             }
             instruction={
               <InstructionPanel
-                label="Task instruction"
+                label={t("eval.survey.instructionLabel")}
                 title={instructionView.title}
                 markdown={instructionView.instructionMarkdown ?? instructionView.markdown}
                 loading={instructionView.loading}
@@ -639,12 +655,12 @@ export function SurveyEvalCockpit({
             }
             context={
               <InstructionPanel
-                label="Task context"
+                label={t("eval.survey.contextLabel")}
                 title={instructionView.title}
                 markdown={instructionView.contextMarkdown}
                 loading={instructionView.loading}
                 error={instructionView.error}
-                emptyMessage="No separate context document is available for this run."
+                emptyMessage={t("eval.survey.contextEmpty")}
                 icon="menu_book"
               />
             }
@@ -657,12 +673,12 @@ export function SurveyEvalCockpit({
                 </div>
               ) : (
                 <InstructionPanel
-                  label="Questionnaire"
+                  label={t("eval.survey.questionnaireLabel")}
                   title={instructionView.title}
                   markdown={null}
                   loading={instructionView.loading}
                   error={instructionView.error}
-                  emptyMessage="No questionnaire is available for this run."
+                  emptyMessage={t("eval.survey.questionnaireEmpty")}
                   icon="list_alt"
                 />
               )
@@ -685,9 +701,9 @@ export function SurveyEvalCockpit({
           tasksLoading={harborTasksQuery.isLoading}
           tasksError={
             harborTasksQuery.isError && taskCards.length === 0
-              ? "Could not load survey tasks — restart the Playground backend."
+              ? t("eval.survey.tasksLoadFailed")
               : harborTasksQuery.isError
-                ? "Built-in survey tasks loaded from catalog."
+                ? t("eval.survey.tasksCatalogFallback")
                 : null
           }
           disabled={setupLocked}
@@ -722,6 +738,7 @@ function SurveyLive({
   instructionMarkdown?: string;
   onRetry: () => void;
 }) {
+  const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
   const activeInstrument = result?.instrument ?? instrument;
@@ -734,20 +751,26 @@ function SurveyLive({
       {/* Header */}
       <div className="min-w-0">
         <div className="hud mb-2 break-words text-[12px] text-primary">
-          Survey · {humanizeToken(activeInstrument?.id ?? activeInstrument?.title ?? "questionnaire")}
+          {t("eval.survey.header", {
+            name: humanizeToken(activeInstrument?.id ?? activeInstrument?.title ?? "questionnaire"),
+          })}
         </div>
         <h2 className="font-display text-[22px] font-bold tracking-tight text-text-main">
-          {running ? "Persona is answering" : failed ? "The questionnaire didn’t finish" : "Completed questionnaire"}
+          {running
+            ? t("eval.survey.answering")
+            : failed
+              ? t("eval.survey.failed")
+              : t("eval.survey.completed")}
         </h2>
       </div>
 
       {/* Answer cards */}
       {failed && (
         <ErrorCard
-          title="The questionnaire didn’t finish"
-          body={error ?? "Something interrupted the run. Your setup is still here. Press Try again."}
+          title={t("eval.survey.failed")}
+          body={error ?? t("eval.survey.errorBody")}
           onRetry={onRetry}
-          retryLabel="Try again"
+          retryLabel={t("eval.common.tryAgain")}
         />
       )}
 
@@ -780,11 +803,11 @@ function SurveyLive({
       {result && (
         <>
           <div className="flex items-center justify-center gap-2 pt-1">
-            <span className="hud text-[11px] text-text-dim">{answered} of {total} answered</span>
+            <span className="hud text-[11px] text-text-dim">{t("eval.survey.answered", { answered, total })}</span>
             {total - answered > 0 && (
               <>
                 <span className="text-outline-dim">·</span>
-                <span className="hud text-[11px] text-text-dim">{total - answered} remaining</span>
+                <span className="hud text-[11px] text-text-dim">{t("eval.survey.remaining", { count: total - answered })}</span>
               </>
             )}
           </div>
@@ -805,7 +828,8 @@ function SurveyAnswerCard({
   answer: SurveyAnswer;
   question: SurveyQuestion | null;
 }) {
-  const meta = questionTypeMeta(question?.type ?? "");
+  const { t } = useI18n();
+  const meta = questionTypeMeta(question?.type ?? "", t);
   const confidence = answer.confidence;
   return (
     <div
@@ -814,7 +838,7 @@ function SurveyAnswerCard({
     >
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <span className="hud text-[12px] text-text-dim">Q{index + 1}</span>
+          <span className="hud text-[12px] text-text-dim">{t("eval.survey.questionNumber", { number: index + 1 })}</span>
           <span title={meta.tooltip} className={`hud rounded border px-1.5 py-0.5 text-[11px] ${meta.tone}`}>
             {meta.label}
           </span>
@@ -828,8 +852,12 @@ function SurveyAnswerCard({
       {(answer.rationale || confidence != null) && (
         <div className="mt-5 border-t border-outline pt-3.5">
           <p className="font-mono text-[13px] leading-relaxed text-text-variant">
-            {answer.rationale ? `persona rationale: ${answer.rationale}` : "persona answered"}{" "}
-            {confidence != null && <span className="text-text-variant">(conf {confidence.toFixed(2)})</span>}
+            {answer.rationale
+              ? t("eval.survey.rationale", { rationale: answer.rationale })
+              : t("eval.survey.answeredByPersona")}{" "}
+            {confidence != null && (
+              <span className="text-text-variant">{t("eval.survey.confidence", { value: confidence.toFixed(2) })}</span>
+            )}
           </p>
         </div>
       )}
@@ -838,6 +866,7 @@ function SurveyAnswerCard({
 }
 
 function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: SurveyQuestion | null }) {
+  const { t } = useI18n();
   const type = question?.type;
 
   if (type === "likert") {
@@ -887,7 +916,7 @@ function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: Sur
     return (
       <div className="space-y-2">
         {multi && (
-          <p className="hud text-[11px] text-text-dim">Select all that apply · {selected.length} selected</p>
+          <p className="hud text-[11px] text-text-dim">{t("eval.survey.multiChoiceSelected", { count: selected.length })}</p>
         )}
         {optionDetails.map((option) => {
           const isSelected = selected.includes(option.id);
@@ -939,7 +968,7 @@ function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: Sur
     return (
       <div className="rounded border border-outline bg-field p-4">
         <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-text-variant">
-          {formatSurveyValue(answer.value) || "(no response)"}
+          {formatSurveyValue(answer.value) || t("eval.survey.noResponse")}
         </p>
       </div>
     );
@@ -948,13 +977,14 @@ function AnswerValue({ answer, question }: { answer: SurveyAnswer; question: Sur
   // Fallback for unknown types / missing question metadata.
   return (
     <div className="rounded border border-outline bg-field px-3 py-2.5">
-      <p className="font-mono text-[14px] text-text-main">{formatSurveyValue(answer.value) || "(no answer)"}</p>
+      <p className="font-mono text-[14px] text-text-main">{formatSurveyValue(answer.value) || t("eval.survey.noAnswer")}</p>
     </div>
   );
 }
 
 /** Collapsible Q&A trajectory timeline. */
 function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const groups = groupSurveyTrajectory(events);
   return (
@@ -965,9 +995,9 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
         aria-expanded={open}
         className={`flex w-full items-center justify-between gap-2 border-b border-outline px-4 py-3 text-left transition-colors hover:bg-surface-low active:bg-surface-high ${FOCUS_RING}`}
       >
-        <span className="hud text-[12px] text-text-dim">Trajectory</span>
+        <span className="hud text-[12px] text-text-dim">{t("eval.survey.trajectory")}</span>
         <span className="flex items-center gap-2">
-          <span className="hud text-[11px] text-text-dim">{groups.length} steps</span>
+          <span className="hud text-[11px] text-text-dim">{t("eval.survey.steps", { count: groups.length })}</span>
           <Sym name={open ? "expand_more" : "chevron_right"} size={18} className="text-text-dim" />
         </span>
       </button>
@@ -982,17 +1012,24 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
                 surveyTrajectoryQuestionType(group.ask) ||
                 surveyTrajectoryQuestionType(group.answer);
               const prompt = surveyTrajectoryPrompt(group.ask);
-              const value = formatSurveyTrajectoryValue(group.answer.outcome?.value);
+              const value = formatSurveyTrajectoryValue(
+                group.answer.outcome?.value,
+                t,
+              );
               return (
                 <div
                   key={`${group.ask.timestamp}-${index}`}
                   className="rounded-md border border-outline bg-surface-lowest px-3 py-2.5"
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    <span className="hud text-[11px] text-primary">{qIndex != null ? `Q${qIndex}` : "Q"}</span>
+                    <span className="hud text-[11px] text-primary">
+                      {qIndex != null
+                        ? t("eval.survey.questionNumber", { number: qIndex })
+                        : t("eval.survey.questionShort")}
+                    </span>
                     {type ? (
                       <span className={`hud rounded border px-1.5 py-0.5 text-[11px] ${surveyQuestionTypeChipClass(type)}`}>
-                        {surveyQuestionTypeLabel(type)}
+                        {surveyQuestionTypeLabel(type, t)}
                       </span>
                     ) : null}
                   </div>
@@ -1000,7 +1037,7 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
                     <p className="text-[14px] leading-snug text-text-variant">{prompt}</p>
                   ) : null}
                   <p className="mt-1.5 rounded border border-outline bg-field px-2.5 py-1.5 font-mono text-[13px] text-text-main break-words">
-                    {value || "(no answer)"}
+                    {value || t("eval.survey.noAnswer")}
                   </p>
                 </div>
               );
@@ -1008,16 +1045,19 @@ function TrajectoryFold({ events }: { events: SurveyTrajectoryEvent[] }) {
 
             const event = group.event;
             const action = event.action;
-            let title = `${trajectoryActor(event.actor)} · ${event.action}`;
+            let title = t("eval.survey.trajectoryAction", {
+              actor: trajectoryActor(event.actor, t),
+              action: event.action,
+            });
             let detail = "";
             if (action === "survey_started") {
-              title = "Survey started";
+              title = t("eval.survey.started");
               const n = event.context?.numQuestions;
-              detail = typeof n === "number" ? `${n} questions` : "";
+              detail = typeof n === "number" ? t("eval.survey.questions", { count: n }) : "";
             } else if (action === "survey_completed") {
-              title = "Survey completed";
+              title = t("eval.survey.completed");
               const answered = event.outcome?.numAnswered;
-              detail = typeof answered === "number" ? `${answered} answered` : "";
+              detail = typeof answered === "number" ? t("eval.survey.answers", { count: answered }) : "";
             }
             return (
               <div
@@ -1042,13 +1082,14 @@ function ErrorCard({
   title,
   body,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel,
 }: {
   title: string;
   body: string;
   onRetry: () => void;
   retryLabel?: string;
 }) {
+  const { t } = useI18n();
   return (
     <section className="rounded-md border border-danger/30 bg-danger/10 p-5">
       <div className="flex items-start gap-3">
@@ -1062,11 +1103,10 @@ function ErrorCard({
             className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-3 py-1.5 text-[14px] font-medium text-danger hover:bg-danger/10 ${FOCUS_RING}`}
           >
             <Sym name="refresh" size={15} />
-            {retryLabel}
+            {retryLabel ?? t("eval.common.tryAgain")}
           </button>
         </div>
       </div>
     </section>
   );
 }
-

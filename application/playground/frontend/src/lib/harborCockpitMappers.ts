@@ -126,25 +126,54 @@ export function harborDebriefError(debrief: PlaygroundResult): string | null {
   return null;
 }
 
-/** Contributor-facing copy for raw Harbor / API errors in the cockpit. */
-export function formatCockpitRunError(message: string | null | undefined): string | null {
+export type CockpitRunErrorCode =
+  | "trial_failed"
+  | "batch_run_failed"
+  | "run_timeout"
+  | "run_stopped_reset"
+  | "empty_conversation"
+  | "missing_trial"
+  | "trial_output_artifacts_missing"
+  | "trial_not_found"
+  | "reward_file_missing";
+
+export interface CockpitRunError {
+  /** Stable UI classification; raw backend text is kept separately. */
+  code: CockpitRunErrorCode | null;
+  rawMessage: string;
+}
+
+/**
+ * Recognize known Harbor failures without formatting or rewriting backend text.
+ * The rendering layer owns localization for `code` and shows `rawMessage` as-is
+ * for errors the client does not recognize.
+ */
+export function classifyCockpitRunError(
+  message: string | null | undefined,
+): CockpitRunError | null {
   if (!message?.trim()) return null;
-  const text = message.trim();
-  const lower = text.toLowerCase();
+  const normalized = message.trim();
+  const clientFallbackCode: Record<string, CockpitRunErrorCode> = {
+    "Trial failed.": "trial_failed",
+    "Batch run failed.": "batch_run_failed",
+    "This run is taking longer than expected.": "run_timeout",
+    "Run stopped. Reset to change setup and launch again.": "run_stopped_reset",
+    "Run finished with no conversation turns.": "empty_conversation",
+    "Run finished without producing a trial.": "missing_trial",
+  };
+  const clientCode = clientFallbackCode[normalized];
+  if (clientCode) return { code: clientCode, rawMessage: message };
+  const lower = message.toLowerCase();
   if (lower.includes("trial output artifacts not found")) {
-    return "The trial finished but no output was saved. The agent may have crashed before submitting results.";
+    return { code: "trial_output_artifacts_missing", rawMessage: message };
   }
-  if (lower.includes("trial not found")) return "Trial folder not found on disk.";
+  if (lower.includes("trial not found")) {
+    return { code: "trial_not_found", rawMessage: message };
+  }
   if (lower.includes("reward file") || lower.includes("rewardfilenotfound")) {
-    return "Verifier could not find the expected reward file.";
+    return { code: "reward_file_missing", rawMessage: message };
   }
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-  const summary =
-    [...lines].reverse().find((line) => /error|exception|failed|timeout/i.test(line)) ??
-    lines[0] ??
-    text;
-  const cleaned = summary.replace(/\bHarbor\b/g, "Run").replace(/\bharbor\b/g, "run");
-  return cleaned.length > 240 ? `${cleaned.slice(0, 237)}…` : cleaned;
+  return { code: null, rawMessage: message };
 }
 
 function asVerifier(raw: unknown): VerifierSummary | null {

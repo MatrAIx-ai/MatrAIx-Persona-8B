@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   FOCUS_RING,
   Sym,
@@ -48,6 +49,7 @@ export interface PersonaDrawerProps {
 }
 
 export function PersonaDrawer({ open, onClose, persona, context, onUse }: PersonaDrawerProps) {
+  const { t } = useI18n();
   const closeRef = useRef<HTMLButtonElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const [copied, setCopied] = useState(false);
@@ -125,7 +127,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Full profile for ${title}`}
+        aria-label={t("catalog.personaDrawer.dialogLabel", { title })}
         className="slide-in-right absolute bottom-0 right-0 top-0 z-10 flex w-[420px] max-w-[92vw] flex-col border-l border-outline bg-surface-lowest shadow-2xl"
       >
         {/* Header */}
@@ -139,7 +141,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
                 <Sym name="person" fill={1} size={24} className="text-primary" />
               </div>
               <div className="min-w-0">
-                <div className="hud mb-1.5 text-[11px] text-text-dim">Persona</div>
+                <div className="hud mb-1.5 text-[11px] text-text-dim">{t("catalog.personaDrawer.persona")}</div>
                 <h2 title={title} className="truncate font-display text-[18px] font-bold leading-none tracking-tight text-text-main">
                   {title}
                 </h2>
@@ -159,7 +161,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
               ref={closeRef}
               type="button"
               onClick={onClose}
-              aria-label="Close persona detail"
+              aria-label={t("catalog.personaDrawer.close")}
               className={`flex h-9 w-9 flex-none items-center justify-center rounded-md border border-outline text-text-variant transition-colors hover:border-primary hover:bg-surface-high hover:text-text-main active:bg-surface-low ${FOCUS_RING}`}
             >
               <Sym name="close" size={18} />
@@ -170,7 +172,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
         {/* Body */}
         <div className="custom-scrollbar flex-1 space-y-5 overflow-y-auto p-5">
           {loading ? (
-            <div className="space-y-2" aria-label="Loading full persona" aria-busy>
+            <div className="space-y-2" aria-label={t("catalog.personaDrawer.loading")} aria-busy>
               {[5, 7, 6, 4, 7, 5].map((w, i) => (
                 <div
                   key={i}
@@ -183,7 +185,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
             <>
               {/* Demographics */}
               <div className="panel rise-in rounded-md border border-outline bg-surface p-4">
-                <h3 className="hud mb-3 text-[12px] text-text-dim">Demographics</h3>
+                <h3 className="hud mb-3 text-[12px] text-text-dim">{t("catalog.personaDrawer.demographics")}</h3>
                 {demographics.length > 0 ? (
                   <div className="space-y-2.5 text-[14px]">
                     {demographics.map((d) => (
@@ -199,7 +201,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
                   </div>
                 ) : (
                   <p className="text-[14px] italic leading-snug text-text-variant">
-                    No demographics on file for this persona.
+                    {t("catalog.personaDrawer.noDemographics")}
                   </p>
                 )}
               </div>
@@ -210,7 +212,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
                   className="rise-in rounded-md border border-outline bg-surface p-4"
                   style={{ animationDelay: "60ms" }}
                 >
-                  <h3 className="hud mb-3 text-[12px] text-text-dim">Goal context</h3>
+                  <h3 className="hud mb-3 text-[12px] text-text-dim">{t("catalog.personaDrawer.goalContext")}</h3>
                   <div className="space-y-3">
                     {sections.map((s) => (
                       <div key={s.label || "context"}>
@@ -233,11 +235,11 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
                   style={{ animationDelay: "120ms" }}
                 >
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <h3 className="hud text-[12px] text-text-dim">Raw record</h3>
+                    <h3 className="hud text-[12px] text-text-dim">{t("catalog.personaDrawer.rawRecord")}</h3>
                     <button
                       type="button"
                       onClick={handleCopy}
-                      aria-label={copied ? "Copied to clipboard" : "Copy raw record"}
+                      aria-label={copied ? t("catalog.personaDrawer.copiedToClipboard") : t("catalog.personaDrawer.copyRawRecord")}
                       className={`flex flex-none items-center gap-1.5 rounded border px-2 py-1 transition-colors ${FOCUS_RING} ${
                         copied
                           ? "border-secondary/40 text-secondary"
@@ -245,7 +247,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
                       }`}
                     >
                       <Sym name={copied ? "check" : "content_copy"} size={12} />
-                      <span className="hud text-[11px]">{copied ? "Copied" : "Copy"}</span>
+                      <span className="hud text-[11px]">{copied ? t("catalog.personaDrawer.copied") : t("catalog.personaDrawer.copy")}</span>
                     </button>
                   </div>
                   <div className="custom-scrollbar overflow-x-auto rounded border border-outline bg-field p-3">
@@ -256,7 +258,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
                 </div>
               ) : (
                 <p className="text-[14px] italic leading-relaxed text-text-variant">
-                  This persona has no extra profile text. The summary above is all we have.
+                  {t("catalog.personaDrawer.noExtraProfile")}
                 </p>
               )}
             </>
@@ -273,7 +275,7 @@ export function PersonaDrawer({ open, onClose, persona, context, onUse }: Person
               className={`glow flex w-full items-center justify-center gap-2 rounded-md bg-primary py-3.5 text-[15px] font-semibold text-on-primary transition-[background-color,transform] duration-150 ease-out hover:bg-primary-dim active:scale-[0.99] ${FOCUS_RING}`}
             >
               <Sym name="check" size={16} />
-              Use this persona
+              {t("catalog.personaDrawer.use")}
             </button>
           </div>
         )}

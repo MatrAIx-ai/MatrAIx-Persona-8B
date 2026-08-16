@@ -17,6 +17,7 @@
  */
 import { useEffect, useLayoutEffect, useRef } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { PersonaBubble, RecBotBubble } from "./TurnBubble";
 import { ChatbotChatAvatar, PersonaChatAvatar } from "./ChatBubbleAvatar";
 import { draftTurnToView } from "@/lib/harborCockpitMappers";
@@ -93,6 +94,7 @@ export function Trajectory({
   registerTurnRef,
   onRetry,
 }: TrajectoryProps) {
+  const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -162,7 +164,7 @@ export function Trajectory({
           <div className="rise-in flex items-start gap-2.5 rounded-md border border-outline bg-surface-lowest px-4 py-3">
             <Sym name="info" size={16} className="mt-0.5 shrink-0 text-primary" />
             <div className="min-w-0">
-              <div className="hud mb-1 text-[11px] text-primary">Scenario</div>
+              <div className="hud mb-1 text-[11px] text-primary">{t("cockpit.trajectory.scenario")}</div>
               <p className="text-[14px] leading-relaxed text-text-variant">
                 {sutDescription}
               </p>
@@ -228,7 +230,7 @@ export function Trajectory({
 
         {/* Warming (cold start, before any turn): a skeleton turn. */}
         {isRunning && turns.length === 0 && !draft && (phase === "building" || !livePhase) && (
-          <SkeletonTurn label={phase === "building" ? "Starting the app…" : liveStatus} />
+          <SkeletonTurn label={phase === "building" ? t("cockpit.trajectory.startingApp") : liveStatus} />
         )}
 
         {/* Legacy fallback when no draft events yet but turns exist */}
@@ -242,9 +244,9 @@ export function Trajectory({
             <div className="flex items-start gap-3">
               <Sym name="error" fill={1} size={20} className="mt-0.5 text-danger" />
               <div className="min-w-0 flex-1">
-                <h4 className="text-sm font-semibold text-text-main">The simulation didn&apos;t finish</h4>
+                <h4 className="text-sm font-semibold text-text-main">{t("cockpit.trajectory.simulationFailed")}</h4>
                 <p className="mt-1 break-words text-[15px] leading-relaxed text-text-variant">
-                  {error ?? "It stopped before completing. Your settings are untouched, so you can try again right away."}
+                  {error ?? t("cockpit.trajectory.simulationStopped")}
                 </p>
                 <button
                   type="button"
@@ -252,7 +254,7 @@ export function Trajectory({
                   className={`mt-3 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition ease-out hover:bg-primary-dim active:scale-[0.98] ${FOCUS_RING}`}
                 >
                   <Sym name="refresh" size={16} />
-                  Retry
+                  {t("cockpit.trajectory.retry")}
                 </button>
               </div>
             </div>
@@ -274,12 +276,13 @@ function PersonaThinkingBubble({
   personaName?: string | null;
   personaDimensions?: Record<string, string>;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex w-full items-start gap-2.5 pr-10" aria-live="polite">
       <PersonaChatAvatar personaId={personaId} dimensions={personaDimensions} />
       <div className="flex min-w-0 flex-1 flex-col items-start">
         <div className="hud mb-1.5 flex items-center gap-2 text-[11px] text-text-dim">
-          <span>{personaName?.trim() || "Persona"} · thinking</span>
+          <span>{t("cockpit.trajectory.personaThinking", { persona: personaName?.trim() || t("cockpit.trajectory.persona") })}</span>
           <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" aria-hidden />
         </div>
         <div className="max-w-[70%] rounded-md rounded-tl-sm border border-outline bg-surface px-4 py-3">
@@ -295,12 +298,13 @@ function PersonaThinkingBubble({
 
 /** A shimmering "generating" app bubble (mockup `:519-532`). */
 function GeneratingBubble({ appName }: { appName: string }) {
+  const { t } = useI18n();
   return (
     <div className="rise-in flex w-full justify-end pl-10" aria-live="polite">
       <div className="flex max-w-full items-start gap-2.5">
         <div className="flex min-w-0 flex-col items-end">
           <div className="hud mb-1.5 flex items-center gap-2 text-[11px] text-primary">
-            <span>{appName} · generating</span>
+            <span>{t("cockpit.trajectory.appGenerating", { app: appName })}</span>
             <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" aria-hidden />
           </div>
           <div className="w-full rounded-md rounded-tr-sm border border-outline bg-surface px-4 py-4">

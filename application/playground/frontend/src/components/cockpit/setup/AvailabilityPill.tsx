@@ -1,3 +1,5 @@
+import { useI18n } from "@/i18n/I18nProvider";
+
 import { ToneChip } from "./ToneChip";
 
 export interface AvailabilityPillProps {
@@ -7,10 +9,12 @@ export interface AvailabilityPillProps {
 
 /** Availability badge — green when ready, red when not. */
 export function AvailabilityPill({ available, label }: AvailabilityPillProps) {
+  const { t } = useI18n();
+
   if (available === undefined) {
     return (
       <ToneChip tone="warn" showDot pulseDot>
-        {label ?? "Checking…"}
+        {label ?? t("cockpitSetup.status.checking")}
       </ToneChip>
     );
   }
@@ -18,14 +22,14 @@ export function AvailabilityPill({ available, label }: AvailabilityPillProps) {
   if (available) {
     return (
       <ToneChip tone="secondary" showDot>
-        {label ?? "Available"}
+        {label ?? t("cockpitSetup.status.available")}
       </ToneChip>
     );
   }
 
   return (
     <ToneChip tone="danger" showDot>
-      {label ?? "Unavailable"}
+      {label ?? t("cockpitSetup.status.unavailable")}
     </ToneChip>
   );
 }

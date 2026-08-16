@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import type { I18nContextValue } from "@/i18n/I18nProvider";
 import type { PersonaPoolPersonaCard } from "@/lib/types";
 import { PERSONA_CARD_PREVIEW_LIMIT } from "@/lib/types";
 import { useHarborBatchLive } from "@/lib/useHarborBatchLive";
@@ -308,7 +309,7 @@ export function useCockpitBatchJob(
     expectedTrialCount,
     personaById,
     batchError: batchCancelled
-      ? "Batch stopped. Reset to change setup and launch again."
+      ? null
       : aggregate
         ? statusFeed.error
         : batchLive.error,
@@ -345,13 +346,15 @@ export function batchProgressPct(
 }
 
 /** Batch footer progress — counts simulated people, not job re-runs. */
-export function formatBatchProgressLabel(completed: number, total: number): string {
+export function formatBatchProgressLabel(
+  t: I18nContextValue["t"],
+  completed: number,
+  total: number,
+): string {
   const done = Math.max(0, Math.min(completed, total));
-  const noun = total === 1 ? "person" : "people";
-  if (total <= 0) return "Batch run";
-  if (done >= total) return `All ${total} ${noun} finished`;
-  return `${done} of ${total} ${noun} finished`;
+  if (total <= 0) return t("eval.progress.batchRun");
+  if (done >= total) {
+    return t("eval.progress.batchAllFinished", { total });
+  }
+  return t("eval.progress.batchFinished", { done, total });
 }
-
-export const BATCH_RUN_COMPLETE_HINT =
-  "Everyone finished — open Runs for debrief.";

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
 import type {
   PersonaMatchedAttribute,
@@ -35,7 +36,7 @@ export interface PersonaFilterModalProps {
 }
 
 function poolLabel(pool: string | undefined): string {
-  if (!pool) return "persona pool";
+  if (!pool) return "";
   return pool.split("/").filter(Boolean).pop() || pool;
 }
 
@@ -66,7 +67,10 @@ function matchesQuery(text: string, query: string): boolean {
   return text.toLowerCase().includes(query);
 }
 
-function dimensionMatchesQuery(dim: PersonaPoolDimensionOption, query: string): boolean {
+function dimensionMatchesQuery(
+  dim: PersonaPoolDimensionOption,
+  query: string,
+): boolean {
   if (!query) return true;
   if (matchesQuery(`${dimLabel(dim)} ${dim.id}`, query)) return true;
   return (dim.values ?? []).some((value) => matchesQuery(value, query));
@@ -101,6 +105,7 @@ export function PersonaFilterModal({
   onClose,
   onConfirm,
 }: PersonaFilterModalProps) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState(filters);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [expandedSubgroup, setExpandedSubgroup] = useState<string | null>(null);
@@ -117,7 +122,8 @@ export function PersonaFilterModal({
     refetchOnWindowFocus: false,
   });
 
-  const suggestions: PersonaMatchedAttribute[] = matchQuery.data?.attributes ?? [];
+  const suggestions: PersonaMatchedAttribute[] =
+    matchQuery.data?.attributes ?? [];
 
   useEffect(() => {
     if (open) {
@@ -145,7 +151,8 @@ export function PersonaFilterModal({
   }, [catalog]);
 
   const groups = catalog?.dimensionCategories?.devProfile?.groups ?? [];
-  const dimensionCount = catalog?.dimensionCategories?.devProfile?.dimensionCount;
+  const dimensionCount =
+    catalog?.dimensionCategories?.devProfile?.dimensionCount;
   const normalizedQuery = query.trim().toLowerCase();
 
   const visibleGroups = useMemo(() => {
@@ -160,7 +167,11 @@ export function PersonaFilterModal({
             dimensionMatchesQuery(dim, normalizedQuery),
           );
           if (dims.length === 0) continue;
-          matchedSubs.push({ ...sub, dimensions: dims, dimensionIds: dims.map((d) => d.id) });
+          matchedSubs.push({
+            ...sub,
+            dimensions: dims,
+            dimensionIds: dims.map((d) => d.id),
+          });
         }
         if (matchedSubs.length === 0) continue;
         next.push({
@@ -175,24 +186,38 @@ export function PersonaFilterModal({
         dimensionMatchesQuery(dim, normalizedQuery),
       );
       if (dims.length === 0) continue;
-      next.push({ ...group, dimensions: dims, dimensionIds: dims.map((d) => d.id) });
+      next.push({
+        ...group,
+        dimensions: dims,
+        dimensionIds: dims.map((d) => d.id),
+      });
     }
     return next;
   }, [groups, normalizedQuery]);
 
   const selectedChips = useMemo(() => {
-    const chips: Array<{ key: string; label: string; value: string }> = [];
+    const chips: Array<{
+      key: string;
+      dimId: string;
+      label: string;
+      value: string;
+    }> = [];
     for (const source of draft.sources) {
-      chips.push({ key: `source:${source}`, label: "Source", value: source });
+      chips.push({
+        key: `source:${source}`,
+        dimId: "source",
+        label: t("personaSetup.filters.source"),
+        value: source,
+      });
     }
     for (const [dimId, values] of Object.entries(draft.dimensionFilters)) {
       const label = findDimensionLabel(catalog, dimId);
       for (const value of values) {
-        chips.push({ key: `${dimId}:${value}`, label, value });
+        chips.push({ key: `${dimId}:${value}`, dimId, label, value });
       }
     }
     return chips;
-  }, [catalog, draft]);
+  }, [catalog, draft, t]);
 
   if (!open) return null;
 
@@ -218,21 +243,25 @@ export function PersonaFilterModal({
     });
   };
 
-  const removeChip = (chip: { key: string; label: string; value: string }) => {
-    if (chip.key.startsWith("source:")) {
+  const removeChip = (chip: {
+    key: string;
+    dimId: string;
+    label: string;
+    value: string;
+  }) => {
+    if (chip.dimId === "source") {
       setDraft((prev) => ({
         ...prev,
         sources: prev.sources.filter((item) => item !== chip.value),
       }));
       return;
     }
-    const dimId = chip.label;
     setDraft((prev) => {
-      const current = prev.dimensionFilters[dimId] ?? [];
+      const current = prev.dimensionFilters[chip.dimId] ?? [];
       const nextValues = current.filter((item) => item !== chip.value);
       const nextFilters = { ...prev.dimensionFilters };
-      if (nextValues.length === 0) delete nextFilters[dimId];
-      else nextFilters[dimId] = nextValues;
+      if (nextValues.length === 0) delete nextFilters[chip.dimId];
+      else nextFilters[chip.dimId] = nextValues;
       return { ...prev, dimensionFilters: nextFilters };
     });
   };
@@ -247,14 +276,21 @@ export function PersonaFilterModal({
 
   const renderDimension = (dim: PersonaPoolDimensionOption) => {
     const visibleValues = filterDimensionValues(dim, normalizedQuery);
-    const dimOpen = expandedDim === dim.id || (Boolean(normalizedQuery) && visibleValues.length > 0);
+    const dimOpen =
+      expandedDim === dim.id ||
+      (Boolean(normalizedQuery) && visibleValues.length > 0);
     const selected = draft.dimensionFilters[dim.id] ?? [];
     const stratified = fields.includes(dim.id);
     return (
-      <div key={dim.id} className="rounded-md border border-outline/30 bg-surface/20">
+      <div
+        key={dim.id}
+        className="rounded-md border border-outline/30 bg-surface/20"
+      >
         <button
           type="button"
-          onClick={() => setExpandedDim(dimOpen && !normalizedQuery ? null : dim.id)}
+          onClick={() =>
+            setExpandedDim(dimOpen && !normalizedQuery ? null : dim.id)
+          }
           className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-[13px] ${FOCUS_RING}`}
         >
           <span className={selected.length ? "text-primary" : "text-text-main"}>
@@ -275,10 +311,14 @@ export function PersonaFilterModal({
                     : "border-outline/40 text-text-dim"
                 }`}
               >
-                stratify
+                {t("personaSetup.filters.stratify")}
               </button>
             )}
-            <Sym name={dimOpen ? "expand_less" : "expand_more"} size={16} className="text-text-dim" />
+            <Sym
+              name={dimOpen ? "expand_less" : "expand_more"}
+              size={16}
+              className="text-text-dim"
+            />
           </div>
         </button>
         {dimOpen && (
@@ -317,7 +357,7 @@ export function PersonaFilterModal({
       <button
         type="button"
         className="absolute inset-0 bg-surface-dim/75 backdrop-blur-sm"
-        aria-label="Close filters"
+        aria-label={t("personaSetup.filters.close")}
         onClick={onClose}
       />
       <div
@@ -328,23 +368,38 @@ export function PersonaFilterModal({
       >
         <div className="flex items-center justify-between border-b border-outline/40 px-5 py-4">
           <div>
-            <p className="hud text-[11px] text-primary">{poolLabel(catalog?.pool)}</p>
-            <h2 id="persona-filter-modal-title" className="font-display text-[18px] font-semibold text-text-main">
-              Persona filters
+            <p className="hud text-[11px] text-primary">
+              {poolLabel(catalog?.pool) ||
+                t("personaSetup.filters.defaultPool")}
+            </p>
+            <h2
+              id="persona-filter-modal-title"
+              className="font-display text-[18px] font-semibold text-text-main"
+            >
+              {t("personaSetup.filters.title")}
             </h2>
             {typeof dimensionCount === "number" && dimensionCount > 0 ? (
               <p className="mt-0.5 text-[12px] text-text-dim">
-                {dimensionCount.toLocaleString()} dimensions
+                {t("personaSetup.filters.dimensionCount", {
+                  count: dimensionCount,
+                })}
               </p>
             ) : null}
           </div>
-          <button type="button" onClick={onClose} className={`rounded-md p-2 text-text-variant hover:bg-surface-high ${FOCUS_RING}`}>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t("personaSetup.filters.close")}
+            className={`rounded-md p-2 text-text-variant hover:bg-surface-high ${FOCUS_RING}`}
+          >
             <Sym name="close" size={20} />
           </button>
         </div>
 
         <div className="custom-scrollbar flex-1 overflow-y-auto px-5 py-4">
-          <p className="mb-2 text-[13px] text-text-variant">Provenance</p>
+          <p className="mb-2 text-[13px] text-text-variant">
+            {t("personaSetup.filters.provenance")}
+          </p>
           <div className="mb-5 flex flex-wrap gap-2">
             {sources.map((source) => {
               const active = draft.sources.includes(source);
@@ -361,14 +416,18 @@ export function PersonaFilterModal({
                   }`}
                 >
                   {source}
-                  {typeof count === "number" ? ` · ${count.toLocaleString()}` : ""}
+                  {typeof count === "number"
+                    ? ` · ${count.toLocaleString()}`
+                    : ""}
                 </button>
               );
             })}
           </div>
 
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-[13px] text-text-variant">Profile dimensions</p>
+            <p className="text-[13px] text-text-variant">
+              {t("personaSetup.filters.profileDimensions")}
+            </p>
             <label className="relative min-w-0 flex-1 max-w-md">
               <Sym
                 name="search"
@@ -379,7 +438,7 @@ export function PersonaFilterModal({
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Describe a person, or search attributes…"
+                placeholder={t("personaSetup.filters.searchPlaceholder")}
                 className={`h-8 w-full rounded-md border border-outline/50 bg-field pl-8 pr-2 text-[13px] text-text-main placeholder:text-text-dim ${FOCUS_RING}`}
               />
             </label>
@@ -389,26 +448,43 @@ export function PersonaFilterModal({
             <div className="mb-4 rounded-lg border border-outline/30 bg-surface/30 px-3 py-2.5">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[12px] text-text-variant">
-                  {suggestions.length} suggested attribute{suggestions.length === 1 ? "" : "s"}
+                  {t("personaSetup.filters.suggestedAttributes", {
+                    count: suggestions.length,
+                  })}
                 </p>
                 <button
                   type="button"
-                  onClick={() => setDraft((prev) => applyAllSuggestions(prev, suggestions))}
+                  onClick={() =>
+                    setDraft((prev) => applyAllSuggestions(prev, suggestions))
+                  }
                   className={`rounded-md px-2 py-1 text-[11px] text-primary hover:bg-primary/10 ${FOCUS_RING}`}
                 >
-                  Select all
+                  {t("personaSetup.filters.selectAll")}
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {suggestions.map((attr) => {
                   const active = isSuggestionSelected(draft, attr);
-                  const label = (attr.label || attr.dimensionId).replace(/_/g, " ");
+                  const label = (attr.label || attr.dimensionId).replace(
+                    /_/g,
+                    " ",
+                  );
                   return (
                     <button
                       key={suggestionKey(attr)}
                       type="button"
-                      title={attr.evidence ? `evidence: ${attr.evidence}` : undefined}
-                      onClick={() => setDraft((prev) => toggleSuggestionInFilters(prev, attr))}
+                      title={
+                        attr.evidence
+                          ? t("personaSetup.filters.evidence", {
+                              value: attr.evidence,
+                            })
+                          : undefined
+                      }
+                      onClick={() =>
+                        setDraft((prev) =>
+                          toggleSuggestionInFilters(prev, attr),
+                        )
+                      }
                       className={`rounded-full px-2.5 py-1 text-[12px] ${FOCUS_RING} ${
                         active
                           ? "glass-tile glass-tile--active text-primary"
@@ -428,47 +504,73 @@ export function PersonaFilterModal({
           <div className="space-y-2">
             {showEmptyTree ? (
               <p className="rounded-lg border border-dashed border-outline/40 px-3 py-4 text-center text-[13px] text-text-dim">
-                No attributes match “{query.trim()}”.
+                {t("personaSetup.filters.noAttributes", {
+                  query: query.trim(),
+                })}
               </p>
             ) : null}
             {visibleGroups.map((group) => {
-              const groupOpen = expandedGroup === group.id || Boolean(normalizedQuery);
+              const groupOpen =
+                expandedGroup === group.id || Boolean(normalizedQuery);
               const subgroups = group.subgroups ?? [];
               return (
-                <div key={group.id} className="rounded-lg border border-outline/30">
+                <div
+                  key={group.id}
+                  className="rounded-lg border border-outline/30"
+                >
                   <button
                     type="button"
-                    onClick={() => setExpandedGroup(groupOpen && !normalizedQuery ? null : group.id)}
+                    onClick={() =>
+                      setExpandedGroup(
+                        groupOpen && !normalizedQuery ? null : group.id,
+                      )
+                    }
                     className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] font-medium ${FOCUS_RING}`}
                   >
                     <span>{group.label}</span>
-                    <Sym name={groupOpen ? "expand_less" : "expand_more"} size={18} className="text-text-dim" />
+                    <Sym
+                      name={groupOpen ? "expand_less" : "expand_more"}
+                      size={18}
+                      className="text-text-dim"
+                    />
                   </button>
                   {groupOpen ? (
                     <div className="space-y-2 border-t border-outline/20 px-2.5 py-2">
                       {subgroups.length > 0
                         ? subgroups.map((sub) => {
                             const subOpen =
-                              expandedSubgroup === sub.id || Boolean(normalizedQuery);
+                              expandedSubgroup === sub.id ||
+                              Boolean(normalizedQuery);
                             return (
-                              <div key={sub.id} className="rounded-md border border-outline/20">
+                              <div
+                                key={sub.id}
+                                className="rounded-md border border-outline/20"
+                              >
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    setExpandedSubgroup(subOpen && !normalizedQuery ? null : sub.id)
+                                    setExpandedSubgroup(
+                                      subOpen && !normalizedQuery
+                                        ? null
+                                        : sub.id,
+                                    )
                                   }
                                   className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-[12px] text-text-variant ${FOCUS_RING}`}
                                 >
                                   <span>{sub.label}</span>
                                   <Sym
-                                    name={subOpen ? "expand_less" : "expand_more"}
+                                    name={
+                                      subOpen ? "expand_less" : "expand_more"
+                                    }
                                     size={16}
                                     className="text-text-dim"
                                   />
                                 </button>
                                 {subOpen ? (
                                   <div className="space-y-1.5 border-t border-outline/15 px-2 py-2">
-                                    {(sub.dimensions ?? []).map(renderDimension)}
+                                    {(sub.dimensions ?? []).map(
+                                      renderDimension,
+                                    )}
                                   </div>
                                 ) : null}
                               </div>
@@ -488,7 +590,9 @@ export function PersonaFilterModal({
             {selectedChips.length > 0 ? (
               <div>
                 <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-dim">
-                  Filters · {activeFilterCount(draft)}
+                  {t("personaSetup.filters.activeCount", {
+                    count: activeFilterCount(draft),
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {selectedChips.map((chip) => (
@@ -498,20 +602,25 @@ export function PersonaFilterModal({
                       onClick={() => removeChip(chip)}
                       className="glass-tile glass-tile--active inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] text-primary"
                     >
-                      <span className="text-text-dim">{chip.label}:</span> {chip.value}
+                      <span className="text-text-dim">{chip.label}:</span>{" "}
+                      {chip.value}
                       <Sym name="close" size={12} />
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <p className="text-[13px] text-text-dim">No filters — full pool eligible.</p>
+              <p className="text-[13px] text-text-dim">
+                {t("personaSetup.filters.noFilters")}
+              </p>
             )}
 
             {stratifyMode ? (
               <div>
                 <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-dim">
-                  Stratify axes · {fields.length}
+                  {t("personaSetup.filters.stratifyAxes", {
+                    count: fields.length,
+                  })}
                 </p>
                 {fields.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
@@ -525,7 +634,7 @@ export function PersonaFilterModal({
                           className="inline-flex items-center gap-1 rounded-full border border-secondary/40 bg-secondary/10 px-2.5 py-1 text-[12px] text-secondary"
                         >
                           <span className="text-[10px] uppercase tracking-wide text-secondary/80">
-                            stratify
+                            {t("personaSetup.filters.stratify")}
                           </span>
                           {label}
                           <Sym name="close" size={12} />
@@ -535,7 +644,7 @@ export function PersonaFilterModal({
                   </div>
                 ) : (
                   <p className="text-[13px] text-text-dim">
-                    Tap <span className="text-secondary">stratify</span> on a dimension to add an axis.
+                    {t("personaSetup.filters.stratifyHint")}
                   </p>
                 )}
               </div>
@@ -544,14 +653,16 @@ export function PersonaFilterModal({
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-[13px] text-text-variant">
-              <span className="font-mono text-text-main">{activeFilterCount(draft)}</span> filter
-              {activeFilterCount(draft) === 1 ? "" : "s"}
+              {t("personaSetup.filters.filterCount", {
+                count: activeFilterCount(draft),
+              })}
               {stratifyMode ? (
                 <>
                   {" "}
                   ·{" "}
-                  <span className="font-mono text-secondary">{fields.length}</span> stratify
-                  {fields.length === 1 ? " axis" : " axes"}
+                  {t("personaSetup.filters.stratifyAxisCount", {
+                    count: fields.length,
+                  })}
                 </>
               ) : null}
             </p>
@@ -561,7 +672,7 @@ export function PersonaFilterModal({
                 onClick={onClose}
                 className={`rounded-md border border-outline px-3 py-2 text-[14px] text-text-variant ${FOCUS_RING}`}
               >
-                Cancel
+                {t("personaSetup.common.cancel")}
               </button>
               <button
                 type="button"
@@ -571,7 +682,7 @@ export function PersonaFilterModal({
                 }}
                 className={`rounded-md bg-primary px-4 py-2 text-[14px] font-medium text-on-primary ${FOCUS_RING}`}
               >
-                Apply
+                {t("personaSetup.filters.apply")}
               </button>
             </div>
           </div>

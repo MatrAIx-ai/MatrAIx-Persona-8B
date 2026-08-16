@@ -5,6 +5,7 @@
  */
 import { useRef } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { FOCUS_RING, Sym } from "./cockpitShared";
 
 export type InspectorTab =
@@ -36,14 +37,15 @@ export function InspectorTabs({
   outputSchema,
   selfReport,
 }: InspectorTabsProps) {
+  const { t } = useI18n();
   const tabs: Array<{ id: InspectorTab; label: string; icon: string }> = [
-    { id: "evaluation", label: "Evaluation", icon: "verified" },
-    { id: "instruction", label: "Instruction", icon: "description" },
+    { id: "evaluation", label: t("cockpit.inspector.evaluation"), icon: "verified" },
+    { id: "instruction", label: t("cockpit.inspector.instruction"), icon: "description" },
   ];
-  if (context) tabs.push({ id: "context", label: "Context", icon: "menu_book" });
-  if (questionnaire) tabs.push({ id: "questionnaire", label: "Questionnaire", icon: "list_alt" });
-  if (outputSchema) tabs.push({ id: "output-schema", label: "Output schema", icon: "schema" });
-  if (selfReport) tabs.push({ id: "self-report", label: "Self-report", icon: "rate_review" });
+  if (context) tabs.push({ id: "context", label: t("cockpit.inspector.context"), icon: "menu_book" });
+  if (questionnaire) tabs.push({ id: "questionnaire", label: t("cockpit.inspector.questionnaire"), icon: "list_alt" });
+  if (outputSchema) tabs.push({ id: "output-schema", label: t("cockpit.inspector.outputSchema"), icon: "schema" });
+  if (selfReport) tabs.push({ id: "self-report", label: t("cockpit.inspector.selfReport"), icon: "rate_review" });
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const activeLabel = tabs.find((t) => t.id === active)?.label ?? "";
 
@@ -73,13 +75,13 @@ export function InspectorTabs({
   return (
     <aside className="z-0 flex h-[340px] w-full flex-shrink-0 flex-col border-t border-outline bg-surface-lowest lg:h-full lg:w-[360px] lg:border-l lg:border-t-0">
       <div className="flex shrink-0 items-center justify-between border-b border-outline bg-surface px-4 py-3">
-        <span className="hud text-[12px] text-primary">Inspector</span>
+        <span className="hud text-[12px] text-primary">{t("cockpit.inspector.title")}</span>
         <span className="hud text-[11px] text-text-dim">{activeLabel}</span>
       </div>
 
       <div
         role="tablist"
-        aria-label="Inspector"
+        aria-label={t("cockpit.inspector.title")}
         aria-orientation="horizontal"
         className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0 border-b border-outline px-3"
       >

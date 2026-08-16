@@ -15,6 +15,7 @@ import { StructuredExposurePanel, exposureItemLists } from "./StructuredExposure
 import { ToolPlanFold } from "./ToolPlanFold";
 import { Sym, fmtLatency } from "./cockpitShared";
 import { Markdown } from "../Markdown";
+import { useI18n } from "@/i18n/I18nProvider";
 import type { Domain, TurnView } from "@/lib/types";
 
 /** Sentinel the backend uses for a failed/empty agent turn. */
@@ -35,13 +36,14 @@ export interface PersonaBubbleProps {
 
 /** The persona's message: left-aligned, on a bordered surface. */
 export function PersonaBubble({ message, personaId, personaName, personaDimensions }: PersonaBubbleProps) {
+  const { t } = useI18n();
   return (
     <div className="flex w-full items-start gap-2.5 pr-10">
       <PersonaChatAvatar personaId={personaId} dimensions={personaDimensions} />
       <div className="flex min-w-0 flex-1 flex-col items-start">
-        <div className="hud mb-1.5 text-[11px] text-text-dim">{personaName?.trim() || "Persona"}</div>
+        <div className="hud mb-1.5 text-[11px] text-text-dim">{personaName?.trim() || t("turnBubble.persona")}</div>
         <div className="glass-tile w-full break-words rounded-md rounded-tl-sm px-4 py-3 text-[15px] leading-relaxed text-text-main">
-          {message?.trim() ? message : <span className="italic text-text-dim">(the user said nothing)</span>}
+          {message?.trim() ? message : <span className="italic text-text-dim">{t("turnBubble.emptyPersonaMessage")}</span>}
         </div>
       </div>
     </div>
@@ -60,6 +62,7 @@ export interface RecBotBubbleProps {
 
 /** The app reply: right-aligned, with exposure + optional tool-plan fold + meta chips. */
 export function RecBotBubble({ turn, domain, appName, foldOpen, onToggleFold }: RecBotBubbleProps) {
+  const { t } = useI18n();
   void domain;
   const exposure = turn.structuredExposure ?? [];
   const items = exposureItemLists(exposure);
@@ -89,10 +92,10 @@ export function RecBotBubble({ turn, domain, appName, foldOpen, onToggleFold }: 
               </Markdown>
             ) : textlessStructured ? (
               <p className="mb-4 border-b border-outline pb-4 text-[15px] italic leading-relaxed text-text-dim">
-                The app returned structured details, but no reply text was captured for this turn.
+                {t("turnBubble.structuredWithoutReply")}
               </p>
             ) : (
-              <p className="text-[15px] italic leading-relaxed text-danger">The app didn&apos;t reply on this turn.</p>
+              <p className="text-[15px] italic leading-relaxed text-danger">{t("turnBubble.noReply")}</p>
             )}
 
             {exposure.length > 0 && <StructuredExposurePanel exposure={exposure} />}
@@ -118,7 +121,7 @@ export function RecBotBubble({ turn, domain, appName, foldOpen, onToggleFold }: 
                     planFailed ? "bg-danger/10 text-danger" : "bg-secondary/10 text-secondary"
                   }`}
                 >
-                  {planFailed ? "Tool call failed" : "Tool call OK"}
+                  {planFailed ? t("turnBubble.toolCallFailed") : t("turnBubble.toolCallOk")}
                 </span>
               )}
               {latency && (

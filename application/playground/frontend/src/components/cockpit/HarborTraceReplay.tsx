@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import type { WebTrace, WebTraceEvent } from "@/lib/types";
 
 import { FOCUS_RING, Sym } from "./cockpitShared";
 
-function summarizeAction(event: WebTraceEvent): string | null {
+type Translate = ReturnType<typeof useI18n>["t"];
+
+function summarizeAction(event: WebTraceEvent, t: Translate): string | null {
   const action = event.actions[0];
   if (!action?.name) return null;
   const name = action.name.toLowerCase();
@@ -17,21 +20,33 @@ function summarizeAction(event: WebTraceEvent): string | null {
     }
   }
   const clip = (text: string) => (text.length > 28 ? `${text.slice(0, 27)}…` : text);
-  if (name.includes("click")) return target ? `clicked ${clip(target)}` : "clicked";
+  if (name.includes("click")) {
+    return target
+      ? t("cockpit.harbor.clickedTarget", { target: clip(target) })
+      : t("cockpit.harbor.clicked");
+  }
   if (name.includes("type") || name.includes("fill") || name.includes("input")) {
-    return target ? `typed “${clip(target)}”` : "typed";
+    return target
+      ? t("cockpit.harbor.typedTarget", { target: clip(target) })
+      : t("cockpit.harbor.typed");
   }
   if (name.includes("nav") || name.includes("goto") || name.includes("visit") || name.includes("open")) {
-    return target ? `went to ${clip(target)}` : "navigated";
+    return target
+      ? t("cockpit.harbor.wentTo", { target: clip(target) })
+      : t("cockpit.harbor.navigated");
   }
   if (name.includes("launch") || name.includes("swipe") || name.includes("tap")) {
     return target ? `${name} ${clip(target)}` : name.replace(/_/g, " ");
   }
-  if (name.includes("search")) return target ? `searched ${clip(target)}` : "searched";
-  if (name.includes("select")) return "selected an option";
-  if (name.includes("submit")) return "submitted the form";
-  if (name.includes("scroll")) return "scrolled";
-  if (name.includes("back")) return "went back";
+  if (name.includes("search")) {
+    return target
+      ? t("cockpit.harbor.searched", { target: clip(target) })
+      : t("cockpit.harbor.searchedBare");
+  }
+  if (name.includes("select")) return t("cockpit.harbor.selectedOption");
+  if (name.includes("submit")) return t("cockpit.harbor.submittedForm");
+  if (name.includes("scroll")) return t("cockpit.harbor.scrolled");
+  if (name.includes("back")) return t("cockpit.harbor.wentBack");
   return name.replace(/_/g, " ");
 }
 
@@ -63,8 +78,9 @@ export interface HarborTraceReplayProps {
 export function HarborTraceReplay({
   trace,
   autoFollowLatest = false,
-  emptyMessage = "This run finished without recording any steps.",
+  emptyMessage,
 }: HarborTraceReplayProps) {
+  const { t } = useI18n();
   const [scrubIndex, setScrubIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [lightboxStep, setLightboxStep] = useState<number | null>(null);
@@ -98,7 +114,7 @@ export function HarborTraceReplay({
   if (events.length === 0) {
     return (
       <div className="rise-in rounded-md border border-dashed border-outline bg-surface-low px-4 py-6 text-center text-[14px] text-text-variant">
-        {emptyMessage}
+        {emptyMessage ?? t("cockpit.harbor.empty")}
       </div>
     );
   }
@@ -111,6 +127,7 @@ export function HarborTraceReplay({
     <div className="space-y-3">
       <TraceHeroScreenshot
         event={previewEvent}
+        t={t}
         onOpenImage={() => setLightboxStep(previewEvent.step)}
       />
 
@@ -127,7 +144,7 @@ export function HarborTraceReplay({
             }
             setIsPlaying(true);
           }}
-          aria-label={isPlaying ? "Pause trace replay" : "Play trace replay"}
+          aria-label={isPlaying ? t("cockpit.harbor.pause") : t("cockpit.harbor.play")}
           className={`grid h-8 w-8 place-items-center rounded-full border border-outline/60 text-primary transition hover:border-primary/50 active:scale-95 ${FOCUS_RING}`}
         >
           <Sym name={isPlaying ? "pause_circle" : "play_circle"} size={18} />
@@ -144,11 +161,11 @@ export function HarborTraceReplay({
           className="min-w-[120px] flex-1 accent-primary"
         />
         <span className="font-mono text-[12px] text-text-dim">
-          Step {previewEvent.step} / {events.length}
+          {t("cockpit.harbor.step", { step: previewEvent.step, count: events.length })}
         </span>
       </div>
 
-      <TraceStepDetail key={previewEvent.step} event={previewEvent} />
+      <TraceStepDetail key={previewEvent.step} event={previewEvent} t={t} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {events.map((event, index) => (
@@ -157,6 +174,7 @@ export function HarborTraceReplay({
             index={index}
             event={event}
             active={event.step === activeStep}
+            t={t}
             onClick={() => {
               setIsPlaying(false);
               setScrubIndex(index);
@@ -166,7 +184,7 @@ export function HarborTraceReplay({
       </div>
 
       {lightboxEvent?.screenshotUrl && (
-        <TraceImageLightbox event={lightboxEvent} onClose={() => setLightboxStep(null)} />
+        <TraceImageLightbox event={lightboxEvent} t={t} onClose={() => setLightboxStep(null)} />
       )}
     </div>
   );
@@ -174,9 +192,11 @@ export function HarborTraceReplay({
 
 function TraceHeroScreenshot({
   event,
+  t,
   onOpenImage,
 }: {
   event: WebTraceEvent;
+  t: Translate;
   onOpenImage: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -193,11 +213,11 @@ function TraceHeroScreenshot({
           type="button"
           onClick={onOpenImage}
           className={`block w-full cursor-zoom-in ${FOCUS_RING}`}
-          aria-label={`Open full-size screenshot for step ${event.step}`}
+          aria-label={t("cockpit.harbor.openScreenshot", { step: event.step })}
         >
           <img
             src={event.screenshotUrl as string}
-            alt={`Step ${event.step}`}
+            alt={t("cockpit.harbor.stepAlt", { step: event.step })}
             className="max-h-[360px] w-full bg-surface-lowest object-contain"
             onError={() => setImgError(true)}
           />
@@ -206,7 +226,7 @@ function TraceHeroScreenshot({
         <div className="grid aspect-video max-h-[360px] w-full place-items-center bg-surface-lowest text-text-dim">
           <div className="text-center">
             <Sym name="image" size={28} className="text-text-dim" />
-            <p className="mt-1 text-[14px] text-text-variant">Screenshot unavailable for this step.</p>
+            <p className="mt-1 text-[14px] text-text-variant">{t("cockpit.harbor.screenshotUnavailable", { step: event.step })}</p>
           </div>
         </div>
       )}
@@ -219,13 +239,16 @@ function TraceHeroScreenshot({
   );
 }
 
-function TraceStepDetail({ event }: { event: WebTraceEvent }) {
+function TraceStepDetail({ event, t }: { event: WebTraceEvent; t: Translate }) {
   const message = event.message.trim();
   return (
     <div className="rounded-md border border-outline bg-surface p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="hud text-[12px] text-primary">
-          Step {event.step} · {summarizeAction(event) ?? event.source ?? "agent"}
+          {t("cockpit.harbor.stepAction", {
+            step: event.step,
+            action: summarizeAction(event, t) ?? event.source ?? t("cockpit.harbor.agent"),
+          })}
         </span>
         <span className="truncate font-mono text-[12px] text-text-dim">{actionSignature(event)}</span>
       </div>
@@ -241,7 +264,7 @@ function TraceStepDetail({ event }: { event: WebTraceEvent }) {
           </pre>
         )}
         {!message && event.actions.length === 0 && (
-          <p className="text-[14px] text-text-variant">No extra detail recorded for this step.</p>
+          <p className="text-[14px] text-text-variant">{t("cockpit.harbor.noDetail")}</p>
         )}
       </div>
     </div>
@@ -252,15 +275,17 @@ function TraceTile({
   index,
   event,
   active,
+  t,
   onClick,
 }: {
   index: number;
   event: WebTraceEvent;
   active: boolean;
+  t: Translate;
   onClick: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
-  const hint = summarizeAction(event);
+  const hint = summarizeAction(event, t);
   const showImage = Boolean(event.screenshotUrl) && !imgError;
 
   useEffect(() => {
@@ -280,7 +305,7 @@ function TraceTile({
         {showImage ? (
           <img
             src={event.screenshotUrl as string}
-            alt={`Screenshot for step ${event.step}`}
+            alt={t("cockpit.harbor.screenshotForStep", { step: event.step })}
             className="h-full w-full bg-surface-lowest object-cover"
             loading="lazy"
             onError={() => setImgError(true)}
@@ -291,7 +316,10 @@ function TraceTile({
       </div>
       <div className="p-2.5">
         <div className="hud truncate text-[11px] text-text-dim">
-          Step {event.step} · {hint ?? event.source ?? "agent"}
+          {t("cockpit.harbor.stepAction", {
+            step: event.step,
+            action: hint ?? event.source ?? t("cockpit.harbor.agent"),
+          })}
         </div>
         <div className="mt-0.5 truncate font-mono text-[12px] text-text-variant">{actionSignature(event)}</div>
       </div>
@@ -301,9 +329,11 @@ function TraceTile({
 
 function TraceImageLightbox({
   event,
+  t,
   onClose,
 }: {
   event: WebTraceEvent;
+  t: Translate;
   onClose: () => void;
 }) {
   return (
@@ -311,7 +341,7 @@ function TraceImageLightbox({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label={`Full-size screenshot for step ${event.step}`}
+      aria-label={t("cockpit.harbor.fullSizeScreenshot", { step: event.step })}
       onClick={onClose}
     >
       <div
@@ -321,7 +351,10 @@ function TraceImageLightbox({
         <div className="flex items-center justify-between gap-3 border-b border-outline px-4 py-3">
           <div className="min-w-0">
             <div className="hud text-[12px] text-primary">
-              Step {event.step} · {summarizeAction(event) ?? event.source ?? "agent"}
+              {t("cockpit.harbor.stepAction", {
+                step: event.step,
+                action: summarizeAction(event, t) ?? event.source ?? t("cockpit.harbor.agent"),
+              })}
             </div>
             {event.screenshotFile && (
               <div className="truncate font-mono text-[13px] text-text-variant">
@@ -332,7 +365,7 @@ function TraceImageLightbox({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close full-size screenshot"
+            aria-label={t("cockpit.harbor.closeScreenshot")}
             className={`grid h-8 w-8 shrink-0 place-items-center rounded-md border border-outline text-text-variant transition hover:border-primary hover:text-text-main active:scale-95 ${FOCUS_RING}`}
           >
             <Sym name="close" size={16} />
@@ -341,7 +374,7 @@ function TraceImageLightbox({
         <div className="min-h-0 flex-1 overflow-auto bg-surface-low p-3">
           <img
             src={event.screenshotUrl ?? undefined}
-            alt={`Full-size screenshot for step ${event.step}`}
+            alt={t("cockpit.harbor.fullSizeScreenshot", { step: event.step })}
             className="mx-auto max-h-[85vh] w-auto max-w-full object-contain"
           />
         </div>

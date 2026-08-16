@@ -19,7 +19,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { listWebEvalTasks, api } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
+import { listWebEvalTasks, api, ApiError } from "@/lib/api";
 import {
   findPersonaAgent,
   personaModelPipelineLabel,
@@ -42,12 +43,13 @@ import { useHarborCockpitRun, type HarborCockpitPhase } from "@/lib/useHarborCoc
 import { usePgTaskIdDeepLink } from "@/lib/usePgTaskIdDeepLink";
 import { useUrlState } from "@/lib/useUrlState";
 import { useCockpitInstruction } from "@/lib/useCockpitInstruction";
-import { mapWebDebriefToJobView, attachHarborTraceScreenshotUrls, formatCockpitRunError } from "@/lib/harborCockpitMappers";
+import { mapWebDebriefToJobView, attachHarborTraceScreenshotUrls, classifyCockpitRunError } from "@/lib/harborCockpitMappers";
 import { RunHeader } from "./RunHeader";
 import { PersonaDrawer } from "./PersonaDrawer";
 import { InspectorTabs, type InspectorTab } from "./InspectorTabs";
 import { InstructionPanel } from "./InstructionPanel";
 import { WebEvalScorecard } from "./TaskEvalScorecard";
+import { localizeCockpitRunError } from "./cockpitRunErrorPresentation";
 import { CockpitSetupShell } from "./setup/CockpitSetupShell";
 import { PersonaSamplingRail } from "./setup/PersonaSamplingRail";
 import {
@@ -59,7 +61,6 @@ import { CockpitRunCenter } from "./setup/CockpitRunCenter";
 import { useCockpitLaunch } from "./setup/useCockpitLaunch";
 import {
   batchProgressPct as computeBatchProgressPct,
-  BATCH_RUN_COMPLETE_HINT,
   formatBatchProgressLabel,
   resolveRunLaunchPhase,
 } from "./setup/useCockpitBatchJob";
@@ -74,6 +75,7 @@ import {
 } from "./cockpitShared";
 import type { PlaygroundTaskType } from "./TaskTypeSwitch";
 
+type Translate = ReturnType<typeof useI18n>["t"];
 
 export interface WebEvalCockpitProps {
   options: ConfigOptionsResponse | null;
@@ -92,15 +94,16 @@ export interface WebEvalCockpitProps {
 function webStatusLine(
   phase: HarborCockpitPhase,
   jobPhase: string | null | undefined,
-  harborPhase?: string | null,
+  harborPhase: string | null | undefined,
+  t: Translate,
 ): string | null {
-  if (phase === "launching") return "Launching batch…";
+  if (phase === "launching") return t("eval.web.status.launching");
   if (phase !== "running") return null;
   const raw = (harborPhase ?? jobPhase ?? "").toLowerCase();
-  if (raw.includes("harbor") || raw.includes("trial")) return "Running web trial…";
-  if (raw.includes("collect")) return "Saving the results and step screenshots…";
-  if (raw.includes("web")) return "The simulated visitor is using the site…";
-  return "Running the website test…";
+  if (raw.includes("harbor") || raw.includes("trial")) return t("eval.web.status.trial");
+  if (raw.includes("collect")) return t("eval.web.status.collecting");
+  if (raw.includes("web")) return t("eval.web.status.browsing");
+  return t("eval.web.status.running");
 }
 
 function formatDate(value: string | null | undefined): string | null {
@@ -125,6 +128,7 @@ export function WebEvalCockpit({
   onOpenHarborTrial,
   isActive = true,
 }: WebEvalCockpitProps) {
+  const { t } = useI18n();
   const { state: urlState } = useUrlState();
   const { run, job, phase, isRunning, error, timedOut, retry, reset, harborPhase, harborJobName, harborTrialName, cancelRun, cancelBusy: harborCancelBusy } =
     useHarborCockpitRun<WebEvalJobView>({ taskKind: "web" });
@@ -261,8 +265,8 @@ export function WebEvalCockpit({
   }, [webPersonaModelOptions, personaModel, setPersonaModel]);
   useEffect(() => {
     if (!isActive) return;
-    onFooterContextChange?.(`web · ${task?.siteName ?? "Website"}`);
-  }, [isActive, task, onFooterContextChange]);
+    onFooterContextChange?.(`web · ${task?.siteName ?? t("eval.web.siteFallback")}`);
+  }, [isActive, task, onFooterContextChange, t]);
 
   const webResult = job?.webResult ?? null;
   const verifier = job?.verifier ?? null;
@@ -305,8 +309,11 @@ export function WebEvalCockpit({
   }, [phase, harborJobName, harborTrialName]);
 
   const failed = phase === "error" || phase === "timeout" || job?.status === "error";
-  const displayError = formatCockpitRunError(error ?? job?.error ?? null);
-  const status = webStatusLine(phase, job?.phase, harborPhase);
+  const displayError = localizeCockpitRunError(
+    classifyCockpitRunError(error ?? job?.error ?? null),
+    t,
+  );
+  const status = webStatusLine(phase, job?.phase, harborPhase, t);
 
   useEffect(() => {
     if (phase === "done") {
@@ -438,23 +445,24 @@ export function WebEvalCockpit({
             : 0;
   const runProgressLabel = batchJobName
     ? batchCancelled
-      ? "Batch stopped"
+      ? t("eval.progress.batchStopped")
       : formatBatchProgressLabel(
+          t,
           batchCompletedTrials,
           expectedTrialCount,
         )
     : phase === "launching"
-      ? "Launching web trial…"
+      ? t("eval.web.progress.launching")
       : phase === "running"
         ? stepCount > 0
-          ? `Browser trace · ${stepCount} step${stepCount === 1 ? "" : "s"}`
-          : (status ?? "Simulated visitor is browsing…")
+          ? t("eval.web.progress.browserTrace", { count: stepCount })
+          : (status ?? t("eval.web.progress.browsing"))
         : phase === "done"
-          ? `Web run complete · ${stepCount} steps`
+          ? t("eval.web.progress.complete", { count: stepCount })
           : failed
             ? error?.startsWith("Run stopped")
-              ? "Run stopped"
-              : displayError ?? "The website test didn't finish."
+              ? t("eval.progress.runStopped")
+              : displayError ?? t("eval.web.progress.error")
             : undefined;
   const canExport = exportSnapshot !== null && webResult !== null;
 
@@ -539,7 +547,9 @@ export function WebEvalCockpit({
           progressPct={runProgressPct}
           progressLabel={runProgressLabel}
           progressSublabel={
-            batchJobName && batchComplete ? BATCH_RUN_COMPLETE_HINT : undefined
+            batchJobName && batchComplete
+              ? t("eval.progress.batchCompleteHint")
+              : undefined
           }
           canRun={
             canLaunchCohort &&
@@ -555,7 +565,15 @@ export function WebEvalCockpit({
           onParallelTrialsChange={setParallelTrials}
           runBusy={runBusy}
           onRun={() => void handleLaunch()}
-          error={formatCockpitRunError(launchError ?? error ?? batchError ?? retryError)}
+          error={localizeCockpitRunError(
+            classifyCockpitRunError(
+              launchError ??
+                error ??
+                (batchCancelled ? t("eval.progress.batchStoppedReset") : batchError) ??
+                retryError,
+            ),
+            t,
+          )}
           onNewRun={showLiveCenter ? handleNewRun : undefined}
           onCancelRun={onCancelRun}
           cancelRunBusy={cancelRunBusy}
@@ -593,12 +611,12 @@ export function WebEvalCockpit({
             }
             context={
               <InstructionPanel
-                label="Task context"
+                label={t("eval.web.contextLabel")}
                 title={instructionView.title}
                 markdown={instructionView.contextMarkdown}
                 loading={instructionView.loading}
                 error={instructionView.error}
-                emptyMessage="No separate context document is available for this task."
+                emptyMessage={t("eval.web.contextEmpty")}
                 icon="menu_book"
               />
             }
@@ -625,8 +643,8 @@ export function WebEvalCockpit({
           tasksError={
             tasks.length === 0
               ? tasksQuery.isError
-                ? "Web task API unavailable — restart the Playground backend on :8765."
-                : "No web tasks available."
+                ? t("eval.web.tasksApiUnavailable")
+                : t("eval.web.tasksEmpty")
               : null
           }
           disabled={setupLocked}
@@ -664,13 +682,16 @@ function WebResults({
   persona: PlaygroundPersona | null;
   onRetry: () => void;
 }) {
+  const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
-  const personaTitle = persona ? personaDescriptiveTitle(null, persona.blurb, persona.source) : "Persona";
+  const personaTitle = persona
+    ? personaDescriptiveTitle(null, persona.blurb, persona.source)
+    : t("eval.web.personaFallback");
   const runDate = formatDate(webResult?.createdAt);
   const headerBits = [
-    "Web",
-    task?.title ?? "website task",
+    t("eval.web.headingType"),
+    task?.title ?? t("eval.web.taskFallback"),
     personaTitle,
     ...(runDate ? [runDate] : []),
   ];
@@ -680,7 +701,7 @@ function WebResults({
       {/* Run identity line */}
       <div className="hud flex items-start gap-2 text-[11px] text-text-variant">
         <Sym name="language" size={16} className="shrink-0 text-primary" />
-        <span className="min-w-0 break-words">Run · {headerBits.join(" · ")}</span>
+        <span className="min-w-0 break-words">{t("eval.web.runIdentity", { details: headerBits.join(" · ") })}</span>
       </div>
 
       {/* Live "browsing" banner */}
@@ -688,12 +709,12 @@ function WebResults({
         <div className="rise-in rounded-md border border-outline bg-surface-lowest px-4 py-4">
           <div className="flex items-center gap-2">
             <Sym name="autorenew" size={16} className="animate-rb-spin text-primary" />
-            <span className="hud text-[12px] text-primary">Running</span>
+            <span className="hud text-[12px] text-primary">{t("eval.web.results.running")}</span>
           </div>
-          <p className="mt-2 text-[15px] text-text-main">Simulated visitor is browsing…</p>
+          <p className="mt-2 text-[15px] text-text-main">{t("eval.web.results.browsing")}</p>
           {status && <p className="mt-0.5 text-[14px] text-text-variant">{status}</p>}
           {trace && trace.events.length > 0 && (
-            <p className="mt-2 font-mono text-[13px] text-text-variant">Recorded {trace.events.length} steps so far</p>
+            <p className="mt-2 font-mono text-[13px] text-text-variant">{t("eval.web.results.recordedSteps", { count: trace.events.length })}</p>
           )}
         </div>
       )}
@@ -701,10 +722,10 @@ function WebResults({
       {/* Error */}
       {failed && (
         <ErrorCard
-          title="The website test didn’t finish"
-          body={error ?? "Something interrupted the test. Your setup is still here. Press Try again."}
+          title={t("eval.web.results.errorTitle")}
+          body={error ?? t("eval.web.results.errorBody")}
           onRetry={onRetry}
-          retryLabel="Try again"
+          retryLabel={t("eval.web.results.retry")}
         />
       )}
 
@@ -712,8 +733,7 @@ function WebResults({
       {trace && trace.events.length > 0 && (
         <div className="space-y-3">
           <h3 className="hud flex items-center gap-2 text-[12px] text-primary">
-            <Sym name="route" size={14} /> Browser trace · {trace.events.length} step
-            {trace.events.length === 1 ? "" : "s"}
+            <Sym name="route" size={14} /> {t("eval.web.results.browserTrace", { count: trace.events.length })}
           </h3>
           <HarborTraceReplay trace={trace} autoFollowLatest={running} />
         </div>
@@ -735,13 +755,14 @@ function ErrorCard({
   title,
   body,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel,
 }: {
   title: string;
   body: string;
   onRetry: () => void;
   retryLabel?: string;
 }) {
+  const { t } = useI18n();
   return (
     <section className="rounded-md border border-danger/30 bg-danger/10 p-5">
       <div className="flex items-start gap-3">
@@ -755,11 +776,10 @@ function ErrorCard({
             className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-3 py-1.5 text-[14px] font-medium text-danger hover:bg-danger/10 ${FOCUS_RING}`}
           >
             <Sym name="refresh" size={15} />
-            {retryLabel}
+            {retryLabel ?? t("eval.common.tryAgain")}
           </button>
         </div>
       </div>
     </section>
   );
 }
-

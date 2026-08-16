@@ -62,35 +62,3 @@ export function classifyPersonaPoolSampleError(
     showRecoveryHint: code === "persona_pool_coverage" && !alreadyHinted,
   };
 }
-
-/** @deprecated Transitional compatibility until the setup/cockpit adoption commit. */
-function personaPoolCoverageHint(taskPath?: string | null): string {
-  const synthesize = taskPath
-    ? " With Task default persona strategy on, you can also Synthesize to fill this task."
-    : "";
-  return (
-    "Not enough matching personas in this dataset for the current filters. " +
-    "Consider switching Dataset to matraix-persona-1m for fuller coverage." +
-    synthesize +
-    " Or widen filters / sources, or use a saved cohort that already has enough matches."
-  );
-}
-
-/** @deprecated Transitional compatibility until the setup/cockpit adoption commit. */
-export function formatPersonaSampleError(
-  message: string,
-  taskPath?: string | null,
-): string {
-  const trimmed = message.trim();
-  if (isPersonaPoolCoverageError(trimmed)) {
-    const first = trimmed.split("\n").find((line) => line.trim()) || trimmed;
-    const alreadyHinted =
-      trimmed.includes("matraix-persona-1m") ||
-      trimmed.includes("Synthesize to fill") ||
-      trimmed.includes("does not synthesize");
-    return alreadyHinted
-      ? trimmed
-      : `${first}\n\n${personaPoolCoverageHint(taskPath)}`;
-  }
-  return trimmed;
-}

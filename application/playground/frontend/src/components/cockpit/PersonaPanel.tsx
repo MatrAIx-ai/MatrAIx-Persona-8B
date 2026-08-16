@@ -15,6 +15,7 @@
  */
 import { useMemo } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import {
   FOCUS_RING,
   Sym,
@@ -38,6 +39,7 @@ export interface PersonaPanelProps {
 }
 
 export function PersonaPanel({ persona, context, onOpenRaw }: PersonaPanelProps) {
+  const { t } = useI18n();
   // The full humanized profile for the selected persona (cached by id). This is
   // what makes demographics / sections / context complete from the catalog,
   // not just after a run. Prefer an explicitly-passed (run-loaded) context.
@@ -65,7 +67,7 @@ export function PersonaPanel({ persona, context, onOpenRaw }: PersonaPanelProps)
         <div className="rise-in rounded-md border border-dashed border-outline-dim bg-surface-low px-4 py-10 text-center">
           <Sym name="person_search" size={28} className="text-text-dim" />
           <p className="mt-2 text-[15px] leading-relaxed text-text-variant">
-            Choose a persona to see who you&apos;re simulating.
+            {t("catalog.personaPanel.choose")}
           </p>
         </div>
       </div>
@@ -87,7 +89,7 @@ export function PersonaPanel({ persona, context, onOpenRaw }: PersonaPanelProps)
         </div>
         {/* Human framing for the codename: descriptive title as the heading. */}
         <h3 className="line-clamp-2 text-center font-display text-lg text-text-main">{title}</h3>
-        <p className="mt-1 text-center text-[15px] text-text-variant">{persona.source || "Persona"}</p>
+        <p className="mt-1 text-center text-[15px] text-text-variant">{persona.source || t("catalog.personaPanel.persona")}</p>
         <p className="mt-1 flex max-w-full items-center gap-1 text-[15px] text-text-variant">
           <Sym name="badge" size={14} className="shrink-0" />
           <span className="min-w-0 truncate font-mono text-[13px]" title={codename}>{codename}</span>
@@ -96,7 +98,7 @@ export function PersonaPanel({ persona, context, onOpenRaw }: PersonaPanelProps)
 
       {/* Demographics */}
       {demographics.length > 0 && (
-        <Section label="Demographics">
+        <Section label={t("catalog.personaPanel.demographics")}>
           <div className="grid grid-cols-2 gap-x-2 gap-y-2.5">
             {demographics.map((d) => (
               <div key={d.key} className={d.key === "occupation" || d.key === "location" ? "col-span-2" : ""}>
@@ -112,13 +114,13 @@ export function PersonaPanel({ persona, context, onOpenRaw }: PersonaPanelProps)
 
       {/* Context block: a readable preview of the full profile (the complete
           record is one tap away via "Full persona"). */}
-      <Section label="Context">
+      <Section label={t("catalog.personaPanel.context")}>
         <p className="rounded-md border border-outline-dim bg-surface-low p-3 text-[15px] leading-relaxed text-text-variant">
           {fullContext && fullContext.trim()
             ? firstParagraph(fullContext)
             : detail.isLoading
-              ? "Loading full persona…"
-              : persona.blurb || "No context available."}
+              ? t("catalog.personaPanel.loading")
+              : persona.blurb || t("catalog.personaPanel.noContext")}
         </p>
       </Section>
 
@@ -137,7 +139,7 @@ export function PersonaPanel({ persona, context, onOpenRaw }: PersonaPanelProps)
           className={`flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-text-variant transition ease-out hover:text-primary active:scale-[0.98] ${FOCUS_RING}`}
         >
           <Sym name="data_object" size={16} />
-          Full persona
+          {t("catalog.personaPanel.fullPersona")}
           <Sym name="chevron_right" size={14} />
         </button>
       </div>

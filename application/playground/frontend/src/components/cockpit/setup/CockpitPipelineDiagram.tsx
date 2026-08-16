@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import type { PlaygroundTaskType } from "../TaskTypeSwitch";
 import {
   CHAT_ACCESS_PIPELINE_PATHS,
@@ -38,7 +39,13 @@ interface NodeProps {
   visible?: boolean;
 }
 
-function PipelineNode({ label, icon, detail, active = false, visible = true }: NodeProps) {
+function PipelineNode({
+  label,
+  icon,
+  detail,
+  active = false,
+  visible = true,
+}: NodeProps) {
   return (
     <div
       className={`rise-in flex w-[118px] shrink-0 flex-col items-center rounded-2xl border px-3 py-4 text-center transition-all duration-500 sm:w-[132px] ${
@@ -50,11 +57,19 @@ function PipelineNode({ label, icon, detail, active = false, visible = true }: N
           active ? "bg-primary/15" : "bg-surface-high/60"
         }`}
       >
-        <Sym name={icon} size={24} className={active ? "text-primary" : "text-text-variant"} />
+        <Sym
+          name={icon}
+          size={24}
+          className={active ? "text-primary" : "text-text-variant"}
+        />
       </div>
-      <p className="text-[15px] font-semibold leading-tight text-text-main sm:text-[14px]">{label}</p>
+      <p className="text-[15px] font-semibold leading-tight text-text-main sm:text-[14px]">
+        {label}
+      </p>
       {detail && (
-        <p className="mt-1.5 line-clamp-2 text-[12px] leading-snug text-text-dim">{detail}</p>
+        <p className="mt-1.5 line-clamp-2 text-[12px] leading-snug text-text-dim">
+          {detail}
+        </p>
       )}
     </div>
   );
@@ -140,7 +155,9 @@ function PathForkRow({
         <div className="min-w-0">
           <p
             className={`font-semibold leading-tight ${
-              dense ? "text-[12px] sm:text-[13px]" : "text-[13px] sm:text-[14px]"
+              dense
+                ? "text-[12px] sm:text-[13px]"
+                : "text-[13px] sm:text-[14px]"
             } ${active ? "text-text-main" : "text-text-variant"}`}
           >
             {option.label}
@@ -148,7 +165,9 @@ function PathForkRow({
           {option.hint && (
             <p
               className={`mt-0.5 leading-[1.2] text-text-dim line-clamp-2 ${
-                dense ? "text-[10px] sm:text-[11px]" : "text-[11px] leading-snug sm:text-[11px]"
+                dense
+                  ? "text-[10px] sm:text-[11px]"
+                  : "text-[11px] leading-snug sm:text-[11px]"
               }`}
             >
               {option.hint}
@@ -185,7 +204,9 @@ function PipelinePathFork({
       )} ${visible ? "opacity-100" : "opacity-0"}`}
     >
       {caption && (
-        <p className="hud mb-1 text-center text-[11px] tracking-wide text-text-dim sm:text-[12px]">{caption}</p>
+        <p className="hud mb-1 text-center text-[11px] tracking-wide text-text-dim sm:text-[12px]">
+          {caption}
+        </p>
       )}
       {options.map((option) => (
         <PathForkRow
@@ -201,7 +222,13 @@ function PipelinePathFork({
 }
 
 /** Shrink wide pipeline rows so they stay inside the center column. */
-function PipelineScaleFit({ children, deps }: { children: ReactNode; deps: unknown[] }) {
+function PipelineScaleFit({
+  children,
+  deps,
+}: {
+  children: ReactNode;
+  deps: unknown[];
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -229,11 +256,18 @@ function PipelineScaleFit({ children, deps }: { children: ReactNode; deps: unkno
   }, deps);
 
   return (
-    <div ref={containerRef} className="flex w-full min-w-0 items-center justify-center">
+    <div
+      ref={containerRef}
+      className="flex w-full min-w-0 items-center justify-center"
+    >
       <div
         ref={contentRef}
         className="transition-transform duration-300"
-        style={scale < 1 ? { transform: `scale(${scale})`, transformOrigin: "center center" } : undefined}
+        style={
+          scale < 1
+            ? { transform: `scale(${scale})`, transformOrigin: "center center" }
+            : undefined
+        }
       >
         {children}
       </div>
@@ -243,9 +277,7 @@ function PipelineScaleFit({ children, deps }: { children: ReactNode; deps: unkno
 
 /** Terminal pipeline step — collect metrics, traces, and verifier sign-off. */
 const PIPELINE_EVALUATION = {
-  label: "Evaluation",
   icon: "verified",
-  detail: "Metric collection",
 } as const;
 
 const PIPELINE_ROW_CLASS =
@@ -263,11 +295,12 @@ export function CockpitPipelineDiagram({
   webHarnessLabel,
   webAgentFamily = "browser",
   cuaPlatform,
-  personaModelLabel = "Base model",
+  personaModelLabel,
   hasPersona,
   hasTask,
   className,
 }: CockpitPipelineDiagramProps) {
+  const { t } = useI18n();
   const [revealed, setRevealed] = useState(0);
   const stepCount = pipelineStepCount(taskType);
 
@@ -277,9 +310,21 @@ export function CockpitPipelineDiagram({
       window.setTimeout(() => setRevealed(index + 1), 100 + index * 120),
     );
     return () => timers.forEach((id) => window.clearTimeout(id));
-  }, [taskType, chatTransport, chatbotLabel, webCapabilityTierId, webHarnessLabel, webAgentFamily, cuaPlatform, personaModelLabel, stepCount]);
+  }, [
+    taskType,
+    chatTransport,
+    chatbotLabel,
+    webCapabilityTierId,
+    webHarnessLabel,
+    webAgentFamily,
+    cuaPlatform,
+    personaModelLabel,
+    stepCount,
+  ]);
 
   const ready = hasPersona && hasTask;
+  const resolvedPersonaModelLabel =
+    personaModelLabel ?? t("cockpitSetup.pipeline.baseModel");
   const v = (step: number) => revealed >= step;
   const cuaPath = (cuaPlatform ?? "linux").toLowerCase();
   const webPath = (webCapabilityTierId ?? "light").toLowerCase();
@@ -289,19 +334,25 @@ export function CockpitPipelineDiagram({
       {taskType === "survey" && (
         <div className={PIPELINE_ROW_CLASS}>
           <PipelineNode
-            label="Persona"
+            label={t("cockpitSetup.pipeline.persona")}
             icon="face"
-            detail={personaModelLabel}
+            detail={resolvedPersonaModelLabel}
             active={hasPersona}
             visible={v(1)}
           />
           <Arrow visible={v(2)} />
-          <PipelineNode label="Survey" icon="quiz" detail="instrument" active={hasTask} visible={v(2)} />
+          <PipelineNode
+            label={t("cockpitSetup.pipeline.survey")}
+            icon="quiz"
+            detail={t("cockpitSetup.pipeline.instrument")}
+            active={hasTask}
+            visible={v(2)}
+          />
           <Arrow visible={v(3)} />
           <PipelineNode
-            label={PIPELINE_EVALUATION.label}
+            label={t("cockpitSetup.pipeline.evaluation")}
             icon={PIPELINE_EVALUATION.icon}
-            detail={PIPELINE_EVALUATION.detail}
+            detail={t("cockpitSetup.pipeline.metricCollection")}
             active={ready}
             visible={v(3)}
           />
@@ -309,35 +360,47 @@ export function CockpitPipelineDiagram({
       )}
 
       {taskType === "chatbot" && (
-        <PipelineScaleFit deps={[taskType, chatTransport, chatbotLabel, personaModelLabel, hasPersona, hasTask, revealed]}>
+        <PipelineScaleFit
+          deps={[
+            taskType,
+            chatTransport,
+            chatbotLabel,
+            personaModelLabel,
+            hasPersona,
+            hasTask,
+            revealed,
+          ]}
+        >
           <div className={PIPELINE_ROW_CLASS}>
             <PipelineNode
-              label="Persona"
+              label={t("cockpitSetup.pipeline.persona")}
               icon="face"
-              detail={personaModelLabel}
+              detail={resolvedPersonaModelLabel}
               active={hasPersona}
               visible={v(1)}
             />
             <Arrow visible={v(2)} />
             <PipelinePathFork
               forkSize="narrow"
-              caption="Connection"
+              caption={t("cockpitSetup.pipeline.connection")}
               options={CHAT_ACCESS_PIPELINE_PATHS}
               selected={chatTransport}
               visible={v(2)}
             />
             <PipelineNode
-              label="Chatbot"
+              label={t("cockpitSetup.pipeline.chatbot")}
               icon="forum"
-              detail={chatbotLabel ?? "SUT"}
+              detail={
+                chatbotLabel ?? t("cockpitSetup.pipeline.systemUnderTest")
+              }
               active={hasTask}
               visible={v(3)}
             />
             <Arrow visible={v(4)} />
             <PipelineNode
-              label={PIPELINE_EVALUATION.label}
+              label={t("cockpitSetup.pipeline.evaluation")}
               icon={PIPELINE_EVALUATION.icon}
-              detail={PIPELINE_EVALUATION.detail}
+              detail={t("cockpitSetup.pipeline.metricCollection")}
               active={ready}
               visible={v(4)}
             />
@@ -346,39 +409,56 @@ export function CockpitPipelineDiagram({
       )}
 
       {taskType === "web" && (
-        <PipelineScaleFit deps={[taskType, webPath, webHarnessLabel, webAgentFamily, personaModelLabel, hasPersona, hasTask, revealed]}>
+        <PipelineScaleFit
+          deps={[
+            taskType,
+            webPath,
+            webHarnessLabel,
+            webAgentFamily,
+            personaModelLabel,
+            hasPersona,
+            hasTask,
+            revealed,
+          ]}
+        >
           <div className={PIPELINE_ROW_CLASS}>
             <PipelineNode
-              label="Persona"
+              label={t("cockpitSetup.pipeline.persona")}
               icon="face"
-              detail={personaModelLabel}
+              detail={resolvedPersonaModelLabel}
               active={hasPersona}
               visible={v(1)}
             />
             <Arrow visible={v(2)} />
             {webAgentFamily === "cli" ? (
               <PipelineNode
-                label="Harness"
+                label={t("cockpitSetup.pipeline.harness")}
                 icon="terminal"
-                detail={webHarnessLabel ?? "CLI agent"}
+                detail={webHarnessLabel ?? t("cockpitSetup.pipeline.cliAgent")}
                 active={hasTask}
                 visible={v(2)}
               />
             ) : (
               <PipelinePathFork
                 forkSize="dense"
-                caption="Access"
+                caption={t("cockpitSetup.pipeline.access")}
                 options={WEB_ACCESS_PIPELINE_PATHS}
                 selected={webPath}
                 visible={v(2)}
               />
             )}
-            <PipelineNode label="Website" icon="public" detail="SUT" active={hasTask} visible={v(3)} />
+            <PipelineNode
+              label={t("cockpitSetup.pipeline.website")}
+              icon="public"
+              detail={t("cockpitSetup.pipeline.systemUnderTest")}
+              active={hasTask}
+              visible={v(3)}
+            />
             <Arrow visible={v(4)} />
             <PipelineNode
-              label={PIPELINE_EVALUATION.label}
+              label={t("cockpitSetup.pipeline.evaluation")}
               icon={PIPELINE_EVALUATION.icon}
-              detail={PIPELINE_EVALUATION.detail}
+              detail={t("cockpitSetup.pipeline.metricCollection")}
               active={ready}
               visible={v(4)}
             />
@@ -387,28 +467,43 @@ export function CockpitPipelineDiagram({
       )}
 
       {taskType === "os-app" && (
-        <PipelineScaleFit deps={[taskType, cuaPath, personaModelLabel, hasPersona, hasTask, revealed]}>
+        <PipelineScaleFit
+          deps={[
+            taskType,
+            cuaPath,
+            personaModelLabel,
+            hasPersona,
+            hasTask,
+            revealed,
+          ]}
+        >
           <div className={PIPELINE_ROW_CLASS}>
             <PipelineNode
-              label="Persona"
+              label={t("cockpitSetup.pipeline.persona")}
               icon="face"
-              detail={personaModelLabel}
+              detail={resolvedPersonaModelLabel}
               active={hasPersona}
               visible={v(1)}
             />
             <Arrow visible={v(2)} />
             <PipelinePathFork
-              caption="OS platform"
+              caption={t("cockpitSetup.pipeline.osPlatform")}
               options={OS_PLATFORM_PIPELINE_PATHS}
               selected={cuaPath}
               visible={v(2)}
             />
-            <PipelineNode label="OS app" icon="apps" detail="native SUT" active={hasTask} visible={v(3)} />
+            <PipelineNode
+              label={t("cockpitSetup.pipeline.osApp")}
+              icon="apps"
+              detail={t("cockpitSetup.pipeline.nativeSut")}
+              active={hasTask}
+              visible={v(3)}
+            />
             <Arrow visible={v(4)} />
             <PipelineNode
-              label={PIPELINE_EVALUATION.label}
+              label={t("cockpitSetup.pipeline.evaluation")}
               icon={PIPELINE_EVALUATION.icon}
-              detail={PIPELINE_EVALUATION.detail}
+              detail={t("cockpitSetup.pipeline.metricCollection")}
               active={ready}
               visible={v(4)}
             />
@@ -423,7 +518,7 @@ export function CockpitPipelineDiagram({
       className={`glass-panel flex w-full flex-1 min-h-0 flex-col rounded-xl px-4 py-4 sm:px-6 sm:py-5 ${className ?? ""}`}
     >
       <p className="shrink-0 text-center font-display text-[16px] font-semibold tracking-wide text-text-main sm:text-[18px]">
-        Simulation pipeline
+        {t("cockpitSetup.pipeline.title")}
       </p>
 
       <div className="custom-scrollbar flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-x-auto py-4 sm:py-6">
@@ -433,10 +528,12 @@ export function CockpitPipelineDiagram({
       <p className="shrink-0 text-center text-[15px] font-medium leading-snug sm:text-[14px]">
         {ready ? (
           <span className="font-semibold text-secondary">
-            Run config complete — Ready to launch.
+            {t("cockpitSetup.pipeline.ready")}
           </span>
         ) : (
-          <span className="text-text-variant">Select personas and a task, then run below.</span>
+          <span className="text-text-variant">
+            {t("cockpitSetup.pipeline.selectPrompt")}
+          </span>
         )}
       </p>
     </div>

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
+import { formatBatchCellStatusLabel } from "@/lib/trialStatus";
 
 import type { BatchTrialCell } from "./BatchTrialGrid";
 
@@ -64,7 +66,11 @@ function gapFor(cell: number): number {
  * the layout with the largest square cell, then stretches to fill both axes. If
  * cells would be sub-pixel (extreme cohorts) it clamps to a floor and scrolls.
  */
-function computeGeometry(count: number, width: number, height: number): Geometry {
+function computeGeometry(
+  count: number,
+  width: number,
+  height: number,
+): Geometry {
   if (count <= 0 || width <= 0 || height <= 0) return EMPTY_GEOM;
 
   const usableW = width - PAD * 2;
@@ -128,10 +134,17 @@ export function BatchMosaicCanvas({ trials }: BatchMosaicCanvasProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
-  const [hover, setHover] = useState<{ index: number; left: number; top: number } | null>(null);
+  const [hover, setHover] = useState<{
+    index: number;
+    left: number;
+    top: number;
+  } | null>(null);
 
   const count = trials.length;
-  const geom = useMemo(() => computeGeometry(count, box.w, box.h), [count, box.w, box.h]);
+  const geom = useMemo(
+    () => computeGeometry(count, box.w, box.h),
+    [count, box.w, box.h],
+  );
   const canvasH = geom.scroll ? geom.contentH : box.h;
 
   useEffect(() => {
@@ -207,11 +220,18 @@ export function BatchMosaicCanvas({ trials }: BatchMosaicCanvasProps) {
       setHover(null);
       return;
     }
-    setHover({ index, left: event.clientX - rect.left, top: event.clientY - rect.top });
+    setHover({
+      index,
+      left: event.clientX - rect.left,
+      top: event.clientY - rect.top,
+    });
   }
 
   return (
-    <div ref={wrapRef} className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+    <div
+      ref={wrapRef}
+      className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+    >
       <canvas
         ref={canvasRef}
         className="block"
@@ -232,7 +252,12 @@ export function BatchMosaicCanvas({ trials }: BatchMosaicCanvasProps) {
         />
       ) : null}
       {hover && hoverTrial ? (
-        <MosaicTooltip trial={hoverTrial} left={hover.left} top={hover.top} boxW={box.w} />
+        <MosaicTooltip
+          trial={hoverTrial}
+          left={hover.left}
+          top={hover.top}
+          boxW={box.w}
+        />
       ) : null}
     </div>
   );
@@ -249,13 +274,25 @@ function MosaicTooltip({
   top: number;
   boxW: number;
 }) {
-  const rawId = (trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")).trim();
+  const { t } = useI18n();
+  const rawId = (
+    trial.persona?.personaId ?? trial.label.replace(/^persona[-_]?/i, "")
+  ).trim();
   const personaId = personaDisplayId(rawId || null);
   const name =
-    personaPrimaryName(trial.persona?.name, rawId, trial.persona?.dimensions ?? {}) ||
+    personaPrimaryName(
+      trial.persona?.name,
+      rawId,
+      trial.persona?.dimensions ?? {},
+    ) ||
     trial.label ||
     personaId;
-  const statusLabel = trial.statusLabel ?? trial.status;
+  const statusLabel = formatBatchCellStatusLabel(
+    trial.status,
+    trial.statusStage,
+    trial.statusPhase,
+    t,
+  );
   const flip = left > boxW - 180;
   return (
     <div
@@ -266,8 +303,12 @@ function MosaicTooltip({
         top: top + 12,
       }}
     >
-      <p className="truncate font-display text-[12px] font-semibold text-text-main">{name}</p>
-      <p className="truncate font-mono text-[11px] text-text-dim">{personaId}</p>
+      <p className="truncate font-display text-[12px] font-semibold text-text-main">
+        {name}
+      </p>
+      <p className="truncate font-mono text-[11px] text-text-dim">
+        {personaId}
+      </p>
       <p className="truncate text-[11px] text-text-variant">{statusLabel}</p>
     </div>
   );
