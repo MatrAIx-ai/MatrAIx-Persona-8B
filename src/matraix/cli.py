@@ -1,10 +1,8 @@
 """Product-facing ``matraix`` CLI.
 
-``matraix run`` wraps ``harbor run`` with the same launch environment the
-Playground injects (``PYTHONPATH`` plus ``MATRIX_*`` task exports), so the
-command printed by the job generator works from a clean documented setup
-without hand-crafted environment exports (issue #78). Harbor remains
-available directly as the underlying runtime.
+``matraix run`` wraps ``harbor run`` with the complete launch environment so
+commands printed by the job generator work from a clean documented setup.
+Harbor remains available directly as the underlying runtime.
 """
 
 from __future__ import annotations

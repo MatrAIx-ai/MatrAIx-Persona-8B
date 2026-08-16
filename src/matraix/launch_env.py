@@ -1,10 +1,8 @@
-"""Single source of truth for the Harbor launch environment.
+"""Shared Harbor launch environment for Playground and ``matraix run``.
 
-The Playground backend and the ``matraix`` CLI both spawn ``harbor run``
-processes that import monorepo packages (``backend``, ``matraix.agents``,
-``playground``, …). Every launcher must inject the same ``PYTHONPATH``
-entries; keeping the list here prevents the GUI and CLI launch paths from
-drifting apart (issue #78).
+Both launchers start ``harbor run`` processes that import monorepo packages
+(``backend``, ``matraix.agents``, ``playground``, …). Keeping the required
+``PYTHONPATH`` entries here prevents the GUI and CLI from drifting apart.
 """
 
 from __future__ import annotations

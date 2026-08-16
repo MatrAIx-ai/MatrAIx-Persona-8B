@@ -1,7 +1,7 @@
 """Deterministic job result summary and export for ``matraix results``.
 
-Reads Harbor ``jobs/<job>/`` trees only — no extra LLM calls. Complements
-Playground PDF / aggregation with a CLI path from run to insight (#78 P2).
+Reads Harbor ``jobs/<job>/`` trees only — no extra model calls — so finished
+runs can be summarized and exported from the CLI.
 """
 
 from __future__ import annotations
@@ -354,9 +354,9 @@ def collect_job_results(
         for trial_dir in _list_trial_dirs(job_dir)
     ]
     notes = [
-        "Deterministic export from jobs/<job>/ — no additional LLM calls.",
-        "Trial reward comes from result.json verifier_result; survey answers "
-        "from artifacts/app/output/survey_result.json when present.",
+        "Built from jobs/<job>/ on disk — no additional model calls.",
+        "Trial reward comes from result.json; survey answers from "
+        "artifacts/app/output/survey_result.json when present.",
     ]
     if group_keys and not any(trial.group_values for trial in trials):
         notes.append(
