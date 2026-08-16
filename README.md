@@ -95,13 +95,14 @@ uv pip install -e packages/rewardkit
 ```
 
 Run jobs and tasks with **`uv run matraix run …`** — it sets up the full
-launch environment and delegates to the Harbor runtime. Summarize a finished
-job with **`uv run matraix results <job>`** (text / JSON / CSV, no extra LLM
-call). Runtime utilities (e.g. `harbor view`, `harbor upload`) stay under
-`uv run harbor …`.
+launch environment and delegates to the Harbor runtime. Check a Survey task
+with **`uv run matraix smoke <task>`** (host / `json_survey`, no Docker, no API
+key). Summarize a finished job with **`uv run matraix results <job>`** (text /
+JSON / CSV, no extra LLM call). Runtime utilities (e.g. `harbor view`,
+`harbor upload`) stay under `uv run harbor …`.
 
 Set the model API key matching your provider before GUI or CLI task runs
-(smoke test does not need one):
+(smokes above do not need one):
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."   # anthropic/claude-* models

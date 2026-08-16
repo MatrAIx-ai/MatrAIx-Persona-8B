@@ -27,6 +27,7 @@ from matraix.job_results import (
     parse_formats,
     resolve_job_dir,
 )
+from matraix.smoke import format_smoke_report, run_survey_smoke
 
 # Matches the export lines the job generator writes into the YAML header,
 # e.g. "#   export MATRIX_SURVEY_TASK_PATH=application/tasks/...".
@@ -211,6 +212,30 @@ def _cmd_results(args: argparse.Namespace) -> None:
         sys.stdout.write(writers[fmt](report))
 
 
+def _cmd_smoke(args: argparse.Namespace) -> None:
+    repo_root = (
+        Path(args.repo_root).resolve()
+        if args.repo_root
+        else find_repo_root(Path.cwd())
+    )
+    for entry in reversed(required_pythonpath_entries(repo_root)):
+        if entry not in sys.path:
+            sys.path.insert(0, entry)
+    os.environ["PYTHONPATH"] = merge_pythonpath(
+        os.environ.get("PYTHONPATH"), repo_root
+    )
+    report = run_survey_smoke(
+        args.task,
+        repo_root=repo_root,
+        personas=max(1, int(args.personas)),
+        persona=args.persona,
+        keep_artifacts=bool(args.keep_artifacts),
+    )
+    sys.stdout.write(format_smoke_report(report))
+    if not report.ok:
+        sys.exit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="matraix",
@@ -294,6 +319,44 @@ def main(argv: list[str] | None = None) -> None:
         help="MatrAIx repository root (default: discovered from cwd)",
     )
 
+    smoke_parser = subparsers.add_parser(
+        "smoke",
+        help="Zero-cost host Survey check (no Docker, no API key).",
+        description=(
+            "Host-lane onboarding smoke for Survey / json_survey. Loads the "
+            "questionnaire, renders a persona, runs the real survey runner with "
+            "a deterministic fake client, and checks the answer envelope. "
+            "Does not call a provider and does not require Docker. "
+            "For Docker/Harbor stack smoke use: "
+            "matraix run -c configs/jobs/example-job-recipe/harbor-smoke-local.yaml"
+        ),
+    )
+    smoke_parser.add_argument(
+        "task",
+        help="Survey task directory (e.g. application/tasks/example-survey_product-feedback)",
+    )
+    smoke_parser.add_argument(
+        "--personas",
+        type=int,
+        default=1,
+        help="Number of personas from the dev sample (default: 1 = persona_0042)",
+    )
+    smoke_parser.add_argument(
+        "--persona",
+        default=None,
+        help="Optional persona YAML path (overrides --personas sampling)",
+    )
+    smoke_parser.add_argument(
+        "--keep-artifacts",
+        action="store_true",
+        help="Keep temp survey_result.json artifacts after a successful smoke",
+    )
+    smoke_parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="MatrAIx repository root (default: discovered from cwd)",
+    )
+
     args, passthrough = parser.parse_known_args(argv)
     if args.command == "run":
         _cmd_run(args, passthrough)
@@ -301,6 +364,10 @@ def main(argv: list[str] | None = None) -> None:
         if passthrough:
             sys.exit(f"matraix results: unrecognized arguments: {' '.join(passthrough)}")
         _cmd_results(args)
+    elif args.command == "smoke":
+        if passthrough:
+            sys.exit(f"matraix smoke: unrecognized arguments: {' '.join(passthrough)}")
+        _cmd_smoke(args)
 
 
 if __name__ == "__main__":

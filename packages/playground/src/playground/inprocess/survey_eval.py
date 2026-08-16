@@ -85,6 +85,8 @@ class InprocessSurveyEvalRunner:
         persona_yaml_path: str,
         on_event: Optional[Callable[[Dict[str, Any]], None]] = None,
         job_dir: Optional[Any] = None,
+        client: Any | None = None,
+        client_factory: Optional[Callable[[str], Any]] = None,
     ) -> SurveyEvalResult:
         config = config or SurveyEvalConfig()
 
@@ -105,7 +107,12 @@ class InprocessSurveyEvalRunner:
         emit({"type": "phase", "phase": "survey_answering"})
 
         assert_budget_allows_request(job_dir)
-        client = build_json_client(config.persona_model)
+        if client is not None:
+            pass
+        elif client_factory is not None:
+            client = client_factory(config.persona_model)
+        else:
+            client = build_json_client(config.persona_model)
         if hasattr(client, "complete_json_with_usage"):
             completion = client.complete_json_with_usage(
                 prompts["personaPrompt"], task_prompt

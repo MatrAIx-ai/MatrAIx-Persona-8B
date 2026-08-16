@@ -95,10 +95,26 @@ uv run matraix --help
 
 ---
 
-## 3. Smoke test (no API key)
+## 3. Smoke tests (two lanes)
 
-Confirms Docker and Matraix Playground with the upstream **hello-world** task (reference
-solution, no LLM call):
+Onboarding uses **two** smokes — pick the lane you need:
+
+### Host Survey (no Docker, no API key)
+
+Confirms the Survey / `json_survey` path: questionnaire loads, a persona
+renders, the real host survey runner produces a valid answer envelope with a
+**fake** client (synthetic answers, $0):
+
+```bash
+uv run matraix smoke application/tasks/example-survey_product-feedback
+```
+
+**Success:** prints `Smoke: ok` with `cost $0`. Does not call a provider.
+
+### Docker / Harbor (no API key)
+
+Confirms Docker and Matraix Playground with the upstream **hello-world** task
+(reference solution, no LLM call):
 
 ```bash
 uv run matraix run -c configs/jobs/example-job-recipe/harbor-smoke-local.yaml
@@ -109,6 +125,8 @@ First run builds the Docker image (several minutes).
 **Success:** the command finishes without error and writes output under
 `jobs/harbor-smoke-local/`.
 
+Host Survey smoke does **not** cover Chat sidecars or Web/OS-app agents.
+Docker hello-world does **not** claim OS-app CUA.
 ---
 
 ## 4. Set your API key
@@ -609,6 +627,7 @@ Full task checklist: [tasks/README.md](../application/tasks/README.md).
 | Deterministic job summary / export | `matraix results <job>` | text / JSON / CSV |
 | Persona narrative batch PDF | Playground **Runs** → **Download PDF** | UI PDF |
 | Validate Docker/Matraix Playground only | `harbor-smoke-local.yaml` | smoke task image |
+| Host Survey check (no Docker, $0) | `matraix smoke <survey-task>` | fake envelope |
 | Docker CLI harness (survey/chat) | `--execution-mode force_docker` or `appSim-*-local.yaml` | Docker trials |
 | Browse trajectories | `harbor view` or Playground **Runs** | local viewer |
 | New scenario | copy `example-*` + register for Playground | `application/tasks/<name>/` |
