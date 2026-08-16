@@ -2,12 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import {
-  DEFAULT_RUN_HARNESS,
-  runHarnessLaunchFields,
-  runHarnessPersonaModelOptions,
-  type RunHarnessId,
-} from "@/lib/personaAgentCatalog";
 import { takePersonaHandoff, peekPersonaHandoff } from "@/lib/personaHandoffStorage";
 import { useUrlState } from "@/lib/useUrlState";
 import type { HarborCockpitTaskKind } from "@/lib/harborCockpitMappers";
@@ -430,37 +424,15 @@ export function useSetupPersonaSampling(
   const isBatchRun =
     samplingMode !== "single" || selectedCount > 1 || selectedPersonaIds.length > 1;
 
-  // Run harness (survey / chatbot only): API-direct auto mode, or a Docker CLI
-  // harness (force_docker) that can bill a vendor subscription instead of an
-  // API key. Session-local on purpose — subscription billing stays opt-in.
-  const harnessSelectable = taskKind === "survey" || taskKind === "chatbot";
-  const [harness, setHarness] = useState<RunHarnessId>(DEFAULT_RUN_HARNESS);
-  const effectiveHarness = harnessSelectable ? harness : DEFAULT_RUN_HARNESS;
-  const { mode: launchMode, agentName: launchAgentName } =
-    runHarnessLaunchFields(effectiveHarness);
-
   const personaModelKnob = options?.knobs.find((k) => k.key === "personaModel");
   // Provider meta only in the open menu (closed trigger stays label-only).
   // Omit summary — long descriptions clutter the compact Persona rail.
-  const allPersonaModelOptions =
+  const personaModelOptions =
     personaModelKnob?.options.map((o) => ({
       value: o.value,
       label: o.label,
       meta: personaModelProviderLabel(o.value),
     })) ?? [{ value: personaModel, label: personaModel }];
-  // CLI harnesses only speak their own vendor's models.
-  const personaModelOptions = runHarnessPersonaModelOptions(
-    effectiveHarness,
-    allPersonaModelOptions,
-  );
-
-  useEffect(() => {
-    if (!harnessSelectable) return;
-    if (personaModelOptions.length === 0) return;
-    if (personaModelOptions.some((opt) => opt.value === personaModel)) return;
-    setPersonaModel(personaModelOptions[0].value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- options identity churns per render; keying on harness + model is enough
-  }, [effectiveHarness, harnessSelectable, personaModel]);
 
   const togglePersona = useCallback(
     (personaId: string) => {
@@ -494,11 +466,6 @@ export function useSetupPersonaSampling(
     personaModel,
     setPersonaModel,
     personaModelOptions,
-    harness: effectiveHarness,
-    setHarness,
-    harnessSelectable,
-    launchMode,
-    launchAgentName,
     samplingMode,
     setSamplingMode,
     selectedPersonaIds,

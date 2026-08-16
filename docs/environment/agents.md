@@ -86,10 +86,7 @@ set.
 
 `generate_application_job.py --execution-mode auto` picks `persona-json-survey` or
 `persona-user-sim` from the task type. Use `--agent-name` to override, or
-`--execution-mode force_docker` for the CLI agents above. In the Playground the
-survey / chatbot **Harness** selector does the same: "API (direct)" is auto
-mode, a CLI harness launches `force_docker` with that agent (and can bill a
-vendor subscription — see § CLI subscription auth).
+`--execution-mode force_docker` for the CLI agents above.
 
 Live-web details: [web-interaction.md](web-interaction.md).
 

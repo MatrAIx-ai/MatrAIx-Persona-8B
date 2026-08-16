@@ -229,53 +229,6 @@ export function webPersonaModelSelectOptions(
   return options;
 }
 
-/**
- * Survey / chat run harness. "api" is the auto-mode default (persona-json-survey /
- * persona-user-sim call the model API directly); a CLI id switches the launch to
- * `mode: "force_docker"` with that Docker CLI harness, which can bill a vendor
- * subscription (agents.md § CLI subscription auth) instead of an API key.
- */
-export type RunHarnessId = "api" | "persona-claude-code" | "persona-codex" | "persona-gemini-cli";
-
-export const DEFAULT_RUN_HARNESS: RunHarnessId = "api";
-
-export function isCliRunHarness(harness: RunHarnessId): boolean {
-  return harness !== "api";
-}
-
-export function runHarnessSelectOptions(): CockpitSelectOption[] {
-  return [
-    {
-      value: "api",
-      label: "API (direct)",
-      meta: "auto · needs provider API key",
-    },
-    ...CLI_PERSONA_AGENTS.map((opt) => ({
-      value: opt.value,
-      label: opt.label.endsWith("CLI") ? opt.label : `${opt.label} CLI`,
-      meta: `${opt.badge ? `${opt.badge} · ` : ""}docker · subscription-capable`,
-    })),
-  ];
-}
-
-/** Launch fields for a run harness: auto/API vs force-docker CLI agent. */
-export function runHarnessLaunchFields(harness: RunHarnessId): {
-  mode: "auto" | "force_docker";
-  agentName?: string;
-} {
-  if (!isCliRunHarness(harness)) return { mode: "auto" };
-  return { mode: "force_docker", agentName: harness };
-}
-
-/** Vendor-matched persona models for a run harness (all options for "api"). */
-export function runHarnessPersonaModelOptions(
-  harness: RunHarnessId,
-  options: CockpitSelectOption[],
-): CockpitSelectOption[] {
-  if (!isCliRunHarness(harness)) return options;
-  return webPersonaModelSelectOptions(harness, options);
-}
-
 const CAPABILITY_TIER_LABELS: Record<AgentCapabilityTier, string> = {
   light: "Light",
   standard: "Standard",

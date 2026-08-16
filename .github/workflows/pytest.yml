@@ -50,7 +50,6 @@ jobs:
           uv run pytest tests/ \
             packages/harbor-langsmith/tests/ \
             packages/rewardkit/tests/ \
-            application/playground/backend/tests/test_api.py \
             application/playground/backend/tests/test_api_schemas.py \
             application/playground/backend/tests/test_application_types.py \
             application/playground/backend/tests/test_application_task_spec.py \

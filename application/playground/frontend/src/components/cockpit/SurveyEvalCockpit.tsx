@@ -208,10 +208,6 @@ export function SurveyEvalCockpit({
     personaModel,
     setPersonaModel,
     personaModelOptions,
-    harness,
-    setHarness,
-    launchMode,
-    launchAgentName,
     samplingMode,
     setSamplingMode,
     selectedPersonaIds,
@@ -362,8 +358,7 @@ export function SurveyEvalCockpit({
         taskPath,
         personaId: persona.id,
         personaModel,
-        mode: launchMode,
-        agentName: launchAgentName,
+        mode: "auto",
         mapDebrief: (debrief, ctx) =>
           mapSurveyDebriefToJobView(debrief, ctx, {
             personaId: persona.id,
@@ -380,7 +375,7 @@ export function SurveyEvalCockpit({
           }),
       });
     },
-    [persona, isRunning, run, personaModel, launchMode, launchAgentName, harborTasks],
+    [persona, isRunning, run, personaModel, harborTasks],
   );
 
   const handleRun = useCallback(() => {
@@ -411,8 +406,7 @@ export function SurveyEvalCockpit({
           seed,
           personaModel,
           ...personaFields,
-          mode: launchMode,
-          agentName: launchAgentName,
+          mode: "auto",
         });
         setBatchJobName(launched.jobName, { taskId: selectedCard.id, personaPool });
       } catch (exc) {
@@ -431,8 +425,6 @@ export function SurveyEvalCockpit({
     isBatchRun,
     seed,
     personaModel,
-    launchMode,
-    launchAgentName,
     parallelTrials,
     personaPool,
     handleRun,
@@ -579,8 +571,6 @@ export function SurveyEvalCockpit({
           personaModel={personaModel}
           onPersonaModelChange={setPersonaModel}
           personaModelOptions={personaModelOptions}
-          harness={harness}
-          onHarnessChange={setHarness}
           mode={samplingMode}
           onModeChange={setSamplingMode}
           selectedPersonaIds={visiblePersonaIds}

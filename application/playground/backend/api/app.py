@@ -41,7 +41,6 @@ import os
 import subprocess
 import urllib.request
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -274,51 +273,6 @@ def preflight_checks() -> List[Dict[str, Any]]:
                 "Configured."
                 if openrouter_key
                 else "Not configured. Needed only for OpenRouter persona models."
-            ),
-        }
-    )
-
-    # ---- Core — CLI harness subscriptions (optional) ------------------- #
-    # Vendor-CLI subscription credentials are an alternative to API keys, but
-    # only for the Docker CLI harnesses (persona-claude-code / persona-codex /
-    # persona-gemini-cli): web "CLI family" runs and force_docker survey/chat.
-    # API-direct persona models (json-survey / user-sim via litellm) still
-    # need the provider API keys above.
-    def _path_from(env_name: str, default: Path) -> Path:
-        override = (os.environ.get(env_name) or "").strip()
-        return Path(override).expanduser() if override else default
-
-    home = Path.home()
-    claude_subscription = bool((os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip())
-    codex_subscription = _path_from(
-        "CODEX_AUTH_JSON_PATH", home / ".codex" / "auth.json"
-    ).is_file()
-    gemini_subscription = _path_from(
-        "GEMINI_OAUTH_CREDS_PATH", home / ".gemini" / "oauth_creds.json"
-    ).is_file()
-    subscriptions = [
-        label
-        for label, present in (
-            ("Claude Code", claude_subscription),
-            ("Codex", codex_subscription),
-            ("Gemini CLI", gemini_subscription),
-        )
-        if present
-    ]
-    checks.append(
-        {
-            "group": "Core",
-            "name": "CLI subscriptions",
-            "ok": bool(subscriptions),
-            "optional": True,
-            "detail": (
-                "Configured: {}. Used by the Docker CLI harnesses "
-                "(web CLI family, force-docker survey/chat) instead of an API "
-                "key.".format(", ".join(subscriptions))
-                if subscriptions
-                else "Not configured. Optional — lets the Docker CLI harnesses "
-                "(Claude Code, Codex, Gemini CLI) bill a vendor subscription "
-                "instead of an API key. See agents.md § CLI subscription auth."
             ),
         }
     )

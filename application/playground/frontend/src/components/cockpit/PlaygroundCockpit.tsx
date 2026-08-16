@@ -318,10 +318,6 @@ function ChatbotEvalCockpit({
     personaModel,
     setPersonaModel,
     personaModelOptions,
-    harness,
-    setHarness,
-    launchMode,
-    launchAgentName,
     samplingMode,
     setSamplingMode,
     selectedPersonaIds,
@@ -532,8 +528,7 @@ function ChatbotEvalCockpit({
       taskPath: chatTaskPath,
       personaId: persona.id,
       personaModel,
-      mode: launchMode,
-      agentName: launchAgentName,
+      mode: "auto",
       chatDomain: requestDomain,
       chatApplicationId: knownLaunchApplicationId ?? undefined,
       chatApplicationContext: launchChatApplicationContext,
@@ -560,8 +555,6 @@ function ChatbotEvalCockpit({
     run,
     applicationId,
     personaModel,
-    launchMode,
-    launchAgentName,
     requestDomain,
     knownLaunchApplicationId,
     launchChatApplicationContext,
@@ -594,8 +587,7 @@ function ChatbotEvalCockpit({
           seed,
           personaModel,
           ...personaFields,
-          mode: launchMode,
-          agentName: launchAgentName,
+          mode: "auto",
           chatDomain: requestDomain,
           chatApplicationId: knownLaunchApplicationId ?? undefined,
           chatApplicationContext: launchChatApplicationContext,
@@ -618,8 +610,6 @@ function ChatbotEvalCockpit({
     applicationId,
     seed,
     personaModel,
-    launchMode,
-    launchAgentName,
     parallelTrials,
     personaPool,
     requestDomain,
@@ -867,8 +857,6 @@ function ChatbotEvalCockpit({
           personaModel={personaModel}
           onPersonaModelChange={setPersonaModel}
           personaModelOptions={personaModelOptions}
-          harness={harness}
-          onHarnessChange={setHarness}
           mode={samplingMode}
           onModeChange={setSamplingMode}
           selectedPersonaIds={visiblePersonaIds}

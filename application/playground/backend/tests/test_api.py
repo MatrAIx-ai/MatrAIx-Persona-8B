@@ -41,7 +41,6 @@ def test_preflight_shape(client):
         "Web tasks",
         "Docker",
         "use.computer API",
-        "CLI subscriptions",
     } <= names
     # Not part of the shipped application task set — keep out of readiness.
     assert "Recommendation engine" not in names
@@ -69,7 +68,6 @@ def test_preflight_required_vs_optional_contract(client):
         "Acme MCP support",
         "Docker",
         "use.computer API",
-        "CLI subscriptions",
     } <= optional
     assert body["ready"] == all(c["ok"] for c in body["checks"] if not c.get("optional"))
 
@@ -152,44 +150,6 @@ def test_preflight_anthropic_check_optional(client, monkeypatch):
     body = client.get("/api/preflight").json()
     anthropic = next(c for c in body["checks"] if c["name"] == "Anthropic credentials")
     assert anthropic["ok"] is True
-
-
-def test_preflight_cli_subscriptions_optional(client, monkeypatch, tmp_path):
-    # No token, no credential files anywhere under a scratch HOME.
-    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
-    monkeypatch.delenv("GEMINI_OAUTH_CREDS_PATH", raising=False)
-    monkeypatch.setattr("backend.api.app.Path.home", staticmethod(lambda: tmp_path))
-    body = client.get("/api/preflight").json()
-    check = next(c for c in body["checks"] if c["name"] == "CLI subscriptions")
-    assert check["ok"] is False
-    assert check.get("optional") is True
-    # Never gates readiness on its own.
-    assert "CLAUDE_CODE_OAUTH_TOKEN" not in check["detail"]
-
-    # Claude Code subscription token present.
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
-    body = client.get("/api/preflight").json()
-    check = next(c for c in body["checks"] if c["name"] == "CLI subscriptions")
-    assert check["ok"] is True
-    assert "Claude Code" in check["detail"]
-    assert "Codex" not in check["detail"]
-
-    # Codex auth.json via explicit path override.
-    auth_json = tmp_path / "auth.json"
-    auth_json.write_text("{}", encoding="utf-8")
-    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth_json))
-    body = client.get("/api/preflight").json()
-    check = next(c for c in body["checks"] if c["name"] == "CLI subscriptions")
-    assert "Codex" in check["detail"]
-
-    # Gemini CLI creds at the default location under HOME.
-    creds = tmp_path / ".gemini" / "oauth_creds.json"
-    creds.parent.mkdir(parents=True)
-    creds.write_text("{}", encoding="utf-8")
-    body = client.get("/api/preflight").json()
-    check = next(c for c in body["checks"] if c["name"] == "CLI subscriptions")
-    assert "Gemini CLI" in check["detail"]
 
 
 class _FakeOkResponse:
