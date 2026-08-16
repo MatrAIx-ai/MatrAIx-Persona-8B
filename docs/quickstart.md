@@ -381,13 +381,23 @@ After a job finishes:
 
 ```text
 jobs/<job_name>/
-├── result.json           # Summary stats
+├── result.json           # Job summary stats (tokens/cost when recorded)
 ├── job.log
 └── <trial_name>/
-    ├── results.json      # Reward / verifier outcome
+    ├── result.json       # Trial reward / verifier outcome + agent usage
     ├── persona_meta.json # Which persona was used (if persona agent)
     └── artifacts/
         └── app/output/   # The agent's submission JSON
+            # Survey: survey_result.json
+```
+
+Summarize a finished job from the CLI (no extra LLM call):
+
+```bash
+uv run matraix results jobs/<job_name>
+uv run matraix results <job_name> --format json,csv -o /tmp/matraix-exports/
+# Optional persona cuts when dimensions are present:
+# uv run matraix results <job_name> --group-by life_stage --format json
 ```
 
 Open the submission JSON to read what that simulated user chose.

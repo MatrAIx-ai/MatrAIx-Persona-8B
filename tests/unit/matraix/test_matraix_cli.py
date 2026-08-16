@@ -235,3 +235,31 @@ def test_main_run_sets_max_cost_usd_env(tmp_path: Path, monkeypatch) -> None:
         "configs/jobs/application-task-job-recipe/example-survey-auto-n1.yaml",
         "--yes",
     ]
+
+
+def test_main_results_prints_text_summary(tmp_path: Path, monkeypatch, capsys) -> None:
+    from matraix.job_results import collect_job_results
+
+    job = tmp_path / "jobs" / "cli-results-demo"
+    trial = job / "trial-1"
+    output = trial / "artifacts" / "app" / "output"
+    output.mkdir(parents=True)
+    (job / "result.json").write_text(
+        json.dumps({"stats": {"n_completed_trials": 1, "n_errored_trials": 0}}),
+        encoding="utf-8",
+    )
+    (trial / "result.json").write_text(
+        json.dumps({"verifier_result": {"rewards": {"reward": 1.0}}}),
+        encoding="utf-8",
+    )
+    (output / "survey_result.json").write_text(
+        json.dumps({"answers": [{"questionId": "q0", "value": "yes"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    cli.main(["results", "cli-results-demo", "--repo-root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "cli-results-demo" in out
+    assert "q0" in out
+    report = collect_job_results(job)
+    assert report.question_distributions["q0"]["yes"] == 1
