@@ -5,11 +5,19 @@ export function poolSlugLabel(poolPath: string): string {
   return slug.replace(/-/g, " ");
 }
 
-export function personaPoolEmptyMessage(
+export interface PersonaPoolEmptyState {
+  code: "persona_pool_empty";
+  /** A dataset identifier to interpolate without translating it. */
+  pool: string | null;
+}
+
+export function personaPoolEmptyState(
   catalog: PersonaPoolCatalog | null | undefined,
-): string {
-  const pool = catalog?.pool ? poolSlugLabel(catalog.pool) : "persona pool";
-  return `${pool} is empty or could not be loaded.`;
+): PersonaPoolEmptyState {
+  return {
+    code: "persona_pool_empty",
+    pool: catalog?.pool ? poolSlugLabel(catalog.pool) : null,
+  };
 }
 
 /** Backend / sampling errors that mean the fixture pool is too thin for filters. */
@@ -25,7 +33,38 @@ export function isPersonaPoolCoverageError(message: string | null | undefined): 
   );
 }
 
-export function personaPoolCoverageHint(taskPath?: string | null): string {
+export interface PersonaPoolSampleError {
+  /** Known UI state; `rawMessage` remains unchanged for backend diagnostics. */
+  code: "persona_pool_coverage" | null;
+  rawMessage: string;
+  /** Whether the rendering layer should add its localized recovery guidance. */
+  showRecoveryHint: boolean;
+}
+
+/**
+ * Classify a sampling failure without rewriting its backend / model text.
+ * Components translate only the stable code and leave `rawMessage` intact.
+ */
+export function classifyPersonaPoolSampleError(
+  message: string,
+): PersonaPoolSampleError {
+  const code = isPersonaPoolCoverageError(message)
+    ? "persona_pool_coverage"
+    : null;
+  const alreadyHinted =
+    message.includes("matraix-persona-1m") ||
+    message.includes("Synthesize to fill") ||
+    message.includes("does not synthesize");
+
+  return {
+    code,
+    rawMessage: message,
+    showRecoveryHint: code === "persona_pool_coverage" && !alreadyHinted,
+  };
+}
+
+/** @deprecated Transitional compatibility until the setup/cockpit adoption commit. */
+function personaPoolCoverageHint(taskPath?: string | null): string {
   const synthesize = taskPath
     ? " With Task default persona strategy on, you can also Synthesize to fill this task."
     : "";
@@ -37,7 +76,7 @@ export function personaPoolCoverageHint(taskPath?: string | null): string {
   );
 }
 
-/** Prefer the API message; fall back to a production-pool recovery hint. */
+/** @deprecated Transitional compatibility until the setup/cockpit adoption commit. */
 export function formatPersonaSampleError(
   message: string,
   taskPath?: string | null,
@@ -49,7 +88,9 @@ export function formatPersonaSampleError(
       trimmed.includes("matraix-persona-1m") ||
       trimmed.includes("Synthesize to fill") ||
       trimmed.includes("does not synthesize");
-    return alreadyHinted ? trimmed : `${first}\n\n${personaPoolCoverageHint(taskPath)}`;
+    return alreadyHinted
+      ? trimmed
+      : `${first}\n\n${personaPoolCoverageHint(taskPath)}`;
   }
   return trimmed;
 }

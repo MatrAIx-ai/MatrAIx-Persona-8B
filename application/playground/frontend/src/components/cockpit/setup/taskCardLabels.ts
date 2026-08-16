@@ -1,25 +1,48 @@
 import type { ToneChipTone } from "./ToneChip";
 
-export function taskKindLabel(taskKind: "example" | "task"): string {
-  return taskKind === "example" ? "Example" : "Task";
-}
+export type TaskKind = "example" | "task";
+
+type TaskKindMessageKey =
+  | "cockpitSetup.taskKind.example"
+  | "cockpitSetup.taskKind.task";
+
+const TASK_KIND_MESSAGE_KEYS: Record<TaskKind, TaskKindMessageKey> = {
+  example: "cockpitSetup.taskKind.example",
+  task: "cockpitSetup.taskKind.task",
+};
 
 /** Example tasks live under ``application/tasks/example-*`` folders. */
-export function inferTaskKindFromPath(taskPath?: string): "example" | "task" {
+export function inferTaskKindFromPath(taskPath?: string): TaskKind {
   const folder = taskPath?.split("/").filter(Boolean).pop() ?? "";
   return folder.startsWith("example-") ? "example" : "task";
 }
 
-export function resolveTaskKind(taskPath?: string, taskKind?: string): "example" | "task" {
+export function resolveTaskKind(taskPath?: string, taskKind?: string): TaskKind {
   if (taskKind === "example" || taskKind === "task") {
     return taskKind;
   }
   return inferTaskKindFromPath(taskPath);
 }
 
-export interface TaskCardTag {
-  label: string;
-  tone: ToneChipTone;
+export type TaskCardTag =
+  | { label: string; tone: ToneChipTone; taskKind?: undefined }
+  | { label?: undefined; tone: ToneChipTone; taskKind: TaskKind };
+
+export function taskCardTagLabel(
+  tag: TaskCardTag,
+  t: (key: TaskKindMessageKey) => string,
+): string {
+  return tag.taskKind
+    ? t(TASK_KIND_MESSAGE_KEYS[tag.taskKind])
+    : formatChipLabel(tag.label);
+}
+
+export function taskCardTagKey(tag: TaskCardTag): string {
+  return tag.taskKind ? `task-kind:${tag.taskKind}` : `label:${tag.label}`;
+}
+
+export function taskCardTagSearchText(tag: TaskCardTag): string {
+  return tag.taskKind ?? tag.label;
 }
 
 export interface TaskCardTagInput {
@@ -87,7 +110,7 @@ export function taskCardTags({
   // One tone per chip category so they read at a glance:
   // kind → neutral, domain → accent, difficulty → secondary. The task type is
   // NOT repeated here — it already renders as its own chip / tab context.
-  const chips: TaskCardTag[] = [{ label: taskKindLabel(kind), tone: "neutral" }];
+  const chips: TaskCardTag[] = [{ taskKind: kind, tone: "neutral" }];
 
   const domainLabel = domain?.trim();
   if (domainLabel) {

@@ -3,22 +3,25 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Markdown } from "@/components/Markdown";
 import { QuestionnairePreview } from "@/components/QuestionnairePreview";
+import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "@/lib/api";
 import type { SurveyInstrument } from "@/lib/types";
 import { FOCUS_RING, Sym } from "../cockpitShared";
 import { RailInsetModal } from "./RailInsetModal";
 import type { TaskCardModel } from "./TaskSelectionRail";
 import { ToneChip, transportChipTone } from "./ToneChip";
-import { CHIP_TEXT_CLASS, formatChipLabel } from "./taskCardLabels";
-import { buildTaskDocSections, type TaskDocSection, type TaskDocTabId } from "./taskDetailSections";
-
-function transportLabel(transport?: TaskCardModel["transport"]): string {
-  if (transport === "api_sidecar") return "API (sidecar)";
-  if (transport === "api_external") return "API (endpoint)";
-  if (transport === "mcp_sidecar") return "MCP (sidecar)";
-  if (transport === "mcp_external") return "MCP (endpoint)";
-  return "—";
-}
+import { taskAvailabilityPresentation } from "./taskAvailability";
+import {
+  CHIP_TEXT_CLASS,
+  taskCardTagKey,
+  taskCardTagLabel,
+} from "./taskCardLabels";
+import { taskTransportLabel } from "./taskCardPresentation";
+import {
+  buildTaskDocSections,
+  type TaskDocSection,
+  type TaskDocTabId,
+} from "./taskDetailSections";
 
 function TaskDocTabBar({
   sections,
@@ -29,16 +32,27 @@ function TaskDocTabBar({
   active: TaskDocTabId;
   onChange: (tab: TaskDocTabId) => void;
 }) {
+  const { t } = useI18n();
   if (sections.length <= 1) return null;
 
   return (
     <div
       role="tablist"
-      aria-label="Task documents"
+      aria-label={t("taskSetup.details.documents")}
       className="flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-outline/40"
     >
       {sections.map((section) => {
         const selected = section.id === active;
+        const label =
+          section.id === "instruction"
+            ? t("taskSetup.details.document.instruction")
+            : section.id === "context"
+              ? t("taskSetup.details.document.context")
+              : section.id === "questionnaire"
+                ? t("taskSetup.details.document.questionnaire")
+                : section.id === "output-schema"
+                  ? t("taskSetup.details.document.outputSchema")
+                  : t("taskSetup.details.document.selfReport");
         return (
           <button
             key={section.id}
@@ -53,7 +67,7 @@ function TaskDocTabBar({
             }`}
           >
             <Sym name={section.icon} fill={selected ? 1 : 0} size={14} />
-            {section.label}
+            {label}
           </button>
         );
       })}
@@ -69,8 +83,15 @@ export interface TaskDetailModalProps {
   primaryAction?: { label: string; onClick: () => void };
 }
 
-export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDetailModalProps) {
+export function TaskDetailModal({
+  open,
+  card,
+  onClose,
+  primaryAction,
+}: TaskDetailModalProps) {
+  const { t } = useI18n();
   const taskPath = card?.taskPath?.trim() ?? "";
+  const availability = taskAvailabilityPresentation(card?.availabilityStatus, t);
 
   const detailQuery = useQuery({
     queryKey: ["task-detail", taskPath],
@@ -83,84 +104,132 @@ export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDeta
   const sections = useMemo(
     () =>
       buildTaskDocSections({
-        instructionMarkdown: detailQuery.data?.instructionMarkdown ?? card?.instructionMarkdown,
+        instructionMarkdown:
+          detailQuery.data?.instructionMarkdown ?? card?.instructionMarkdown,
         contextMarkdown: detailQuery.data?.contextMarkdown,
         questionnaireMarkdown: detailQuery.data?.questionnaireMarkdown,
         // Surveys: never surface platform-derived output schema in the task modal.
         outputSchemaMarkdown:
-          detailQuery.data?.metaType === "survey" ? null : detailQuery.data?.outputSchemaMarkdown,
+          detailQuery.data?.metaType === "survey"
+            ? null
+            : detailQuery.data?.outputSchemaMarkdown,
         selfReportMarkdown: detailQuery.data?.selfReportMarkdown,
-        hasStructuredQuestionnaire: Boolean(detailQuery.data?.questionnaire?.questions?.length),
+        hasStructuredQuestionnaire: Boolean(
+          detailQuery.data?.questionnaire?.questions?.length,
+        ),
       }),
     [card?.instructionMarkdown, detailQuery.data],
   );
 
-  const structuredQuestionnaire: SurveyInstrument | null =
-    detailQuery.data?.questionnaire?.questions?.length
-      ? detailQuery.data.questionnaire
-      : null;
+  const structuredQuestionnaire: SurveyInstrument | null = detailQuery.data
+    ?.questionnaire?.questions?.length
+    ? detailQuery.data.questionnaire
+    : null;
 
   const [activeTab, setActiveTab] = useState<TaskDocTabId>("instruction");
 
   useEffect(() => {
     if (!open || sections.length === 0) return;
     setActiveTab((current) =>
-      sections.some((section) => section.id === current) ? current : sections[0].id,
+      sections.some((section) => section.id === current)
+        ? current
+        : sections[0].id,
     );
   }, [open, card?.id, sections]);
 
-  const activeSection = sections.find((section) => section.id === activeTab) ?? sections[0] ?? null;
-  const loading = Boolean(taskPath) && detailQuery.isLoading && sections.length === 0;
-  const failed = Boolean(taskPath) && detailQuery.isError && sections.length === 0;
+  const activeSection =
+    sections.find((section) => section.id === activeTab) ?? sections[0] ?? null;
+  const loading =
+    Boolean(taskPath) && detailQuery.isLoading && sections.length === 0;
+  const failed =
+    Boolean(taskPath) && detailQuery.isError && sections.length === 0;
 
   return (
     <RailInsetModal
       open={open && Boolean(card)}
-      title={detailQuery.data?.title ?? card?.title ?? "Task"}
-      subtitle={card?.taskType ? `${card.taskType} task documents` : "Task documents"}
+      title={
+        detailQuery.data?.title ??
+        card?.title ??
+        t("taskSetup.details.defaultTitle")
+      }
+      subtitle={
+        card?.taskType
+          ? t("taskSetup.details.documentsForType", { type: card.taskType })
+          : t("taskSetup.details.documents")
+      }
       onClose={onClose}
     >
       {card && (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-1.5">
             {card.transport && (
-              <ToneChip tone={transportChipTone(card.transport)} className={CHIP_TEXT_CLASS}>
-                {transportLabel(card.transport)}
-              </ToneChip>
-            )}
-            {(card.tags ??
-              (card.tagLabels?.map((label) => ({ label, tone: "neutral" as const })) ??
-                [])).map((tag) => (
               <ToneChip
-                key={tag.label}
-                tone={tag.tone}
-                showDot={tag.label === "Available" || tag.label === "Unavailable"}
+                tone={transportChipTone(card.transport)}
                 className={CHIP_TEXT_CLASS}
               >
-                {formatChipLabel(tag.label)}
+                {taskTransportLabel(card.transport, t)}
+              </ToneChip>
+            )}
+            {(
+              card.tags ??
+              card.tagLabels?.map((label) => ({
+                label,
+                tone: "neutral" as const,
+              })) ??
+              []
+            ).map((tag) => (
+              <ToneChip
+                key={taskCardTagKey(tag)}
+                tone={tag.tone}
+                className={CHIP_TEXT_CLASS}
+              >
+                {taskCardTagLabel(tag, t)}
               </ToneChip>
             ))}
+            {availability && (
+              <ToneChip
+                key={`availability:${card.availabilityStatus}`}
+                tone={availability.tone}
+                showDot
+                className={CHIP_TEXT_CLASS}
+              >
+                {availability.label}
+              </ToneChip>
+            )}
           </div>
 
           {!taskPath && (
-            <p className="text-[14px] text-danger">This task has no task path — no instruction document to show.</p>
+            <p className="text-[14px] text-danger">
+              {t("taskSetup.details.missingPath")}
+            </p>
           )}
-          {loading && <p className="text-[14px] text-text-dim">Loading task documents…</p>}
+          {loading && (
+            <p className="text-[14px] text-text-dim">
+              {t("taskSetup.details.loading")}
+            </p>
+          )}
           {failed && (
             <p className="text-[14px] text-danger">
               {detailQuery.error instanceof ApiError
                 ? detailQuery.error.message
-                : "Could not load task documents."}
+                : t("taskSetup.details.loadFailed")}
             </p>
           )}
 
           {sections.length > 0 ? (
             <>
-              <TaskDocTabBar sections={sections} active={activeTab} onChange={setActiveTab} />
+              <TaskDocTabBar
+                sections={sections}
+                active={activeTab}
+                onChange={setActiveTab}
+              />
               {activeSection ? (
                 <div role="tabpanel" className="pt-1">
-                  {activeSection.id === "questionnaire" && structuredQuestionnaire ? (
-                    <QuestionnairePreview instrument={structuredQuestionnaire} />
+                  {activeSection.id === "questionnaire" &&
+                  structuredQuestionnaire ? (
+                    <QuestionnairePreview
+                      instrument={structuredQuestionnaire}
+                    />
                   ) : (
                     <Markdown className="text-[14px] leading-relaxed text-text-variant">
                       {activeSection.markdown}
@@ -172,7 +241,9 @@ export function TaskDetailModal({ open, card, onClose, primaryAction }: TaskDeta
           ) : null}
 
           {!loading && !failed && taskPath && sections.length === 0 ? (
-            <p className="text-[14px] text-text-dim">No task documents are available for this task.</p>
+            <p className="text-[14px] text-text-dim">
+              {t("taskSetup.details.none")}
+            </p>
           ) : null}
 
           {primaryAction ? (

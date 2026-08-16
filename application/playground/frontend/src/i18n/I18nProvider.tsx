@@ -18,7 +18,12 @@ import {
 import { createLatestRequestGuard, loadRegisteredLocale } from "./loader";
 import { getLocaleDefinition, isUiLocale, type UiLocale } from "./registry";
 import { SOURCE_LOCALE, SOURCE_MESSAGES, withEnglishFallback } from "./source";
-import type { MessageCatalog, MessageKey, MessageValues } from "./types";
+import type {
+  MessageCatalog,
+  MessageKey,
+  MessageValues,
+  RichMessageValues,
+} from "./types";
 
 const STORAGE_KEY = "matraix.uiLocale";
 const intlCache = createIntlCache();
@@ -29,6 +34,7 @@ export interface I18nContextValue {
   loadError: string | null;
   setLocale: (locale: UiLocale) => Promise<void>;
   t: (key: MessageKey, values?: MessageValues) => string;
+  rich: (key: MessageKey, values?: RichMessageValues) => ReactNode;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -113,10 +119,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       ) as string,
     [intl],
   );
+  const rich = useCallback<I18nContextValue["rich"]>(
+    (key, values) =>
+      intl.formatMessage(
+        { id: key, defaultMessage: SOURCE_MESSAGES[key] },
+        values,
+      ) as ReactNode,
+    [intl],
+  );
 
   const value = useMemo<I18nContextValue>(
-    () => ({ locale, loadingLocale, loadError, setLocale, t }),
-    [loadError, loadingLocale, locale, setLocale, t],
+    () => ({ locale, loadingLocale, loadError, setLocale, t, rich }),
+    [loadError, loadingLocale, locale, rich, setLocale, t],
   );
 
   return (

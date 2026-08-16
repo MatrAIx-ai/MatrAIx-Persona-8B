@@ -13,6 +13,7 @@
  */
 import { KnobSelect, type KnobOption } from "./cockpit/KnobSelect";
 import { Sym } from "./cockpit/cockpitShared";
+import { useI18n, type I18nContextValue } from "@/i18n/I18nProvider";
 import type { ConfigKnob, SessionConfig } from "@/lib/types";
 
 /**
@@ -22,14 +23,24 @@ import type { ConfigKnob, SessionConfig } from "@/lib/types";
  */
 export type ConfigOptionsMap = Partial<Record<keyof SessionConfig, string[]>>;
 
-/** Humanize a knob key as a fallback label when metadata is absent. */
-const FALLBACK_LABEL: Record<string, string> = {
-  engine: "Model",
-  rankerMode: "Ranker",
-  resourceMode: "Resources",
-  domain: "Domain",
-  botType: "Bot",
-};
+function localizedKnobLabel(
+  t: I18nContextValue["t"],
+  key: string,
+  fallback: string,
+): string {
+  switch (key) {
+    case "engine":
+      return t("cockpit.config.label.engine");
+    case "rankerMode":
+      return t("cockpit.config.label.rankerMode");
+    case "resourceMode":
+      return t("cockpit.config.label.resourceMode");
+    case "botType":
+      return t("cockpit.config.label.botType");
+    default:
+      return fallback;
+  }
+}
 
 /** Number of placeholder pills to show while the knob metadata loads. */
 const PLACEHOLDER_COUNT = 3;
@@ -56,14 +67,24 @@ function toKnobs(options: ConfigBarProps["options"]): ConfigKnob[] | null {
   // Degraded: synthesize bare knobs from the flat value map.
   return Object.entries(options).map(([key, values]) => ({
     key,
-    label: FALLBACK_LABEL[key] ?? key,
+    label: key,
     description: "",
-    options: (values ?? []).map((v) => ({ value: v, label: v, description: "" })),
+    options: (values ?? []).map((v) => ({
+      value: v,
+      label: v,
+      description: "",
+    })),
     rebuildsAgent: false,
   }));
 }
 
-export function ConfigBar({ config, options, disabled, onChange }: ConfigBarProps) {
+export function ConfigBar({
+  config,
+  options,
+  disabled,
+  onChange,
+}: ConfigBarProps) {
+  const { t } = useI18n();
   const knobs = toKnobs(options);
 
   if (!config || !knobs) {
@@ -100,7 +121,7 @@ export function ConfigBar({ config, options, disabled, onChange }: ConfigBarProp
         return (
           <div key={knob.key} className="flex items-center gap-1.5">
             <KnobSelect
-              label={knob.label || FALLBACK_LABEL[knob.key] || knob.key}
+              label={localizedKnobLabel(t, knob.key, knob.label || knob.key)}
               value={String(value)}
               options={knobOptions}
               onChange={(v) => onChange({ [key]: v } as Partial<SessionConfig>)}
@@ -109,8 +130,8 @@ export function ConfigBar({ config, options, disabled, onChange }: ConfigBarProp
             {knob.rebuildsAgent && (
               <span
                 className="flex items-center text-warn"
-                title="Changing this re-warms the recommender. The next turn will be slower."
-                aria-label="Changing this re-warms the recommender; the next turn will be slower"
+                title={t("cockpit.config.rewarm.title")}
+                aria-label={t("cockpit.config.rewarm.aria")}
               >
                 <Sym name="bolt" fill={1} size={14} />
               </span>

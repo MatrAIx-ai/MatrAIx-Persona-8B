@@ -1,4 +1,5 @@
 import { FOCUS_RING } from "../cockpit/cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface MatrAIxLogoProps {
   /** Pixel size for the wordmark (font-size). */
@@ -15,6 +16,7 @@ const SIZE_CLASS: Record<NonNullable<MatrAIxLogoProps["size"]>, string> = {
 };
 
 export function MatrAIxLogo({ size = "md", onClick, className = "" }: MatrAIxLogoProps) {
+  const { t } = useI18n();
   const wordmark = (
     <span
       className={`whitespace-nowrap font-display font-bold tracking-tight text-text-main ${SIZE_CLASS[size]} ${className}`}
@@ -29,7 +31,7 @@ export function MatrAIxLogo({ size = "md", onClick, className = "" }: MatrAIxLog
     <button
       type="button"
       onClick={onClick}
-      aria-label="MatrAIx home"
+      aria-label={t("studio.logo.home")}
       className={`transition hover:opacity-90 active:scale-[0.97] ${FOCUS_RING}`}
     >
       {wordmark}

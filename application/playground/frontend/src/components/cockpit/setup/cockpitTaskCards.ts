@@ -25,16 +25,6 @@ export function chatbotEvalTaskCards(
     const runningNow = Boolean(runningTaskIds?.has(task.id));
     const available =
       runningNow ? true : task.available === null || task.available === undefined ? null : task.available;
-    const statusTone: "secondary" | "danger" = available ? "secondary" : "danger";
-    const statusTags =
-      available === null
-        ? []
-        : [
-            {
-              label: available ? "Available" : "Unavailable",
-              tone: statusTone,
-            },
-          ];
     return {
       id: task.id,
       title: task.title,
@@ -44,10 +34,9 @@ export function chatbotEvalTaskCards(
       transport,
       available,
       canStart: task.canStart ?? false,
-      statusLabel: available === null ? undefined : available ? "Available" : "Unavailable",
-      statusDetail: runningNow
-        ? "Sidecar started for this run."
-        : task.statusDetail ?? undefined,
+      availabilityStatus: available === null ? undefined : available ? "available" : "unavailable",
+      runtimeStatus: runningNow ? "sidecar_started" : undefined,
+      statusDetail: runningNow ? undefined : task.statusDetail ?? undefined,
       capabilities: (task.capabilities ?? []).map((cap) => ({
         id: cap.id,
         label: cap.label,
@@ -58,16 +47,13 @@ export function chatbotEvalTaskCards(
       taskKind: task.taskKind,
       profileMarkdown: task.profileMarkdown,
       instructionMarkdown: task.instructionMarkdown,
-      tags: [
-        ...taskCardTags({
-          taskPath: task.taskPath,
-          taskKind: task.taskKind,
-          metaType: task.metaType,
-          domain: task.domain,
-          difficulty: task.difficulty,
-        }),
-        ...statusTags,
-      ],
+      tags: taskCardTags({
+        taskPath: task.taskPath,
+        taskKind: task.taskKind,
+        metaType: task.metaType,
+        domain: task.domain,
+        difficulty: task.difficulty,
+      }),
       searchTags: taskSearchTags(task.tags),
     };
   });

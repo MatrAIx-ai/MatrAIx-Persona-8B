@@ -19,8 +19,13 @@ import { useQuery } from "@tanstack/react-query";
 import { PersonaCard } from "./cockpit/PersonaCard";
 import { PersonaDrawer } from "./cockpit/PersonaDrawer";
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
 import { listPlaygroundPersonas } from "@/lib/api";
-import type { Domain, PlaygroundPersona, PlaygroundPersonasResponse } from "@/lib/types";
+import type {
+  Domain,
+  PlaygroundPersona,
+  PlaygroundPersonasResponse,
+} from "@/lib/types";
 
 /** How many personas to fetch per search (the full catalog is ~336). */
 const PERSONA_LIMIT = 400;
@@ -56,7 +61,13 @@ export interface CatalogDrawerProps {
   domain?: Domain;
 }
 
-export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDrawerProps) {
+export function CatalogDrawer({
+  open,
+  onClose,
+  selectedId,
+  onSelect,
+}: CatalogDrawerProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<SourceFilter>("all");
   // Clicking a card opens this persona's detail drawer (view), not select-and-close.
@@ -81,14 +92,18 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
   // Same query key the rail uses → React Query shares one cache entry.
   const personasQuery = useQuery<PlaygroundPersonasResponse>({
     queryKey: ["playground-personas", debouncedQuery],
-    queryFn: () => listPlaygroundPersonas({ q: debouncedQuery, limit: PERSONA_LIMIT }),
+    queryFn: () =>
+      listPlaygroundPersonas({ q: debouncedQuery, limit: PERSONA_LIMIT }),
     enabled: open,
     refetchOnWindowFocus: false,
     placeholderData: (prev) => prev,
     staleTime: 60 * 1000,
   });
 
-  const all = useMemo(() => personasQuery.data?.personas ?? [], [personasQuery.data]);
+  const all = useMemo(
+    () => personasQuery.data?.personas ?? [],
+    [personasQuery.data],
+  );
 
   // Distinct curated sources, for the per-source filter chips.
   const sources = useMemo(() => {
@@ -103,7 +118,9 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
   }, [all, filter]);
 
   const loadedLabel =
-    personasQuery.isLoading && all.length === 0 ? "…" : all.length.toLocaleString();
+    personasQuery.isLoading && all.length === 0
+      ? t("catalog.catalogDrawer.loading")
+      : all.length.toLocaleString();
 
   if (!open) return null;
 
@@ -117,27 +134,33 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
       className="fade-in fixed inset-0 z-50 flex flex-col bg-surface-dim"
       role="dialog"
       aria-modal="true"
-      aria-label="Browse personas"
+      aria-label={t("catalog.personaWorld.title")}
     >
       {/* Header: title + loaded count + close, then search + source chips. */}
       <div className="flex-shrink-0 border-b border-outline bg-surface-lowest px-6 py-5">
         <div className="mx-auto w-full max-w-[1320px]">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <div className="hud mb-1.5 text-[12px] text-primary">Persona catalog</div>
+              <div className="hud mb-1.5 text-[12px] text-primary">
+                {t("catalog.personaCatalog.eyebrow")}
+              </div>
               <h1 className="font-display text-[24px] font-bold tracking-tight text-text-main">
-                Browse personas
+                {t("catalog.personaWorld.title")}
               </h1>
             </div>
             <div className="flex items-center gap-3">
               <div className="rounded-md border border-outline bg-surface px-4 py-2 text-center">
-                <div className="hud text-[11px] text-text-dim">Loaded</div>
-                <div className="font-mono text-[18px] font-bold text-primary">{loadedLabel}</div>
+                <div className="hud text-[11px] text-text-dim">
+                  {t("catalog.catalogDrawer.loaded")}
+                </div>
+                <div className="font-mono text-[18px] font-bold text-primary">
+                  {loadedLabel}
+                </div>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close catalog"
+                aria-label={t("catalog.catalogDrawer.close")}
                 className={`flex h-9 w-9 flex-none items-center justify-center rounded-md border border-outline bg-surface-low text-text-variant transition-colors hover:border-primary hover:bg-surface hover:text-text-main active:bg-surface-high ${FOCUS_RING}`}
               >
                 <Sym name="close" size={18} />
@@ -147,31 +170,43 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-outline bg-field transition-colors hover:border-primary/40 focus-within:border-primary">
-              <Sym name="search" size={16} className="ml-3.5 flex-none text-text-dim" />
+              <Sym
+                name="search"
+                size={16}
+                className="ml-3.5 flex-none text-text-dim"
+              />
               <input
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search occupation, traits, demographics…"
-                aria-label="Search personas"
+                placeholder={t("catalog.catalogDrawer.searchPlaceholder")}
+                aria-label={t("catalog.personaCatalog.search")}
                 className="h-full w-full min-w-0 bg-transparent px-3 text-[15px] text-text-main outline-none placeholder:text-text-variant"
               />
               {query && (
                 <button
                   type="button"
                   onClick={() => setQuery("")}
-                  aria-label="Clear search"
+                  aria-label={t("catalog.personaStore.clearSearch")}
                   className={`mr-2 flex-none rounded p-1 text-text-dim transition-colors hover:bg-surface-high hover:text-text-main active:bg-surface-low ${FOCUS_RING}`}
                 >
                   <Sym name="close" size={16} />
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by source">
-              <FilterChip label="All" active={filter === "all"} onClick={() => setFilter("all")} />
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label={t("catalog.personaCatalog.filterBySource")}
+            >
               <FilterChip
-                label="Curated"
-                title="Hand-picked personas we ship by default"
+                label={t("catalog.personaCatalog.all")}
+                active={filter === "all"}
+                onClick={() => setFilter("all")}
+              />
+              <FilterChip
+                label={t("catalog.personaCatalog.curated")}
+                title={t("catalog.personaCatalog.curatedTitle")}
                 active={filter === "curated"}
                 onClick={() => setFilter("curated")}
               />
@@ -179,7 +214,9 @@ export function CatalogDrawer({ open, onClose, selectedId, onSelect }: CatalogDr
                 <FilterChip
                   key={s}
                   label={s}
-                  title={`Source dataset: ${s}`}
+                  title={t("catalog.personaCatalog.sourceDataset", {
+                    source: s,
+                  })}
                   active={filter === s}
                   onClick={() => setFilter(s)}
                 />
@@ -268,7 +305,10 @@ function CatalogSkeleton() {
       aria-hidden
     >
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="rounded-md border border-outline bg-surface p-4">
+        <div
+          key={i}
+          className="rounded-md border border-outline bg-surface p-4"
+        >
           <div className="mb-3 flex items-start justify-between">
             <div className="h-10 w-10 animate-rb-pulse rounded bg-surface-high" />
             <div className="h-3.5 w-14 animate-rb-pulse rounded bg-surface-high" />
@@ -284,6 +324,8 @@ function CatalogSkeleton() {
 
 /** Empty state: no personas match the current search. */
 function CatalogEmpty({ query }: { query: string }) {
+  const { t } = useI18n();
+
   return (
     <div className="rise-in flex flex-col items-center px-4 py-16 text-center">
       <div
@@ -293,12 +335,14 @@ function CatalogEmpty({ query }: { query: string }) {
         <Sym name="search_off" size={26} className="text-text-dim" />
       </div>
       <p className="font-display text-[15px] font-semibold text-text-main">
-        {query ? "No matches" : "No personas yet"}
+        {query
+          ? t("catalog.personaCatalog.noMatches")
+          : t("catalog.personaCatalog.noPersonasYet")}
       </p>
       <p className="mt-1 max-w-[320px] text-[14px] leading-snug text-text-variant">
         {query
-          ? `Nothing matches “${query}”. Try a role like “nurse” or a broader term.`
-          : "No personas to show yet. Try clearing the source filter."}
+          ? t("catalog.personaCatalog.nothingMatches", { query })
+          : t("catalog.personaCatalog.emptyDescription")}
       </p>
     </div>
   );
@@ -306,6 +350,8 @@ function CatalogEmpty({ query }: { query: string }) {
 
 /** Error state: the catalog failed to load, with a retry. */
 function CatalogError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useI18n();
+
   return (
     <div className="rise-in mx-auto max-w-md rounded-md border border-outline border-l-4 border-l-danger bg-surface px-4 py-6 text-center">
       <div
@@ -314,9 +360,11 @@ function CatalogError({ onRetry }: { onRetry: () => void }) {
       >
         <Sym name="error" size={24} className="text-danger" />
       </div>
-      <p className="font-display text-[15px] font-semibold text-text-main">Couldn&apos;t load personas</p>
+      <p className="font-display text-[15px] font-semibold text-text-main">
+        {t("catalog.personaCatalog.couldNotLoad")}
+      </p>
       <p className="mx-auto mt-1 max-w-[300px] text-[14px] leading-snug text-text-variant">
-        We couldn&apos;t load the personas. Check the backend is running, then retry.
+        {t("catalog.personaCatalog.loadDescription")}
       </p>
       <button
         type="button"
@@ -324,7 +372,7 @@ function CatalogError({ onRetry }: { onRetry: () => void }) {
         className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-[13px] font-medium text-danger transition-colors hover:bg-danger/20 active:bg-danger/30 ${FOCUS_RING}`}
       >
         <Sym name="refresh" size={15} />
-        Try again
+        {t("catalog.personaCatalog.tryAgain")}
       </button>
     </div>
   );

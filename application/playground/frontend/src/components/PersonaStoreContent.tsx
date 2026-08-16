@@ -4,19 +4,16 @@
  * 10k preview; search/filters apply to that window). Headline count is the
  * dataset total.
  */
-import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { BenchPersonaCard } from "./cockpit/setup/BenchPersonaCard";
 import { BenchPersonaDetailPanel } from "./cockpit/setup/BenchPersonaDetailPanel";
-import { CockpitSelect, type CockpitSelectOption } from "./cockpit/setup/CockpitSelect";
+import {
+  CockpitSelect,
+  type CockpitSelectOption,
+} from "./cockpit/setup/CockpitSelect";
 import { PersonaFilterModal } from "./cockpit/setup/PersonaFilterModal";
 import {
   applyAllSuggestions,
@@ -40,8 +37,9 @@ import {
 } from "./cockpit/setup/personaSearchHits";
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
 import { StudioGlassPanel } from "./studio/StudioShell";
+import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
-import { personaPoolEmptyMessage, poolSlugLabel } from "@/lib/personaPoolCopy";
+import { personaPoolEmptyState, poolSlugLabel } from "@/lib/personaPoolCopy";
 import type {
   PersonaMatchedAttribute,
   PersonaPoolCatalog,
@@ -81,6 +79,7 @@ function PersonaSearchField({
   inputRef?: React.RefObject<HTMLInputElement>;
   placeholder: string;
 }) {
+  const { t } = useI18n();
   const [local, setLocal] = useState(value);
   useEffect(() => {
     setLocal(value);
@@ -100,7 +99,7 @@ function PersonaSearchField({
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder={placeholder}
-        aria-label="Search personas"
+        aria-label={t("catalog.personaStore.search")}
         className="h-full w-full min-w-0 bg-transparent px-2.5 text-[13px] text-text-main outline-none placeholder:text-text-variant"
       />
       {local ? (
@@ -110,7 +109,7 @@ function PersonaSearchField({
             setLocal("");
             onDebouncedChange("");
           }}
-          aria-label="Clear search"
+          aria-label={t("catalog.personaStore.clearSearch")}
           className={`mr-1.5 flex-none rounded p-1 text-text-dim transition-colors hover:bg-surface-high hover:text-text-main ${FOCUS_RING}`}
         >
           <Sym name="close" size={15} />
@@ -130,7 +129,9 @@ function matchesPersonaFilters(
   }
   for (const [dimId, values] of Object.entries(filters.dimensionFilters)) {
     if (values.length === 0) continue;
-    if (!values.some((value) => personaHasDimensionValue(persona, dimId, value))) {
+    if (
+      !values.some((value) => personaHasDimensionValue(persona, dimId, value))
+    ) {
       return false;
     }
   }
@@ -152,13 +153,18 @@ export function PersonaStoreContent({
   autoFocusSearch = false,
   onOpenInPlayground,
 }: PersonaStoreContentProps) {
+  const { t } = useI18n();
   const [pool, setPool] = useState(PERSONA_BENCH_POOL);
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<PersonaDimensionFilters>(emptyPersonaDimensionFilters());
+  const [filters, setFilters] = useState<PersonaDimensionFilters>(
+    emptyPersonaDimensionFilters(),
+  );
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [viewing, setViewing] = useState<PersonaPoolPersonaCard | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [previewPersonas, setPreviewPersonas] = useState<PersonaPoolPersonaCard[]>([]);
+  const [previewPersonas, setPreviewPersonas] = useState<
+    PersonaPoolPersonaCard[]
+  >([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
@@ -214,9 +220,16 @@ export function PersonaStoreContent({
     void (async () => {
       const accumulated: PersonaPoolPersonaCard[] = [];
       try {
-        for (let offset = 0; offset < PERSONA_1M_PREVIEW_CAP; offset += PERSONA_1M_PAGE) {
+        for (
+          let offset = 0;
+          offset < PERSONA_1M_PREVIEW_CAP;
+          offset += PERSONA_1M_PAGE
+        ) {
           if (cancelled || gen !== previewGenRef.current) return;
-          const pageLimit = Math.min(PERSONA_1M_PAGE, PERSONA_1M_PREVIEW_CAP - offset);
+          const pageLimit = Math.min(
+            PERSONA_1M_PAGE,
+            PERSONA_1M_PREVIEW_CAP - offset,
+          );
           const page = await api.getPersonaPoolCards({
             pool,
             limit: pageLimit,
@@ -234,7 +247,8 @@ export function PersonaStoreContent({
       } catch {
         if (!cancelled && gen === previewGenRef.current) setPreviewError(true);
       } finally {
-        if (!cancelled && gen === previewGenRef.current) setPreviewLoading(false);
+        if (!cancelled && gen === previewGenRef.current)
+          setPreviewLoading(false);
       }
     })();
 
@@ -267,10 +281,16 @@ export function PersonaStoreContent({
     refetchOnWindowFocus: false,
   });
 
-  const suggestions: PersonaMatchedAttribute[] = matchQuery.data?.attributes ?? [];
+  const suggestions: PersonaMatchedAttribute[] =
+    matchQuery.data?.attributes ?? [];
 
   const browseQuery = useQuery({
-    queryKey: ["persona-pool-store", pool, is1m ? "preview-skip" : "all", PERSONA_POOL_PAGE],
+    queryKey: [
+      "persona-pool-store",
+      pool,
+      is1m ? "preview-skip" : "all",
+      PERSONA_POOL_PAGE,
+    ],
     queryFn: async () => {
       if (is1m) {
         return {
@@ -296,14 +316,15 @@ export function PersonaStoreContent({
   const datasetOptions = useMemo<CockpitSelectOption[]>(() => {
     const listed = datasetsQuery.data?.datasets ?? [];
     const options: CockpitSelectOption[] = listed.map((item) => {
-      const unavailable = item.kind === "production" && item.available === false;
+      const unavailable =
+        item.kind === "production" && item.available === false;
       return {
         value: item.pool,
         label: item.label,
         meta: unavailable
           ? "download HF release / set MATRIX_PERSONA_1M_DIR"
           : item.count > 0
-            ? `${item.count.toLocaleString()} personas`
+            ? t("catalog.personaStore.datasetPersonas", { count: item.count })
             : undefined,
       };
     });
@@ -314,22 +335,34 @@ export function PersonaStoreContent({
       });
     }
     if (options.length === 0) {
-      return [{ value: PERSONA_BENCH_POOL, label: "matraix-persona-dev-sample" }];
+      return [
+        { value: PERSONA_BENCH_POOL, label: "matraix-persona-dev-sample" },
+      ];
     }
     return options;
-  }, [datasetsQuery.data?.datasets, pool]);
+  }, [datasetsQuery.data?.datasets, pool, t]);
 
   const loaded = useMemo(
     () => (previewMode ? previewPersonas : (browseQuery.data?.personas ?? [])),
     [browseQuery.data?.personas, previewMode, previewPersonas],
   );
-  const browseMode = previewMode ? "preview" : (browseQuery.data?.mode ?? "all");
+  const browseMode = previewMode
+    ? "preview"
+    : (browseQuery.data?.mode ?? "all");
   const personaSources = useMemo(() => {
-    const fromCatalog = catalogQuery.data?.dimensionCategories?.personaSources ?? [];
+    const fromCatalog =
+      catalogQuery.data?.dimensionCategories?.personaSources ?? [];
     if (fromCatalog.length > 0) return fromCatalog;
-    return [...new Set(loaded.map((persona) => persona.source).filter((s): s is string => Boolean(s)))];
+    return [
+      ...new Set(
+        loaded
+          .map((persona) => persona.source)
+          .filter((s): s is string => Boolean(s)),
+      ),
+    ];
   }, [loaded, catalogQuery.data]);
   const poolCount = catalogQuery.data?.count ?? loaded.length;
+  const emptyPoolState = personaPoolEmptyState(catalogQuery.data);
   const filterCount = activeFilterCount(filters);
   const searchingPreview = previewMode && hitQueryReady;
   const filteringPreview = previewMode && filterCount > 0;
@@ -384,8 +417,11 @@ export function PersonaStoreContent({
 
     const onScroll = () => {
       const margin = 480;
-      const rootBottom = root ? root.getBoundingClientRect().bottom : window.innerHeight;
-      if (sentinel.getBoundingClientRect().top <= rootBottom + margin) maybeReveal();
+      const rootBottom = root
+        ? root.getBoundingClientRect().bottom
+        : window.innerHeight;
+      if (sentinel.getBoundingClientRect().top <= rootBottom + margin)
+        maybeReveal();
     };
 
     const observer = new IntersectionObserver(
@@ -404,7 +440,10 @@ export function PersonaStoreContent({
     };
   }, [enabled, matchedPersonas.length, previewMode, visibleCount]);
 
-  const dimIds = useMemo(() => catalogDimIdSet(catalogQuery.data), [catalogQuery.data]);
+  const dimIds = useMemo(
+    () => catalogDimIdSet(catalogQuery.data),
+    [catalogQuery.data],
+  );
 
   const hitSummary = useMemo(() => {
     if (previewQueryPending) return [];
@@ -441,7 +480,14 @@ export function PersonaStoreContent({
       );
     }
     return map;
-  }, [catalogQuery.data, deferredQuery, dimIds, hitQueryReady, personas, suggestions]);
+  }, [
+    catalogQuery.data,
+    deferredQuery,
+    dimIds,
+    hitQueryReady,
+    personas,
+    suggestions,
+  ]);
 
   function setSourceFilter(source: string | null) {
     setFilters((prev) => ({
@@ -461,7 +507,9 @@ export function PersonaStoreContent({
 
   function toggleSelected(personaId: string) {
     setSelectedIds((prev) =>
-      prev.includes(personaId) ? prev.filter((id) => id !== personaId) : [...prev, personaId],
+      prev.includes(personaId)
+        ? prev.filter((id) => id !== personaId)
+        : [...prev, personaId],
     );
   }
 
@@ -476,7 +524,11 @@ export function PersonaStoreContent({
   }
 
   const activeSource =
-    filters.sources.length === 1 ? filters.sources[0] : filters.sources.length === 0 ? "all" : null;
+    filters.sources.length === 1
+      ? filters.sources[0]
+      : filters.sources.length === 0
+        ? "all"
+        : null;
 
   const previewLoadedCount = previewPersonas.length;
   const dimensionFilterCount = Object.values(filters.dimensionFilters).filter(
@@ -486,30 +538,42 @@ export function PersonaStoreContent({
   // Headline: dataset total when idle; match count over the full 10k once ready.
   const countingMatches = hitQueryReady || filterCount > 0;
   const countMain = previewQueryPending
-    ? "…"
+    ? t("catalog.personaStore.loading")
     : countingMatches
       ? matchedPersonas.length.toLocaleString()
       : poolCount > 0
         ? poolCount.toLocaleString()
         : personas.length.toLocaleString();
   const countSuffix = previewQueryPending
-    ? "loading preview"
+    ? t("catalog.personaStore.loadingPreviewStatus")
     : countingMatches
-      ? "matched"
-      : "total";
+      ? t("catalog.personaStore.matched")
+      : t("catalog.personaStore.total");
   const browseBusy =
-    (previewMode && previewLoadedCount === 0 && previewLoading && !previewError) ||
+    (previewMode &&
+      previewLoadedCount === 0 &&
+      previewLoading &&
+      !previewError) ||
     (!previewMode && browseQuery.isLoading && loaded.length === 0);
-  const browseFailed = previewMode ? previewError && previewLoadedCount === 0 : browseQuery.isError;
+  const browseFailed = previewMode
+    ? previewError && previewLoadedCount === 0
+    : browseQuery.isError;
   const canRevealMore = previewMode && visibleCount < matchedPersonas.length;
 
   const loadMoreFooter =
     previewMode && !browseBusy && !browseFailed ? (
-      <div ref={loadMoreRef} className="flex min-h-10 items-center justify-center py-4">
+      <div
+        ref={loadMoreRef}
+        className="flex min-h-10 items-center justify-center py-4"
+      >
         {previewQueryPending ? (
-          <p className="text-[12px] text-text-dim">Loading preview for search…</p>
+          <p className="text-[12px] text-text-dim">
+            {t("catalog.personaStore.loadingPreview")}
+          </p>
         ) : canRevealMore ? (
-          <p className="text-[12px] text-text-dim">Scroll for more</p>
+          <p className="text-[12px] text-text-dim">
+            {t("catalog.personaStore.scrollMore")}
+          </p>
         ) : null}
       </div>
     ) : null;
@@ -521,7 +585,7 @@ export function PersonaStoreContent({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="w-full shrink-0 sm:min-w-[16rem] sm:max-w-[20rem] sm:flex-1 lg:max-w-[22rem]">
               <CockpitSelect
-                label="Dataset"
+                label={t("catalog.personaStore.dataset")}
                 inlineLabel
                 labelClassName="w-[3.6rem] text-[11px]"
                 value={pool}
@@ -536,7 +600,7 @@ export function PersonaStoreContent({
               value={query}
               onDebouncedChange={setQuery}
               inputRef={inputRef}
-              placeholder="Search id, name, or attributes…"
+              placeholder={t("catalog.personaStore.searchPlaceholder")}
             />
             <button
               type="button"
@@ -548,7 +612,7 @@ export function PersonaStoreContent({
               }`}
             >
               <Sym name="tune" size={15} />
-              Filters
+              {t("catalog.personaStore.filters")}
               {dimensionFilterCount > 0 ? (
                 <span className="rounded-full bg-on-primary/20 px-1.5 py-0.5 text-[10px] font-bold">
                   {dimensionFilterCount}
@@ -560,15 +624,21 @@ export function PersonaStoreContent({
                 {countMain}
               </span>
               <span className="text-[12px] text-text-dim">{countSuffix}</span>
-              {countingMatches && matchedPersonas.length > 0 && !previewQueryPending ? (
+              {countingMatches &&
+              matchedPersonas.length > 0 &&
+              !previewQueryPending ? (
                 <button
                   type="button"
                   onClick={() =>
-                    selectPersonaGroup(matchedPersonas.map((persona) => persona.personaId))
+                    selectPersonaGroup(
+                      matchedPersonas.map((persona) => persona.personaId),
+                    )
                   }
                   className={`ml-1 text-[12px] font-medium text-primary hover:underline ${FOCUS_RING}`}
                 >
-                  Select all {matchedPersonas.length.toLocaleString()}
+                  {t("catalog.personaStore.selectAllCount", {
+                    count: matchedPersonas.length,
+                  })}
                 </button>
               ) : null}
             </div>
@@ -577,13 +647,13 @@ export function PersonaStoreContent({
           <div
             className="flex flex-wrap items-center gap-1.5"
             role="group"
-            aria-label="Filter by data source"
+            aria-label={t("catalog.personaStore.filterByDataSource")}
           >
             <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-text-dim">
-              Source
+              {t("catalog.personaStore.source")}
             </span>
             <SourceChip
-              label="All"
+              label={t("catalog.personaStore.all")}
               active={activeSource === "all"}
               onClick={() => setSourceFilter(null)}
             />
@@ -600,17 +670,30 @@ export function PersonaStoreContent({
           {suggestions.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-secondary">
-                Suggested
+                {t("catalog.personaStore.suggested")}
               </span>
               {suggestions.map((attr) => {
                 const active = isSuggestionSelected(filters, attr);
-                const label = (attr.label || attr.dimensionId).replace(/_/g, " ");
+                const label = (attr.label || attr.dimensionId).replace(
+                  /_/g,
+                  " ",
+                );
                 return (
                   <button
                     key={suggestionKey(attr)}
                     type="button"
-                    title={attr.evidence ? `evidence: ${attr.evidence}` : undefined}
-                    onClick={() => setFilters((prev) => toggleSuggestionInFilters(prev, attr))}
+                    title={
+                      attr.evidence
+                        ? t("catalog.personaStore.evidence", {
+                            evidence: attr.evidence,
+                          })
+                        : undefined
+                    }
+                    onClick={() =>
+                      setFilters((prev) =>
+                        toggleSuggestionInFilters(prev, attr),
+                      )
+                    }
                     className={`inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${FOCUS_RING} ${
                       active
                         ? "bg-secondary/25 text-secondary ring-1 ring-secondary/50"
@@ -625,10 +708,12 @@ export function PersonaStoreContent({
               })}
               <button
                 type="button"
-                onClick={() => setFilters((prev) => applyAllSuggestions(prev, suggestions))}
+                onClick={() =>
+                  setFilters((prev) => applyAllSuggestions(prev, suggestions))
+                }
                 className={`text-[11px] font-medium text-primary hover:underline ${FOCUS_RING}`}
               >
-                Select all
+                {t("catalog.personaStore.selectAll")}
               </button>
             </div>
           ) : null}
@@ -636,18 +721,27 @@ export function PersonaStoreContent({
           {hitSummary.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-primary">
-                Matches
+                {t("catalog.personaStore.matches")}
               </span>
               {hitSummary.map((hit) => {
-                const active = (filters.dimensionFilters[hit.dimensionId] ?? []).includes(hit.value);
+                const active = (
+                  filters.dimensionFilters[hit.dimensionId] ?? []
+                ).includes(hit.value);
                 return (
                   <button
                     key={`${hit.dimensionId}:${hit.value}`}
                     type="button"
                     title={
                       active
-                        ? `Clear filter ${hit.label} = ${hit.value}`
-                        : `Select all ${hit.personaCount} with ${hit.label} = ${hit.value}`
+                        ? t("catalog.personaStore.clearFilter", {
+                            label: hit.label,
+                            value: hit.value,
+                          })
+                        : t("catalog.personaStore.selectAllWith", {
+                            count: hit.personaCount,
+                            label: hit.label,
+                            value: hit.value,
+                          })
                     }
                     onClick={() => {
                       const turningOn = !active;
@@ -663,7 +757,11 @@ export function PersonaStoreContent({
                         selectPersonaGroup(
                           matchedPersonas
                             .filter((persona) =>
-                              personaHasDimensionValue(persona, hit.dimensionId, hit.value),
+                              personaHasDimensionValue(
+                                persona,
+                                hit.dimensionId,
+                                hit.value,
+                              ),
                             )
                             .map((persona) => persona.personaId),
                         );
@@ -715,10 +813,19 @@ export function PersonaStoreContent({
             hasFilters={filterCount > 0}
             emptyPoolMessage={
               previewQueryPending
-                ? `Loading the full ${PERSONA_1M_PREVIEW_CAP.toLocaleString()} preview for search/filters… ${previewLoadedCount.toLocaleString()} / ${PERSONA_1M_PREVIEW_CAP.toLocaleString()}`
-                : is1m && browseMode === "preview" && (query.trim() || filterCount > 0)
-                  ? "No hits in the 10k preview window. Clear search/filters, or try different attributes."
-                  : personaPoolEmptyMessage(catalogQuery.data)
+                ? t("catalog.personaStore.loadingPreviewCount", {
+                    total: PERSONA_1M_PREVIEW_CAP,
+                    loaded: previewLoadedCount,
+                  })
+                : is1m &&
+                    browseMode === "preview" &&
+                    (query.trim() || filterCount > 0)
+                  ? t("catalog.personaStore.noPreviewHits")
+                  : t("catalog.personaStore.emptyPool", {
+                      pool:
+                        emptyPoolState.pool ??
+                        t("catalog.personaStore.unnamedPool"),
+                    })
             }
           />
           {loadMoreFooter}
@@ -746,10 +853,14 @@ export function PersonaStoreContent({
         </>
       )}
 
-      {queryingPreview && !previewQueryPending && matchedPersonas.length > personas.length ? (
+      {queryingPreview &&
+      !previewQueryPending &&
+      matchedPersonas.length > personas.length ? (
         <p className="mt-3 text-center text-[12px] text-text-dim">
-          Showing {personas.length.toLocaleString()} of {matchedPersonas.length.toLocaleString()} —{" "}
-          scroll for more
+          {t("catalog.personaStore.showing", {
+            shown: personas.length,
+            total: matchedPersonas.length,
+          })}
         </p>
       ) : null}
 
@@ -759,7 +870,7 @@ export function PersonaStoreContent({
               <button
                 type="button"
                 className="absolute inset-0 bg-surface-dim/75 backdrop-blur-sm"
-                aria-label="Close persona details"
+                aria-label={t("catalog.personaStore.closeDetails")}
                 onClick={() => setViewing(null)}
               />
               <div className="relative z-10 flex h-[min(88vh,760px)] w-full max-w-lg min-h-0">
@@ -769,11 +880,13 @@ export function PersonaStoreContent({
                   onClose={() => setViewing(null)}
                   onUse={(persona) => {
                     setSelectedIds((prev) =>
-                      prev.includes(persona.personaId) ? prev : [...prev, persona.personaId],
+                      prev.includes(persona.personaId)
+                        ? prev
+                        : [...prev, persona.personaId],
                     );
                     setViewing(null);
                   }}
-                  useLabel="Add to selection"
+                  useLabel={t("catalog.personaStore.addToSelection")}
                   className="glass-panel-strong h-full min-h-0 w-full p-4 shadow-2xl sm:p-5"
                 />
               </div>
@@ -799,10 +912,12 @@ export function PersonaStoreContent({
               <div className="pointer-events-auto glass-panel-strong flex w-full max-w-xl flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 px-4 py-3 shadow-2xl">
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-text-main">
-                    {selectedIds.length.toLocaleString()} selected
+                    {t("catalog.personaStore.selected", {
+                      count: selectedIds.length,
+                    })}
                   </p>
                   <p className="text-[12px] text-text-dim">
-                    Open in Playground, then pick a task.
+                    {t("catalog.personaStore.openHint")}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -811,7 +926,7 @@ export function PersonaStoreContent({
                     onClick={() => setSelectedIds([])}
                     className={`rounded-lg px-3 py-1.5 text-[13px] font-medium text-text-variant hover:bg-surface-high hover:text-text-main ${FOCUS_RING}`}
                   >
-                    Clear
+                    {t("catalog.personaStore.clearSelection")}
                   </button>
                   <button
                     type="button"
@@ -820,7 +935,7 @@ export function PersonaStoreContent({
                     className={`inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-[13px] font-semibold text-on-primary disabled:opacity-50 ${FOCUS_RING}`}
                   >
                     <Sym name="play_arrow" size={16} />
-                    Open in Playground
+                    {t("catalog.taskGallery.openPlayground")}
                   </button>
                 </div>
               </div>
@@ -863,7 +978,10 @@ function SourceChip({
 
 function CatalogSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden>
+    <div
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      aria-hidden
+    >
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="glass-panel rounded-xl p-4">
           <div className="mb-3 flex items-start justify-between">
@@ -887,19 +1005,23 @@ function CatalogEmpty({
   hasFilters: boolean;
   emptyPoolMessage: string;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="glass-panel rise-in flex flex-col items-center rounded-xl px-4 py-16 text-center">
       <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-lg border border-dashed border-outline/50 bg-surface/50">
         <Sym name="search_off" size={26} className="text-text-dim" />
       </div>
       <p className="font-display text-[15px] font-semibold text-text-main">
-        {query || hasFilters ? "No matches" : "No personas yet"}
+        {query || hasFilters
+          ? t("catalog.personaStore.noMatches")
+          : t("catalog.personaStore.noPersonasYet")}
       </p>
       <p className="mt-1 max-w-[360px] text-[14px] leading-snug text-text-variant">
         {query
-          ? `Nothing matches "${query}". Try another attribute value, or use Filters.`
+          ? t("catalog.personaStore.nothingMatches", { query })
           : hasFilters
-            ? "No personas match the current filters."
+            ? t("catalog.personaStore.noFilterMatches")
             : emptyPoolMessage}
       </p>
     </div>
@@ -907,15 +1029,19 @@ function CatalogEmpty({
 }
 
 function CatalogError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useI18n();
+
   return (
     <div className="glass-panel rise-in flex flex-col items-center rounded-xl px-4 py-16 text-center">
-      <p className="font-display text-[15px] font-semibold text-text-main">Could not load personas</p>
+      <p className="font-display text-[15px] font-semibold text-text-main">
+        {t("catalog.personaStore.couldNotLoad")}
+      </p>
       <button
         type="button"
         onClick={onRetry}
         className={`mt-3 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-on-primary ${FOCUS_RING}`}
       >
-        Retry
+        {t("catalog.personaStore.retry")}
       </button>
     </div>
   );

@@ -1,4 +1,9 @@
 import type { SurveyQuestion, SurveyTrajectoryEvent } from "@/lib/types";
+import {
+  localizedBooleanLabel,
+  type Translate,
+} from "@/lib/localizedDisplayValues";
+
 
 const TYPE_LABELS: Record<string, string> = {
   likert: "Likert",
@@ -29,7 +34,10 @@ const TYPE_TONE: Record<string, "primary" | "accent" | "warn" | "neutral"> = {
   bool: "primary",
 };
 
-const TYPE_CHIP_CLASS: Record<"primary" | "accent" | "warn" | "neutral", string> = {
+const TYPE_CHIP_CLASS: Record<
+  "primary" | "accent" | "warn" | "neutral",
+  string
+> = {
   primary: "border-transparent bg-primary/10 text-primary",
   accent: "border-transparent bg-accent/10 text-accent",
   warn: "border-transparent bg-warn/10 text-warn",
@@ -42,9 +50,30 @@ export type SurveyQuestionTypeCount = {
   count: number;
 };
 
+function knownQuestionTypeLabel(type: string, t?: Translate): string {
+  switch (type) {
+    case "likert":
+      return t ? t("runs.questionType.likert") : TYPE_LABELS.likert;
+    case "single_choice":
+      return t
+        ? t("runs.questionType.singleChoice")
+        : TYPE_LABELS.single_choice;
+    case "multi_choice":
+      return t ? t("runs.questionType.multiChoice") : TYPE_LABELS.multi_choice;
+    case "free_text":
+      return t ? t("runs.questionType.freeText") : TYPE_LABELS.free_text;
+    case "boolean":
+    case "bool":
+      return t ? t("runs.questionType.yesNo") : TYPE_LABELS[type];
+    default:
+      return type.replace(/_/g, " ");
+  }
+}
+
 /** Count instrument questions by type for debrief / scorecard tiles. */
 export function countSurveyQuestionTypes(
   questions: ReadonlyArray<SurveyQuestion> | null | undefined,
+  t?: Translate,
 ): SurveyQuestionTypeCount[] {
   const counts = new Map<string, number>();
   for (const question of questions ?? []) {
@@ -54,20 +83,25 @@ export function countSurveyQuestionTypes(
   return [...counts.entries()]
     .map(([type, count]) => ({
       type,
-      label: TYPE_LABELS[type] ?? type.replace(/_/g, " "),
+      label: knownQuestionTypeLabel(type, t),
       count,
     }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
-export function surveyQuestionTypeLabel(type: string | null | undefined): string {
+export function surveyQuestionTypeLabel(
+  type: string | null | undefined,
+  t?: Translate,
+): string {
   const key = (type ?? "").trim();
-  if (!key) return "Question";
-  return TYPE_LABELS[key] ?? key.replace(/_/g, " ");
+  if (!key) return t ? t("runs.question") : "Question";
+  return knownQuestionTypeLabel(key, t);
 }
 
 /** Border / fill / text classes for a question-type chip (never mint/secondary). */
-export function surveyQuestionTypeChipClass(type: string | null | undefined): string {
+export function surveyQuestionTypeChipClass(
+  type: string | null | undefined,
+): string {
   const key = (type ?? "").trim();
   const tone = TYPE_TONE[key] ?? "neutral";
   return TYPE_CHIP_CLASS[tone];
@@ -104,20 +138,29 @@ export function surveyTrajectoryPrompt(event: SurveyTrajectoryEvent): string {
   return typeof prompt === "string" ? prompt.trim() : "";
 }
 
-export function surveyTrajectoryQuestionIndex(event: SurveyTrajectoryEvent): number | null {
+export function surveyTrajectoryQuestionIndex(
+  event: SurveyTrajectoryEvent,
+): number | null {
   const raw = event.context?.questionIndex;
   return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
 }
 
-export function surveyTrajectoryQuestionType(event: SurveyTrajectoryEvent): string {
+export function surveyTrajectoryQuestionType(
+  event: SurveyTrajectoryEvent,
+): string {
   const raw = event.context?.questionType;
   return typeof raw === "string" ? raw : "";
 }
 
-export function formatSurveyTrajectoryValue(value: unknown): string {
+export function formatSurveyTrajectoryValue(
+  value: unknown,
+  t?: Translate,
+): string {
   if (Array.isArray(value)) return value.map((item) => String(item)).join(", ");
   if (value === null || value === undefined) return "";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "boolean") {
+    return t ? localizedBooleanLabel(value, t) : value ? "Yes" : "No";
+  }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }

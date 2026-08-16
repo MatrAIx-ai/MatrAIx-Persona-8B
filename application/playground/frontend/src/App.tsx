@@ -6,6 +6,7 @@
 import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { TopBar, type StudioMode } from "@/components/TopBar";
 import { PlaygroundCockpit } from "@/components/cockpit/PlaygroundCockpit";
 import type { PlaygroundTaskType } from "@/components/cockpit/TaskTypeSwitch";
@@ -26,6 +27,7 @@ function parseMode(value: string | null): StudioMode {
 }
 
 export default function App() {
+  const { t } = useI18n();
   const { state: urlState, setState: setUrlState } = useUrlState();
   const mode = parseMode(urlState.mode);
   const activeHarborJobId = urlState.harborJob;
@@ -33,7 +35,9 @@ export default function App() {
   const galleryViewActive = urlState.view === "gallery";
   const storeViewActive = urlState.view === "store";
   const runsViewActive =
-    urlState.view === "runs" || activeHarborJobId !== null || activeHarborTrialId !== null;
+    urlState.view === "runs" ||
+    activeHarborJobId !== null ||
+    activeHarborTrialId !== null;
 
   const [, setPlaygroundDomain] = useState<Domain>("movie");
 
@@ -191,7 +195,7 @@ export default function App() {
               backToList={backToRunsList}
               backToHarborJob={backToHarborJob}
               onClose={closeRunsView}
-              backLabel="Back to playground"
+              backLabel={t("runs.backToPlayground")}
             />
           </div>
         </div>
@@ -209,7 +213,7 @@ export default function App() {
           backToList={backToRunsList}
           backToHarborJob={backToHarborJob}
           onClose={closeRunsView}
-          backLabel="Back to home"
+          backLabel={t("runs.backHome")}
         />
       </div>
     );

@@ -4,7 +4,7 @@ import { createIntl, createIntlCache } from "react-intl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LocalePopover } from "@/components/LocalePopover";
-import { I18nProvider } from "../I18nProvider";
+import { I18nProvider, useI18n } from "../I18nProvider";
 import {
   createLatestRequestGuard,
   createLocalePackLoader,
@@ -101,6 +101,31 @@ describe("locale loading", () => {
 });
 
 describe("provider and locale popover", () => {
+  it("renders a complete ICU sentence with styled message parts", () => {
+    function ScoreLegend() {
+      const { rich } = useI18n();
+      return (
+        <p>
+          {rich("scorecards.scale.legend", {
+            green: (parts) => <strong data-band="high">{parts}</strong>,
+            amber: (parts) => <strong data-band="mid">{parts}</strong>,
+            red: (parts) => <strong data-band="low">{parts}</strong>,
+          })}
+        </p>
+      );
+    }
+
+    render(
+      <I18nProvider>
+        <ScoreLegend />
+      </I18nProvider>,
+    );
+    expect(screen.getByText("green").getAttribute("data-band")).toBe("high");
+    expect(screen.getByText("amber").getAttribute("data-band")).toBe("mid");
+    expect(screen.getByText("red").getAttribute("data-band")).toBe("low");
+    expect(screen.getByText(/Scores read/).textContent).toContain("when it missed.");
+  });
+
   it("syncs html language and direction", async () => {
     render(
       <I18nProvider>
@@ -135,10 +160,21 @@ describe("provider and locale popover", () => {
         <LocalePopover />
       </I18nProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: SOURCE_MESSAGES["locale.buttonLabel"] }));
+    const trigger = screen.getByRole("button", {
+      name: SOURCE_MESSAGES["locale.buttonLabel"],
+    });
+    fireEvent.click(trigger);
+    let popoverWasOpenWhenFocusReturned: boolean | null = null;
+    const focus = trigger.focus.bind(trigger);
+    vi.spyOn(trigger, "focus").mockImplementation(() => {
+      popoverWasOpenWhenFocusReturned = screen.queryByRole("dialog") !== null;
+      focus();
+    });
     fireEvent.click(screen.getByRole("button", { name: "English" }));
     await waitFor(() => expect(window.localStorage.getItem("matraix.uiLocale")).toBe("en-US"));
     expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(popoverWasOpenWhenFocusReturned).toBe(false);
   });
 
   it("returns focus to the trigger after selecting a locale with the mouse", async () => {

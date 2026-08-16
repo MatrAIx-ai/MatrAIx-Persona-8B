@@ -41,8 +41,8 @@ export function LocalePopover() {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        restoreFocusRef.current = true;
         setOpen(false);
-        triggerRef.current?.focus();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);

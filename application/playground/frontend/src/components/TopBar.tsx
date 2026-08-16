@@ -9,6 +9,7 @@ import { LocalePopover } from "./LocalePopover";
 import { FOCUS_RING, Sym } from "./cockpit/cockpitShared";
 import { MatrAIxLogo } from "./studio/MatrAIxLogo";
 import { useTheme } from "@/hooks/useTheme";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export type StudioMode = "home" | "playground";
 
@@ -39,20 +40,46 @@ export function TopBar({
   variant = "solid",
 }: TopBarProps) {
   const { theme, toggle } = useTheme();
+  const { t } = useI18n();
   const nextIsLight = theme === "dark";
   const overlayActive = runsActive || galleryActive || storeActive;
 
-  const nav: Array<{ key: string; label: string; active: boolean; onClick: () => void }> = [
-    { key: "store", label: "Persona World", active: storeActive, onClick: onOpenPersonaStore },
-    { key: "gallery", label: "Task Gallery", active: galleryActive, onClick: onOpenTaskGallery },
-    { key: "home", label: "Home", active: mode === "home" && !overlayActive, onClick: onOpenHome },
+  const nav: Array<{
+    key: string;
+    label: string;
+    active: boolean;
+    onClick: () => void;
+  }> = [
+    {
+      key: "store",
+      label: t("shell.nav.personaWorld"),
+      active: storeActive,
+      onClick: onOpenPersonaStore,
+    },
+    {
+      key: "gallery",
+      label: t("shell.nav.taskGallery"),
+      active: galleryActive,
+      onClick: onOpenTaskGallery,
+    },
+    {
+      key: "home",
+      label: t("shell.nav.home"),
+      active: mode === "home" && !overlayActive,
+      onClick: onOpenHome,
+    },
     {
       key: "playground",
-      label: "Playground",
+      label: t("shell.nav.playground"),
       active: mode === "playground" && !overlayActive,
       onClick: () => onModeChange("playground"),
     },
-    { key: "runs", label: "Runs", active: runsActive, onClick: onOpenRuns },
+    {
+      key: "runs",
+      label: t("shell.nav.runs"),
+      active: runsActive,
+      onClick: onOpenRuns,
+    },
   ];
 
   const glass = variant === "glass";
@@ -70,7 +97,7 @@ export function TopBar({
 
         <nav
           className="nasa-glass-pill hidden items-center rounded-full p-1 backdrop-blur md:flex"
-          aria-label="Application"
+          aria-label={t("shell.nav.application")}
         >
           <div className="grid grid-cols-5 items-center">
             {nav.map(({ key, label, active, onClick }) => (
@@ -100,8 +127,12 @@ export function TopBar({
           <button
             type="button"
             onClick={toggle}
-            aria-label={nextIsLight ? "Switch to light theme" : "Switch to dark theme"}
-            title="Toggle light / dark"
+            aria-label={
+              nextIsLight
+                ? t("shell.theme.switchToLight")
+                : t("shell.theme.switchToDark")
+            }
+            title={t("shell.theme.toggle")}
             className={`nasa-glass-pill grid h-9 w-9 flex-none place-items-center rounded-full text-text-variant transition hover:bg-surface-high/40 hover:text-text-main active:scale-95 ${FOCUS_RING}`}
           >
             <Sym name={nextIsLight ? "light_mode" : "dark_mode"} size={18} />
