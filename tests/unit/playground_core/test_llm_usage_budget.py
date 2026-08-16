@@ -84,6 +84,36 @@ def test_budget_record_raises_when_trial_pushes_over(
         record_trial_cost(tmp_path, 0.02)
 
 
+def test_merge_usage_sums_tokens_and_costs() -> None:
+    from playground.llm_usage import LlmUsage, merge_usage
+
+    total = merge_usage(
+        LlmUsage(
+            n_input_tokens=10,
+            n_output_tokens=2,
+            cost_usd=0.01,
+            cost_source="estimated",
+            provider="openai",
+            model="gpt-4o-mini",
+        ),
+        LlmUsage(
+            n_input_tokens=5,
+            n_output_tokens=3,
+            cost_usd=0.02,
+            cost_source="provider",
+            provider="openai",
+            model="gpt-4o-mini",
+            request_id="req-2",
+        ),
+    )
+    assert total is not None
+    assert total.n_input_tokens == 15
+    assert total.n_output_tokens == 5
+    assert total.cost_usd == pytest.approx(0.03)
+    assert total.cost_source == "estimated"
+    assert total.request_id == "req-2"
+
+
 def test_max_cost_usd_from_env_none_when_unset(monkeypatch) -> None:
     monkeypatch.delenv("MATRIX_MAX_COST_USD", raising=False)
     assert max_cost_usd_from_env() is None

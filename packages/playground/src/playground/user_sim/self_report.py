@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from typing import Any, List
 
+from playground.feedback import questionnaire_from_feedback
 from playground.self_report_runtime import (
     SelfReportClient,
-    complete_self_report_questionnaire,
+    complete_self_report_payload_with_usage,
     resolve_self_report_schema,
 )
 from playground.types import Persona, PlaygroundTurn, Questionnaire
@@ -77,6 +78,26 @@ def final_self_report(
     schema: SelfReportSchema | None = None,
     chatbot_label: str = "Chatbot",
 ) -> Questionnaire:
+    questionnaire, _usage = final_self_report_with_usage(
+        client,
+        system_prompt=system_prompt,
+        persona=persona,
+        transcript=transcript,
+        schema=schema,
+        chatbot_label=chatbot_label,
+    )
+    return questionnaire
+
+
+def final_self_report_with_usage(
+    client: SelfReportClient,
+    *,
+    system_prompt: str,
+    persona: Persona,
+    transcript: List[PlaygroundTurn],
+    schema: SelfReportSchema | None = None,
+    chatbot_label: str = "Chatbot",
+) -> tuple[Questionnaire, Any]:
     del persona
     schema = resolve_self_report_schema(schema)
     user = _FEEDBACK_USER.format(
@@ -86,9 +107,10 @@ def final_self_report(
         or "Reflect honestly from your own point of view as this persona.",
         schema_block=schema_prompt_block(schema),
     )
-    return complete_self_report_questionnaire(
+    payload, usage = complete_self_report_payload_with_usage(
         client,
         system_prompt=system_prompt,
         user_prompt=user,
         schema=schema,
     )
+    return questionnaire_from_feedback(payload), usage

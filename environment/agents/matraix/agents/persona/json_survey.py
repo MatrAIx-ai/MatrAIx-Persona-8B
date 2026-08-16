@@ -87,22 +87,9 @@ def _survey_result_payload(result) -> dict[str, object]:
 
 def _apply_usage_to_context(context: AgentContext, usage: dict | None) -> None:
     """Copy Survey LLM usage into Harbor ``AgentContext`` for trial/job rollup."""
-    if not usage:
-        return
-    if usage.get("n_input_tokens") is not None:
-        context.n_input_tokens = int(usage["n_input_tokens"])
-    if usage.get("n_output_tokens") is not None:
-        context.n_output_tokens = int(usage["n_output_tokens"])
-    if usage.get("n_cache_tokens") is not None:
-        context.n_cache_tokens = int(usage["n_cache_tokens"])
-    if usage.get("cost_usd") is not None:
-        context.cost_usd = float(usage["cost_usd"])
-    meta = dict(context.metadata or {})
-    for key in ("request_id", "model", "provider", "cost_source"):
-        if usage.get(key) is not None:
-            meta[key] = usage[key]
-    if meta:
-        context.metadata = meta
+    from playground.llm_usage import apply_usage_dict_to_context
+
+    apply_usage_dict_to_context(context, usage)
 
 
 def _repo_root() -> Path:

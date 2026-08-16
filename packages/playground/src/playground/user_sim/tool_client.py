@@ -47,9 +47,12 @@ class OpenAIToolStepClient:
         base_url: Optional[str] = None,
         temperature: float = 0.7,
         capabilities: Sequence[ChatbotCapability] | None = None,
+        provider: str = "openai",
     ) -> None:
         self.model = model
         self.temperature = temperature
+        self.provider = provider
+        self.usage_parts: list = []
         self._tools = tool_definitions(capabilities)
         if client is None:
             from openai import OpenAI
@@ -63,6 +66,8 @@ class OpenAIToolStepClient:
         self._client = client
 
     def complete_with_tools(self, messages: List[Dict[str, Any]]) -> List[ToolCall]:
+        from playground.llm_usage import usage_from_openai_completion
+
         kwargs: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -72,6 +77,11 @@ class OpenAIToolStepClient:
         if openai_model_supports_custom_temperature(self.model):
             kwargs["temperature"] = self.temperature
         completion = self._client.chat.completions.create(**kwargs)
+        self.usage_parts.append(
+            usage_from_openai_completion(
+                completion, model=self.model, provider=self.provider
+            )
+        )
         message = completion.choices[0].message
         calls: List[ToolCall] = []
         for tool_call in message.tool_calls or []:
@@ -82,6 +92,11 @@ class OpenAIToolStepClient:
             if text:
                 calls.append(ToolCall("send_message", {"message": text}))
         return calls
+
+    def accumulated_usage(self):
+        from playground.llm_usage import merge_usage
+
+        return merge_usage(*self.usage_parts)
 
 
 class AnthropicToolStepClient:
@@ -97,6 +112,7 @@ class AnthropicToolStepClient:
         self.model = model
         self.temperature = temperature
         self.timeout_seconds = timeout_seconds
+        self.usage_parts: list = []
         self._tools = anthropic_tool_definitions(capabilities)
         self.api_key = (
             api_key
@@ -112,6 +128,8 @@ class AnthropicToolStepClient:
             )
 
     def complete_with_tools(self, messages: List[Dict[str, Any]]) -> List[ToolCall]:
+        from playground.llm_usage import usage_from_anthropic_payload
+
         system_parts: List[str] = []
         convo: List[Dict[str, Any]] = []
         for message in messages:
@@ -152,6 +170,7 @@ class AnthropicToolStepClient:
         except (TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
             raise RuntimeError("Anthropic tool request failed: {}".format(exc)) from exc
 
+        self.usage_parts.append(usage_from_anthropic_payload(payload, model=self.model))
         calls: List[ToolCall] = []
         text_parts: List[str] = []
         for block in payload.get("content") or []:
@@ -168,6 +187,11 @@ class AnthropicToolStepClient:
             if text:
                 calls.append(ToolCall("send_message", {"message": text}))
         return calls
+
+    def accumulated_usage(self):
+        from playground.llm_usage import merge_usage
+
+        return merge_usage(*self.usage_parts)
 
 
 def _coerce_args(raw: Any) -> Dict[str, Any]:
@@ -207,6 +231,7 @@ def build_tool_step_client(
                 value,
                 temperature=temperature,
                 capabilities=capabilities,
+                provider="anthropic",
             )
         return AnthropicToolStepClient(
             value.split("/", 1)[1],
@@ -221,6 +246,7 @@ def build_tool_step_client(
             base_url=kwargs["base_url"],
             temperature=temperature,
             capabilities=capabilities,
+            provider="dashscope",
         )
     if value.startswith("openrouter/"):
         kwargs = openrouter_openai_client_kwargs(value)
@@ -230,16 +256,21 @@ def build_tool_step_client(
             base_url=kwargs["base_url"],
             temperature=temperature,
             capabilities=capabilities,
+            provider="openrouter",
         )
     if value.startswith("openai/"):
         return OpenAIToolStepClient(
             value.split("/", 1)[1],
             temperature=temperature,
             capabilities=capabilities,
+            provider="openai",
         )
     if value.startswith("gpt-"):
         return OpenAIToolStepClient(
-            value, temperature=temperature, capabilities=capabilities
+            value,
+            temperature=temperature,
+            capabilities=capabilities,
+            provider="openai",
         )
     return AnthropicToolStepClient(
         value, temperature=temperature, capabilities=capabilities

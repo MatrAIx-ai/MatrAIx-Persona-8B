@@ -32,11 +32,34 @@ def complete_self_report_payload(
     schema: SelfReportSchema | None = None,
 ) -> Dict[str, Any]:
     resolved_schema = resolve_self_report_schema(schema)
-    if hasattr(client, "complete_json"):
+    raw, _usage = complete_self_report_payload_with_usage(
+        client,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        schema=resolved_schema,
+    )
+    return raw
+
+
+def complete_self_report_payload_with_usage(
+    client: SelfReportClient | Any,
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    schema: SelfReportSchema | None = None,
+) -> tuple[Dict[str, Any], Any]:
+    """Return ``(payload, LlmUsage | None)`` for cost rollup callers."""
+    resolved_schema = resolve_self_report_schema(schema)
+    usage = None
+    if hasattr(client, "complete_json_with_usage"):
+        completion = client.complete_json_with_usage(system_prompt, user_prompt)
+        raw = completion.data
+        usage = completion.usage
+    elif hasattr(client, "complete_json"):
         raw = client.complete_json(system_prompt, user_prompt)
     else:
         raw = coerce_json(str(client))
-    return coerce_self_report_payload(raw, resolved_schema)
+    return coerce_self_report_payload(raw, resolved_schema), usage
 
 
 def complete_self_report_questionnaire(

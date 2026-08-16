@@ -187,9 +187,10 @@ class PlaygroundResult:
     metric_scores: MetricScores
     created_at: str
     prompts: Dict[str, str] = field(default_factory=dict)
+    usage: Dict[str, Any] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "config": self.config.to_dict(),
             "persona": self.persona.to_dict(),
             "sutDescription": self.sut_description,
@@ -199,3 +200,6 @@ class PlaygroundResult:
             "createdAt": self.created_at,
             "prompts": dict(self.prompts),
         }
+        if self.usage:
+            payload["usage"] = dict(self.usage)
+        return payload

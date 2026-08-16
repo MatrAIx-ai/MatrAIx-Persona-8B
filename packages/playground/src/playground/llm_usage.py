@@ -200,6 +200,78 @@ def _lookup_model_rates(model_cost: Mapping[str, Any], model: str) -> dict[str, 
     return None
 
 
+def merge_usage(*parts: LlmUsage | None) -> LlmUsage | None:
+    """Sum token/cost fields across multiple completions in one trial."""
+    present = [part for part in parts if part is not None]
+    if not present:
+        return None
+
+    def _sum(attr: str) -> int | None:
+        values = [getattr(part, attr) for part in present if getattr(part, attr) is not None]
+        if not values:
+            return None
+        return int(sum(values))
+
+    costs = [part.cost_usd for part in present if part.cost_usd is not None]
+    cost_sources = {part.cost_source for part in present if part.cost_source}
+    if not costs:
+        cost_usd, cost_source = None, None
+    else:
+        cost_usd = float(sum(costs))
+        if cost_sources == {"provider"}:
+            cost_source = "provider"
+        elif cost_sources <= {"provider", "estimated"}:
+            cost_source = "estimated"
+        else:
+            cost_source = next(iter(cost_sources), None)
+
+    last = present[-1]
+    return LlmUsage(
+        n_input_tokens=_sum("n_input_tokens"),
+        n_output_tokens=_sum("n_output_tokens"),
+        n_cache_tokens=_sum("n_cache_tokens"),
+        cost_usd=cost_usd,
+        request_id=last.request_id,
+        model=last.model,
+        provider=last.provider,
+        cost_source=cost_source,
+    )
+
+
+def apply_usage_dict_to_context(context: Any, usage: Mapping[str, Any] | None) -> None:
+    """Copy a usage dict onto a Harbor ``AgentContext`` (duck-typed)."""
+    if not usage:
+        return
+    if usage.get("n_input_tokens") is not None:
+        context.n_input_tokens = int(usage["n_input_tokens"])
+    if usage.get("n_output_tokens") is not None:
+        context.n_output_tokens = int(usage["n_output_tokens"])
+    if usage.get("n_cache_tokens") is not None:
+        context.n_cache_tokens = int(usage["n_cache_tokens"])
+    if usage.get("cost_usd") is not None:
+        context.cost_usd = float(usage["cost_usd"])
+    meta = dict(getattr(context, "metadata", None) or {})
+    for key in ("request_id", "model", "provider", "cost_source"):
+        if usage.get(key) is not None:
+            meta[key] = usage[key]
+    if meta:
+        context.metadata = meta
+
+
+class UsageAccumulator:
+    """Mutable collector for multi-call agents (chat tool steps + self-report)."""
+
+    def __init__(self) -> None:
+        self._parts: list[LlmUsage] = []
+
+    def add(self, usage: LlmUsage | None) -> None:
+        if usage is not None:
+            self._parts.append(usage)
+
+    def total(self) -> LlmUsage | None:
+        return merge_usage(*self._parts)
+
+
 def _maybe_int(value: Any) -> Optional[int]:
     if value is None:
         return None

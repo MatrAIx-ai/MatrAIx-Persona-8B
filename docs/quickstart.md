@@ -211,9 +211,10 @@ uv run matraix run -c configs/jobs/application-task-job-recipe/example-survey-pr
 ```
 
 `matraix run` reads the `MATRIX_*` task exports from the generated job files —
-you only export your model API key. Completed Survey trials persist
+you only export your model API key. Completed Survey and Chat trials persist
 `n_input_tokens` / `n_output_tokens` / `cost_usd` (when pricing is known) on
-the trial and job result.
+the trial and job result. Web / OS-app agents already report the same fields
+through their Docker / computer-use runtimes.
 
 ### Chat (auto)
 

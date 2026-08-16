@@ -181,9 +181,11 @@ def main(argv: list[str] | None = None) -> None:
         type=float,
         default=None,
         help=(
-            "Hard job spend gate for Survey (and other paths that honor "
-            "MATRIX_MAX_COST_USD). Further provider requests are refused once "
-            "recorded spend meets this limit."
+            "Hard job spend gate for Survey/Chat paths that honor "
+            "MATRIX_MAX_COST_USD. Further provider requests are refused once "
+            "recorded spend meets this limit. Web/OS agents already report "
+            "tokens/cost via their runtimes; this gate applies to host-native "
+            "Survey/Chat today."
         ),
     )
 

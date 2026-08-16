@@ -37,9 +37,47 @@ from playground.user_sim.prompt import (
     assemble_report_system_prompt,
     prompt_bundle,
 )
-from playground.user_sim.self_report import final_self_report
+from playground.user_sim.self_report import final_self_report_with_usage
 from playground.user_sim.session import UserSimSession
 from playground.user_sim.tool_client import build_tool_step_client
+from playground.budget import assert_budget_allows_request, record_trial_cost
+from playground.llm_usage import merge_usage
+
+
+def _tool_client_usage(tool_client: Any):
+    getter = getattr(tool_client, "accumulated_usage", None)
+    if callable(getter):
+        return getter()
+    return None
+
+
+def _chat_result_with_usage(
+    *,
+    config: PlaygroundConfig,
+    persona: Persona,
+    sut_description: str,
+    transcript: List[PlaygroundTurn],
+    questionnaire,
+    created_at: str,
+    prompts: Dict[str, str],
+    tool_usage,
+    report_usage,
+    job_dir: Optional[Path],
+) -> PlaygroundResult:
+    usage = merge_usage(tool_usage, report_usage)
+    if usage is not None:
+        record_trial_cost(job_dir, usage.cost_usd)
+    return PlaygroundResult(
+        config=config,
+        persona=persona,
+        sut_description=sut_description,
+        transcript=transcript,
+        questionnaire=questionnaire,
+        metric_scores=MetricScores(num_turns=len(transcript)),
+        created_at=created_at,
+        prompts=prompts,
+        usage=usage.to_dict() if usage is not None else None,
+    )
 
 
 def _format_exposure_value(value: Any, *, kind: str) -> str:
@@ -128,11 +166,13 @@ def run_playground(
     task_path: Optional[str] = None,
     persona_yaml_path: Optional[str] = None,
     repo_root: Optional[Path] = None,
+    job_dir: Optional[Path] = None,
 ) -> PlaygroundResult:
     def emit(event: Dict[str, Any]) -> None:
         if on_event is not None:
             on_event(event)
 
+    assert_budget_allows_request(job_dir)
     goal_context = get_goal_context("scenario_default")
     chatbot_label = chatbot_display_name(config.application_id)
     task_bundle = _load_task_bundle(task_path=task_path, repo_root=repo_root)
@@ -215,7 +255,7 @@ def run_playground(
             break
 
     emit({"type": "phase", "phase": "persona_feedback"})
-    questionnaire = final_self_report(
+    questionnaire, report_usage = final_self_report_with_usage(
         build_json_client(config.persona_model),
         system_prompt=report_prompt,
         persona=persona,
@@ -224,15 +264,17 @@ def run_playground(
         chatbot_label=chatbot_label,
     )
 
-    result = PlaygroundResult(
+    result = _chat_result_with_usage(
         config=config,
         persona=persona,
         sut_description=sut_description,
         transcript=transcript,
         questionnaire=questionnaire,
-        metric_scores=MetricScores(num_turns=len(transcript)),
         created_at=created_at,
         prompts=prompts,
+        tool_usage=_tool_client_usage(tool_client),
+        report_usage=report_usage,
+        job_dir=job_dir,
     )
     emit({"type": "done", "result": result.to_dict()})
     return result
@@ -249,6 +291,7 @@ async def run_playground_async(
     task_path: Optional[str] = None,
     persona_yaml_path: Optional[str] = None,
     repo_root: Optional[Path] = None,
+    job_dir: Optional[Path] = None,
 ) -> PlaygroundResult:
     """Like :func:`run_playground` but awaits async Harbor sidecar turns."""
 
@@ -256,6 +299,7 @@ async def run_playground_async(
         if on_event is not None:
             on_event(event)
 
+    assert_budget_allows_request(job_dir)
     goal_context = get_goal_context("scenario_default")
     chatbot_label = chatbot_display_name(config.application_id)
     task_bundle = _load_task_bundle(task_path=task_path, repo_root=repo_root)
@@ -338,7 +382,7 @@ async def run_playground_async(
             break
 
     emit({"type": "phase", "phase": "persona_feedback"})
-    questionnaire = final_self_report(
+    questionnaire, report_usage = final_self_report_with_usage(
         build_json_client(config.persona_model),
         system_prompt=report_prompt,
         persona=persona,
@@ -347,15 +391,17 @@ async def run_playground_async(
         chatbot_label=chatbot_label,
     )
 
-    result = PlaygroundResult(
+    result = _chat_result_with_usage(
         config=config,
         persona=persona,
         sut_description=sut_description,
         transcript=transcript,
         questionnaire=questionnaire,
-        metric_scores=MetricScores(num_turns=len(transcript)),
         created_at=created_at,
         prompts=prompts,
+        tool_usage=_tool_client_usage(tool_client),
+        report_usage=report_usage,
+        job_dir=job_dir,
     )
     emit({"type": "done", "result": result.to_dict()})
     return result
