@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { listWebEvalTasks, api, ApiError } from "@/lib/api";
+import { listWebEvalTasks, api } from "@/lib/api";
 import {
   findPersonaAgent,
   personaModelPipelineLabel,
@@ -51,20 +51,17 @@ import { WebEvalScorecard } from "./TaskEvalScorecard";
 import { CockpitSetupShell } from "./setup/CockpitSetupShell";
 import { PersonaSamplingRail } from "./setup/PersonaSamplingRail";
 import {
-  buildPersonaLaunchFields,
-  hasLaunchableCohort,
   resolveCohortSize,
 } from "./setup/personaLaunchFields";
 import { CockpitPipelineDiagram } from "./setup/CockpitPipelineDiagram";
 import { TaskSelectionRail } from "./setup/TaskSelectionRail";
 import { CockpitRunCenter } from "./setup/CockpitRunCenter";
-import { useSetupPersonaSampling } from "./setup/useSetupPersonaSampling";
+import { useCockpitLaunch } from "./setup/useCockpitLaunch";
 import {
   batchProgressPct as computeBatchProgressPct,
   BATCH_RUN_COMPLETE_HINT,
   formatBatchProgressLabel,
   resolveRunLaunchPhase,
-  useCockpitBatchJob,
 } from "./setup/useCockpitBatchJob";
 import { useCockpitRunCancel } from "./setup/useCockpitRunCancel";
 import { useCockpitSetupLock } from "./setup/useCockpitSetupLock";
@@ -136,7 +133,6 @@ export function WebEvalCockpit({
   const [webAgentByTaskId, setWebAgentByTaskId] = useState<Record<string, string>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tab, setTab] = useState<InspectorTab>("evaluation");
-  const [launchError, setLaunchError] = useState<string | null>(null);
   const [exportSnapshot, setExportSnapshot] = useState<{
     persona: { id: string; name: string; source: string } | null;
     taskId: string;
@@ -158,60 +154,66 @@ export function WebEvalCockpit({
   const setupTaskPath =
     tasks.find((item) => item.id === taskId)?.taskPath ?? null;
   const {
-    persona,
-    personaModel,
-    setPersonaModel,
-    personaModelOptions,
-    samplingMode,
-    setSamplingMode,
-    selectedPersonaIds,
-    setSelectedPersonaIds,
-    selectedCount,
-    setSelectedCount,
-    useEntirePool,
-    setUseEntirePool,
-    groupFilters,
-    setGroupFilters,
-    fields,
-    setFields,
-    stratifiedAllocation,
-    setStratifiedAllocation,
-    sampleSize,
-    setSampleSize,
-    perCell,
-    setPerCell,
-    seed,
-    parallelTrials,
-    setParallelTrials,
-    personaPool,
-    setPersonaPool,
-    isBatchRun,
-    hasTaskStrategy,
-    taskPersonaStrategy,
-    useTaskDefaultStrategy,
-    setUseTaskDefaultStrategy,
-  } = useSetupPersonaSampling(options, "web", setupTaskPath, isActive);
-  const {
-    batchJobName,
-    batchTaskId,
-    batchPersonaIds,
-    batchPersonaPool,
-    setBatchJobName,
-    clearBatch,
-    cancelBatch,
-    cancelBusy,
-    batchCancelled,
-    retryFailed,
-    retryBusy,
-    retryError,
-    failedTrials,
-    isBatchActive,
-    batchComplete,
-    batchGridCells,
-    expectedTrialCount,
-    completedTrials: batchCompletedTrials,
-    batchError,
-  } = useCockpitBatchJob(selectedPersonaIds, parallelTrials, "web", selectedCount, personaPool);
+    sampling: {
+      persona,
+      personaModel,
+      setPersonaModel,
+      personaModelOptions,
+      samplingMode,
+      setSamplingMode,
+      selectedPersonaIds,
+      setSelectedPersonaIds,
+      selectedCount,
+      setSelectedCount,
+      useEntirePool,
+      setUseEntirePool,
+      groupFilters,
+      setGroupFilters,
+      fields,
+      setFields,
+      stratifiedAllocation,
+      setStratifiedAllocation,
+      sampleSize,
+      setSampleSize,
+      perCell,
+      setPerCell,
+      seed,
+      parallelTrials,
+      setParallelTrials,
+      personaPool,
+      setPersonaPool,
+      isBatchRun,
+      hasTaskStrategy,
+      taskPersonaStrategy,
+      useTaskDefaultStrategy,
+      setUseTaskDefaultStrategy,
+    },
+    batch: {
+      batchJobName,
+      batchTaskId,
+      batchPersonaIds,
+      batchPersonaPool,
+      clearBatch,
+      cancelBatch,
+      cancelBusy,
+      batchCancelled,
+      retryFailed,
+      retryBusy,
+      retryError,
+      failedTrials,
+      isBatchActive,
+      batchComplete,
+      batchGridCells,
+      expectedTrialCount,
+      completedTrials: batchCompletedTrials,
+      batchError,
+    },
+    launchError,
+    setLaunchError,
+    clearLaunchError,
+    canLaunchCohort,
+    launchBatch,
+  } = useCockpitLaunch(options, "web", setupTaskPath, isActive);
 
 
   const { setupLocked, visiblePersonaIds } = useCockpitSetupLock(
@@ -340,60 +342,25 @@ export function WebEvalCockpit({
     });
   }, [persona, task, isRunning, run, personaModel, activeWebAgent]);
   const handleLaunch = useCallback(async () => {
-    if (
-      !hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) ||
-      !task?.taskPath ||
-      isRunning
-    ) {
+    if (!canLaunchCohort || !task?.taskPath || isRunning) {
       return;
     }
     if (isBatchRun) {
-      setLaunchError(null);
-      try {
-        const personaFields = buildPersonaLaunchFields({
-          personaPool,
-          selectedPersonaIds,
-          selectedCount,
-          useEntirePool,
-          parallelTrials,
-        });
-        const launched = await api.launchHarborJob({
-          taskPath: task.taskPath,
-          seed,
-          personaModel,
-          agentName: activeWebAgent,
-          ...personaFields,
-          mode: "auto",
-        });
-        setBatchJobName(launched.jobName, { taskId: task.id, personaPool });
-      } catch (exc) {
-        const message = exc instanceof ApiError ? exc.message : exc instanceof Error ? exc.message : String(exc);
-        setLaunchError(message);
-      }
+      await launchBatch({
+        taskPath: task.taskPath,
+        taskId: task.id,
+        overrides: { agentName: activeWebAgent },
+      });
       return;
     }
     handleRun();
-  }, [
-    selectedPersonaIds,
-    selectedCount,
-    useEntirePool,
-    task,
-    isRunning,
-    isBatchRun,
-    seed,
-    personaModel,
-    activeWebAgent,
-    parallelTrials,
-    personaPool,
-    handleRun,
-    setBatchJobName,
-  ]);
+  }, [canLaunchCohort, task, isRunning, isBatchRun, activeWebAgent, launchBatch, handleRun]);
 
   const handleNewRun = useCallback(() => {
     reset();
     clearBatch();
-    setLaunchError(null);
-  }, [reset, clearBatch]);
+    clearLaunchError();
+  }, [reset, clearBatch, clearLaunchError]);
 
   const { onCancelRun, cancelRunBusy } = useCockpitRunCancel({
     batchJobName,
@@ -575,7 +542,7 @@ export function WebEvalCockpit({
             batchJobName && batchComplete ? BATCH_RUN_COMPLETE_HINT : undefined
           }
           canRun={
-            hasLaunchableCohort({ selectedPersonaIds, selectedCount, useEntirePool }) &&
+            canLaunchCohort &&
             Boolean(task?.taskPath) &&
             !runBusy
           }
