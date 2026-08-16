@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any, Dict, Optional, Protocol
 
+from playground.llm_usage import JsonCompletion, usage_from_openai_completion
+
 _FENCE = re.compile(r"```(?:json)?\s*(?P<body>\{.*\})\s*```", re.DOTALL)
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 180.0
 
@@ -58,10 +60,12 @@ class OpenAIChatClient:
         base_url: Optional[str] = None,
         temperature: float = 0.7,
         timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        provider: str = "openai",
     ) -> None:
         self.model = model
         self.temperature = temperature
         self.timeout_seconds = timeout_seconds
+        self.provider = provider
         if client is None:
             from openai import OpenAI  # lazy: tests inject a fake
 
@@ -74,6 +78,9 @@ class OpenAIChatClient:
         self._client = client
 
     def complete_json(self, system: str, user: str) -> Dict[str, Any]:
+        return self.complete_json_with_usage(system, user).data
+
+    def complete_json_with_usage(self, system: str, user: str) -> JsonCompletion:
         kwargs: Dict[str, Any] = {
             "model": self.model,
             "response_format": {"type": "json_object"},
@@ -86,4 +93,8 @@ class OpenAIChatClient:
         if openai_model_supports_custom_temperature(self.model):
             kwargs["temperature"] = self.temperature
         completion = self._client.chat.completions.create(**kwargs)
-        return coerce_json(completion.choices[0].message.content)
+        data = coerce_json(completion.choices[0].message.content)
+        usage = usage_from_openai_completion(
+            completion, model=self.model, provider=self.provider
+        )
+        return JsonCompletion(data=data, usage=usage)

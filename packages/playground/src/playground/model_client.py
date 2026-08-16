@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 # 1200 truncates mid-JSON; keep headroom once the system prompt already carries the
 # full 1290-dim persona profile + questionnaire.
 from matraix.persona_agent_context import SURVEY_MAX_OUTPUT_TOKENS as ANTHROPIC_JSON_MAX_TOKENS
+from playground.llm_usage import JsonCompletion, usage_from_anthropic_payload
 from playground.openai_client import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     OpenAIChatClient,
@@ -105,6 +106,9 @@ class AnthropicJSONClient:
             )
 
     def complete_json(self, system: str, user: str) -> Dict[str, Any]:
+        return self.complete_json_with_usage(system, user).data
+
+    def complete_json_with_usage(self, system: str, user: str) -> JsonCompletion:
         body = {
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -159,7 +163,9 @@ class AnthropicJSONClient:
                     self.max_tokens
                 )
             )
-        return coerce_json(text)
+        data = coerce_json(text)
+        usage = usage_from_anthropic_payload(payload, model=self.model)
+        return JsonCompletion(data=data, usage=usage)
 
 
 def _llm_proxy_base_url() -> str:
@@ -198,6 +204,7 @@ def build_json_client(model: str, *, temperature: float = 0.7) -> Any:
                 model=value,
                 temperature=temperature,
                 timeout_seconds=timeout_seconds,
+                provider="anthropic",
             )
         return AnthropicJSONClient(value.split("/", 1)[1], temperature=temperature)
     if value.startswith("dashscope/"):
@@ -208,6 +215,7 @@ def build_json_client(model: str, *, temperature: float = 0.7) -> Any:
             base_url=kwargs["base_url"],
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            provider="dashscope",
         )
     if value.startswith("openrouter/"):
         kwargs = openrouter_openai_client_kwargs(value)
@@ -217,17 +225,20 @@ def build_json_client(model: str, *, temperature: float = 0.7) -> Any:
             base_url=kwargs["base_url"],
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            provider="openrouter",
         )
     if value.startswith("openai/"):
         return OpenAIChatClient(
             model=value.split("/", 1)[1],
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            provider="openai",
         )
     if value.startswith("gpt-"):
         return OpenAIChatClient(
             model=value,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            provider="openai",
         )
     return AnthropicJSONClient(value, temperature=temperature)

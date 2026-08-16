@@ -123,9 +123,17 @@ def _cmd_run(args: argparse.Namespace, passthrough: list[str]) -> None:
         else find_repo_root(config_path.parent if config_path else None)
     )
     argv, env_updates = resolve_run_invocation(config_path, repo_root, passthrough)
+    if args.max_cost_usd is not None:
+        if args.max_cost_usd < 0:
+            sys.exit("matraix run: --max-cost-usd must be >= 0")
+        env_updates["MATRIX_MAX_COST_USD"] = f"{args.max_cost_usd:g}"
     os.environ.update(env_updates)
     for name, value in env_updates.items():
-        if name != "PYTHONPATH":
+        if name == "PYTHONPATH":
+            continue
+        if name == "MATRIX_MAX_COST_USD":
+            print(f"matraix run: budget gate MATRIX_MAX_COST_USD={value}", file=sys.stderr)
+        else:
             print(f"matraix run: {name}={value} (from generated job)", file=sys.stderr)
     # Make the injected paths visible to this process too, since Harbor loads
     # agent modules in-process before spawning trial workers.
@@ -167,6 +175,16 @@ def main(argv: list[str] | None = None) -> None:
         "--repo-root",
         default=None,
         help="MatrAIx repository root (default: discovered from the config path)",
+    )
+    run_parser.add_argument(
+        "--max-cost-usd",
+        type=float,
+        default=None,
+        help=(
+            "Hard job spend gate for Survey (and other paths that honor "
+            "MATRIX_MAX_COST_USD). Further provider requests are refused once "
+            "recorded spend meets this limit."
+        ),
     )
 
     args, passthrough = parser.parse_known_args(argv)

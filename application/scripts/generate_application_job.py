@@ -21,6 +21,10 @@ from matraix.application_job import (
     collect_run_env_exports,
 )
 from matraix.persona_job import DEFAULT_DATASET, parse_stratify_field_args
+from matraix.provider_credentials import (
+    export_hint_lines,
+    format_credential_preflight,
+)
 
 from _repo_imports import REPO_ROOT, ensure_application_script_imports
 
@@ -66,16 +70,33 @@ def _default_job_name(
     return f"{task_slug}{mode_suffix}-n{sample_size}"
 
 
-def _format_run_env_comment(exports: list[tuple[str, str]]) -> str:
-    if not exports:
-        return ""
+def _format_run_env_comment(
+    exports: list[tuple[str, str]],
+    *,
+    model_name: str,
+    sample_size: int,
+) -> str:
+    primary_exports = export_hint_lines(model_name)
+    needs_openai_sut = any(name == "MATRIX_CHATBOT_TASK_PATH" for name, _ in exports)
+    openai_already = any("OPENAI_API_KEY" in line for line in primary_exports)
     lines = ["# Run (after exporting API keys):"]
-    lines.append("#   export ANTHROPIC_API_KEY=...")
-    if any(name == "MATRIX_CHATBOT_TASK_PATH" for name, _ in exports):
-        lines.append("#   export OPENAI_API_KEY=...   # user-sim engine default")
+    lines.extend(f"#   {hint}" for hint in primary_exports)
+    if needs_openai_sut and not openai_already:
+        lines.append("#   export OPENAI_API_KEY=...   # user-sim chatbot/SUT default")
     for name, value in exports:
         lines.append(f"#   export {name}={value}")
     lines.append("#   uv run matraix run -c <this-file>")
+    lines.append("#")
+    for line in format_credential_preflight(
+        model_name,
+        extra_env_hints=(
+            [("OPENAI_API_KEY", "user-sim chatbot/SUT default")]
+            if needs_openai_sut and not openai_already
+            else None
+        ),
+    ):
+        lines.append(f"# {line}")
+    lines.append(f"# Expected logical completions: {sample_size} (1 per persona)")
     lines.append("#")
     return "\n".join(lines) + "\n"
 
@@ -395,7 +416,7 @@ def main() -> None:
         f"# Retrieval: {retrieval_line}\n"
         f"# Personas: {', '.join(meta['selected_persona_ids'])}\n"
         f"#\n"
-        f"{_format_run_env_comment(run_env_exports)}"
+        f"{_format_run_env_comment(run_env_exports, model_name=args.model_name, sample_size=meta['sample_size'])}"
     )
     out_path.write_text(
         header + yaml.safe_dump(job_config, sort_keys=False),
@@ -416,12 +437,27 @@ def main() -> None:
     print(f"Job: {out_path}")
     print(f"Meta: {sidecar}")
     print("Run:")
-    print("  export ANTHROPIC_API_KEY=...")
-    if any(name == "MATRIX_CHATBOT_TASK_PATH" for name, _ in run_env_exports):
-        print("  export OPENAI_API_KEY=...   # user-sim engine default")
+    primary_exports = export_hint_lines(args.model_name)
+    needs_openai_sut = any(name == "MATRIX_CHATBOT_TASK_PATH" for name, _ in run_env_exports)
+    openai_already = any("OPENAI_API_KEY" in line for line in primary_exports)
+    for hint in primary_exports:
+        print(f"  {hint}")
+    if needs_openai_sut and not openai_already:
+        print("  export OPENAI_API_KEY=...   # user-sim chatbot/SUT default")
     for name, value in run_env_exports:
         print(f"  export {name}={value}")
     print(f"  uv run matraix run -c {_display_path(out_path)}")
+    print("Preflight:")
+    for line in format_credential_preflight(
+        args.model_name,
+        extra_env_hints=(
+            [("OPENAI_API_KEY", "user-sim chatbot/SUT default")]
+            if needs_openai_sut and not openai_already
+            else None
+        ),
+    ):
+        print(f"  {line}")
+    print(f"  Expected logical completions: {meta['sample_size']} (1 per persona)")
 
 
 if __name__ == "__main__":

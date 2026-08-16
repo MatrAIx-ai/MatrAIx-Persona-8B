@@ -208,3 +208,30 @@ def test_main_run_without_config_passes_args_through(
 
     assert calls["args"] == ["run", "-p", "application/tasks/foo", "-a", "oracle"]
     assert str(calls["pythonpath"]).split(os.pathsep)[0] == str(root.resolve())
+
+
+def test_main_run_sets_max_cost_usd_env(tmp_path: Path, monkeypatch) -> None:
+    root = _fake_checkout(tmp_path)
+    config = _write_job(
+        root,
+        sidecar={"task": "application/tasks/foo", "trial_profile": "json_survey"},
+    )
+    calls = _stub_harbor(monkeypatch)
+    monkeypatch.delenv("MATRIX_MAX_COST_USD", raising=False)
+    monkeypatch.delenv("MATRIX_SURVEY_TASK_PATH", raising=False)
+
+    original_cwd = Path.cwd()
+    original_sys_path = list(sys.path)
+    try:
+        cli.main(["run", "-c", str(config), "--max-cost-usd", "1.25", "--yes"])
+    finally:
+        os.chdir(original_cwd)
+        sys.path[:] = original_sys_path
+
+    assert os.environ.get("MATRIX_MAX_COST_USD") == "1.25"
+    assert calls["args"] == [
+        "run",
+        "-c",
+        "configs/jobs/application-task-job-recipe/example-survey-auto-n1.yaml",
+        "--yes",
+    ]

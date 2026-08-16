@@ -340,9 +340,10 @@ class SurveyEvalResult:
     metrics: SurveyMetrics
     created_at: str
     prompts: dict[str, str]
+    usage: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "config": self.config.to_dict(),
             "persona": self.persona.to_dict(),
             "instrument": self.instrument.to_dict(),
@@ -352,6 +353,9 @@ class SurveyEvalResult:
             "createdAt": self.created_at,
             "prompts": dict(self.prompts),
         }
+        if self.usage:
+            payload["usage"] = dict(self.usage)
+        return payload
 
 
 def _read_artifact_json(path: Path) -> dict[str, Any]:

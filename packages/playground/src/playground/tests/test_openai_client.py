@@ -12,9 +12,18 @@ class _FakeChoice:
         self.message = _FakeMessage(content)
 
 
+class _FakeUsage:
+    def __init__(self, prompt_tokens=11, completion_tokens=3):
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.prompt_tokens_details = None
+
+
 class _FakeCompletion:
     def __init__(self, content):
         self.choices = [_FakeChoice(content)]
+        self.usage = _FakeUsage()
+        self.id = "chatcmpl-test"
 
 
 class _FakeCompletions:
@@ -88,3 +97,15 @@ def test_complete_json_raises_on_unparseable():
     client = OpenAIChatClient(model="gpt-4o-mini", client=_FakeOpenAI("not json at all"))
     with pytest.raises(ValueError):
         client.complete_json("s", "u")
+
+
+def test_complete_json_with_usage_returns_token_counts():
+    fake = _FakeOpenAI('{"ok": true}')
+    client = OpenAIChatClient(model="gpt-4o-mini", client=fake, provider="openai")
+    result = client.complete_json_with_usage("sys", "user")
+    assert result.data == {"ok": True}
+    assert result.usage is not None
+    assert result.usage.n_input_tokens == 11
+    assert result.usage.n_output_tokens == 3
+    assert result.usage.request_id == "chatcmpl-test"
+    assert result.usage.provider == "openai"

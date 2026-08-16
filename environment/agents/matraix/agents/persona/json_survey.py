@@ -72,7 +72,7 @@ def _load_survey_content(*, task_path: str | None, instrument_path: str | None):
 
 
 def _survey_result_payload(result) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "instrument": {
             "id": result.instrument.id,
             "title": result.instrument.title,
@@ -80,6 +80,29 @@ def _survey_result_payload(result) -> dict[str, object]:
         "answers": [answer.to_dict() for answer in result.answers],
         "trajectory": [event.to_dict() for event in result.trajectory],
     }
+    if getattr(result, "usage", None):
+        payload["usage"] = dict(result.usage)
+    return payload
+
+
+def _apply_usage_to_context(context: AgentContext, usage: dict | None) -> None:
+    """Copy Survey LLM usage into Harbor ``AgentContext`` for trial/job rollup."""
+    if not usage:
+        return
+    if usage.get("n_input_tokens") is not None:
+        context.n_input_tokens = int(usage["n_input_tokens"])
+    if usage.get("n_output_tokens") is not None:
+        context.n_output_tokens = int(usage["n_output_tokens"])
+    if usage.get("n_cache_tokens") is not None:
+        context.n_cache_tokens = int(usage["n_cache_tokens"])
+    if usage.get("cost_usd") is not None:
+        context.cost_usd = float(usage["cost_usd"])
+    meta = dict(context.metadata or {})
+    for key in ("request_id", "model", "provider", "cost_source"):
+        if usage.get(key) is not None:
+            meta[key] = usage[key]
+    if meta:
+        context.metadata = meta
 
 
 def _repo_root() -> Path:
@@ -142,7 +165,7 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        del instruction, context
+        del instruction
         await self._prepare_persona_trial(environment)
         instrument, content = _load_survey_content(
             task_path=self._survey_task_path,
@@ -152,6 +175,7 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
         persona_yaml_path = str(self._persona.persona_path)
         created_at = _utc_now()
         trial_dir = self.logs_dir.parent
+        job_dir = trial_dir.parent
         event_writer = TrialEventWriter.for_trial_dir(trial_dir)
         if content is None:
             content = load_survey_task_content_for_questionnaire_id(
@@ -201,7 +225,9 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
             created_at=created_at,
             on_event=on_event,
             persona_yaml_path=persona_yaml_path,
+            job_dir=job_dir,
         )
+        _apply_usage_to_context(context, result.usage)
         payload = _survey_result_payload(result)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)

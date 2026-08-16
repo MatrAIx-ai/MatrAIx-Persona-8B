@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from matraix.application_job import collect_run_env_exports
+from matraix.provider_credentials import export_hint_lines, resolve_provider_credential
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -27,3 +28,11 @@ def test_collect_run_env_exports_chat() -> None:
     assert exports == [
         ("MATRIX_CHATBOT_TASK_PATH", "application/tasks/chat_meal-planning-nutrition")
     ]
+
+
+def test_export_hint_lines_are_provider_aware() -> None:
+    assert export_hint_lines("openai/gpt-4o-mini") == ["export OPENAI_API_KEY=..."]
+    assert export_hint_lines("dashscope/deepseek-v3.2") == [
+        "export DASHSCOPE_API_KEY=..."
+    ]
+    assert resolve_provider_credential("openai/gpt-4o-mini").env_var != "ANTHROPIC_API_KEY"

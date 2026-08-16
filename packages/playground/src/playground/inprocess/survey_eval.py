@@ -19,6 +19,7 @@ from backend.service.survey_types import (
     SurveyTaskContent,
     TrajectoryEvent,
 )
+from playground.budget import assert_budget_allows_request, record_trial_cost
 from playground.model_client import build_json_client
 from playground.types import Persona
 from playground.user_sim.prompt import render_persona_block
@@ -83,6 +84,7 @@ class InprocessSurveyEvalRunner:
         created_at: str,
         persona_yaml_path: str,
         on_event: Optional[Callable[[Dict[str, Any]], None]] = None,
+        job_dir: Optional[Any] = None,
     ) -> SurveyEvalResult:
         config = config or SurveyEvalConfig()
 
@@ -102,8 +104,20 @@ class InprocessSurveyEvalRunner:
         emit({"type": "prompts", "prompts": prompts})
         emit({"type": "phase", "phase": "survey_answering"})
 
+        assert_budget_allows_request(job_dir)
         client = build_json_client(config.persona_model)
-        raw = client.complete_json(prompts["personaPrompt"], task_prompt)
+        if hasattr(client, "complete_json_with_usage"):
+            completion = client.complete_json_with_usage(
+                prompts["personaPrompt"], task_prompt
+            )
+            raw = completion.data
+            usage = completion.usage
+        else:
+            raw = client.complete_json(prompts["personaPrompt"], task_prompt)
+            usage = None
+        if usage is not None:
+            record_trial_cost(job_dir, usage.cost_usd)
+            emit({"type": "usage", "usage": usage.to_dict()})
         answers = _normalize_answers(raw.get("answers"), instrument)
         metrics = _metrics(answers, instrument)
         trajectory = _build_trajectory(instrument, answers, created_at)
@@ -116,6 +130,7 @@ class InprocessSurveyEvalRunner:
             metrics=metrics,
             created_at=created_at,
             prompts=prompts,
+            usage=usage.to_dict() if usage is not None else None,
         )
         emit({"type": "done", "result": result.to_dict()})
         return result

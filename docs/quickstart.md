@@ -200,14 +200,20 @@ Web agent under auto (same as Playground): `*browser-use*` → `persona-browser-
 uv run python application/scripts/generate_application_job.py \
   --task application/tasks/example-survey_product-feedback \
   --execution-mode auto \
-  --persona-ids 0042
+  --persona-ids 0042 \
+  --model-name openai/gpt-4o-mini
 
-export ANTHROPIC_API_KEY="sk-ant-..."
+# The generator prints a provider-aware Preflight block (which credential, present/missing).
+export OPENAI_API_KEY="sk-..."
 uv run matraix run -c configs/jobs/application-task-job-recipe/example-survey-product-feedback-auto-n1.yaml
+# Optional hard spend gate (Survey refuses further provider calls once spend meets the cap):
+# uv run matraix run -c … --max-cost-usd 1.00
 ```
 
 `matraix run` reads the `MATRIX_*` task exports from the generated job files —
-you only export your model API key.
+you only export your model API key. Completed Survey trials persist
+`n_input_tokens` / `n_output_tokens` / `cost_usd` (when pricing is known) on
+the trial and job result.
 
 ### Chat (auto)
 
