@@ -13,6 +13,7 @@ import yaml
 from backend.service import run_store
 from backend.service.application_types import normalize_metadata_type
 from backend.service.import_paths import ensure_harbor_source_imports
+from backend.service.llm_usage_view import usage_from_trial_dir
 from backend.service.survey_types import build_survey_eval_result_from_artifacts
 from backend.service.survey_types import survey_result_view
 from backend.service.survey_types import SurveyEvalConfig, SurveyInstrument, SurveyQuestion
@@ -25,6 +26,13 @@ if TYPE_CHECKING:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _attach_usage(debrief: dict[str, Any], trial_dir: Path) -> dict[str, Any]:
+    usage = usage_from_trial_dir(trial_dir)
+    if usage:
+        debrief["usage"] = usage
+    return debrief
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -190,6 +198,38 @@ def _task_path_from_trial(trial_dir: Path) -> str | None:
     return None
 
 
+def _alternate_task_rels(task_rel: str) -> list[str]:
+    """Hyphen/underscore leaf variants for older Harbor task path spellings."""
+    parts = task_rel.replace("\\", "/").split("/")
+    leaf = parts[-1]
+    if not leaf:
+        return []
+    alts: set[str] = {leaf.replace("-", "_"), leaf.replace("_", "-")}
+    for prefix in ("web", "survey", "chat", "chatbot", "os-app", "os_app"):
+        for sep in ("-", "_"):
+            token = f"{prefix}{sep}"
+            if leaf.startswith(token):
+                rest = leaf[len(token) :]
+                other = "_" if sep == "-" else "-"
+                alts.add(f"{prefix}{other}{rest}")
+    parent = parts[:-1]
+    out: list[str] = []
+    for alt in sorted(alts):
+        if alt == leaf:
+            continue
+        out.append("/".join([*parent, alt]) if parent else alt)
+    return out
+
+
+def _resolve_task_rel_on_disk(repo_root: Path, task_rel: str) -> str | None:
+    """Return a task rel that exists on disk, trying hyphen/underscore variants."""
+    candidates = [task_rel, *_alternate_task_rels(task_rel)]
+    for rel in candidates:
+        if (repo_root / rel / "task.toml").is_file():
+            return rel
+    return None
+
+
 def _task_title_from_trial(repo_root: Path, trial_dir: Path) -> str | None:
     """UI title for the trial's task, derived from ``[task].name`` in task.toml."""
     from backend.service.application_task_metadata import title_from_harbor_task_name
@@ -197,6 +237,7 @@ def _task_title_from_trial(repo_root: Path, trial_dir: Path) -> str | None:
     task_rel = _task_path_from_trial(trial_dir)
     if not task_rel:
         return None
+    task_rel = _resolve_task_rel_on_disk(repo_root, task_rel) or task_rel
     toml_path = repo_root / task_rel / "task.toml"
     if not toml_path.is_file():
         return None
@@ -231,7 +272,8 @@ def _chat_application_id_from_trial(repo_root: Path, trial_dir: Path) -> str:
 
 
 def _application_type_from_task_toml(repo_root: Path, task_rel: str) -> str | None:
-    toml_path = repo_root / task_rel / "task.toml"
+    resolved = _resolve_task_rel_on_disk(repo_root, task_rel) or task_rel
+    toml_path = repo_root / resolved / "task.toml"
     if not toml_path.is_file():
         return None
     try:
@@ -376,11 +418,25 @@ def _detect_application_type(output_dir: Path) -> str:
         return "survey"
     for path in output_dir.glob("*.json"):
         name = path.name.lower()
+        if name in {"user_feedback.json", "persona_meta.json"}:
+            continue
         if name in {"decision.json", "book_interest.json"}:
             return "os-app"
         if "notification" in name and "preference" in name:
             return "os-app"
         if "web" in name or "ecommerce" in name or "interaction" in name:
+            return "web"
+        if "plan_comparison" in name or name.endswith("_comparison.json"):
+            return "web"
+        # Decision-shaped web artifacts (e.g. notion_plan_comparison.json).
+        try:
+            payload = _read_json(path)
+        except Exception:  # noqa: BLE001
+            continue
+        if isinstance(payload, dict) and (
+            payload.get("decision_subject_id") is not None
+            or payload.get("decision_subject_label") is not None
+        ):
             return "web"
     return "unknown"
 
@@ -1048,8 +1104,10 @@ def _resolve_web_eval_task(
     task_rel = _task_path_from_trial(trial_dir)
     if task_rel:
         folder = Path(task_rel.replace("\\", "/")).name
+        folder_alts = {folder, *{Path(rel).name for rel in _alternate_task_rels(task_rel)}}
         for task in list_web_eval_tasks():
-            if Path(str(task.task_path)).name == folder:
+            task_folder = Path(str(task.task_path)).name
+            if task_folder in folder_alts or task.id in folder_alts:
                 return task
     artifact_name = next(
         (
@@ -1491,7 +1549,7 @@ def map_trial_debrief(
                     persona=persona,
                 )
                 _attach_verifier_artifacts(debrief, trial_dir)
-                return debrief
+                return _attach_usage(debrief, trial_dir)
             raise FileNotFoundError("trial output artifacts not found")
         debrief = _map_failed_trial_debrief(
             trial_dir=trial_dir,
@@ -1514,7 +1572,7 @@ def map_trial_debrief(
             persona=persona,
         )
         _attach_verifier_artifacts(debrief, trial_dir)
-        return debrief
+        return _attach_usage(debrief, trial_dir)
 
     app_type = _resolve_application_type(repo_root, trial_dir, output_dir)
     if app_type == "chatbot":
@@ -1648,4 +1706,4 @@ def map_trial_debrief(
         persona_rel=persona_rel,
         persona=persona,
     )
-    return debrief
+    return _attach_usage(debrief, trial_dir)

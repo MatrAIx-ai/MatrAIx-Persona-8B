@@ -124,6 +124,8 @@ export type RunDetailView = Omit<
   contextMarkdown?: string | null;
   questionnaireMarkdown?: string | null;
   outputSchemaMarkdown?: string | null;
+  /** Per-trial agent token/cost receipt from Harbor ``result.json``. */
+  usage?: import("@/lib/llmUsage").LlmUsageView | null;
 };
 
 /** Narrow a raw `PlaygroundResult` into the richer `RunDetailView` shape. */

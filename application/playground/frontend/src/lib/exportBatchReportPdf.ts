@@ -8,6 +8,8 @@
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 
+import { usageMetaLines, type LlmUsageView } from "./llmUsage";
+
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const SIDE_MM = 14;
@@ -79,6 +81,7 @@ export type BatchReportPdfMeta = {
   personaStrategy?: BatchReportPdfPersonaStrategy | null;
   personas?: BatchReportPdfPersona[];
   snapshot?: BatchReportPdfSnapshot[];
+  usage?: LlmUsageView | null;
 };
 
 function waitFrames(count = 2): Promise<void> {
@@ -775,5 +778,6 @@ export function formatBatchReportMetaLines(meta: BatchReportPdfMeta): string[] {
   if (meta.personaStrategy?.mode) lines.push(`Persona mode: ${meta.personaStrategy.mode}`);
   if (meta.runWindow) lines.push(`Run: ${meta.runWindow}`);
   if (meta.generatedAt) lines.push(`Report: ${meta.generatedAt}`);
+  lines.push(...usageMetaLines(meta.usage));
   return lines;
 }

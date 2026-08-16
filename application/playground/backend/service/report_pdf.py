@@ -8,6 +8,13 @@ from typing import Any
 
 from fpdf import FPDF
 
+from backend.service.llm_usage_view import (
+    format_cost_usd,
+    format_token_count,
+    usage_from_job_result,
+    usage_meta_lines,
+)
+
 # Portable Helvetica is Latin-1 only; normalize common Unicode punctuation.
 _UNICODE_MAP = str.maketrans(
     {
@@ -468,12 +475,32 @@ def _job_meta_lines(job: dict[str, Any] | None, aggregation: dict[str, Any]) -> 
     agents = config.get("agents") if isinstance(config.get("agents"), list) else []
     if agents and isinstance(agents[0], dict) and agents[0].get("model_name"):
         lines.append(f"Agent model: {_safe(agents[0].get('model_name'))}")
+    lines.extend(usage_meta_lines(usage_from_job_result(result)))
     if reporting:
         status_r = _safe(reporting.get("status") or "-")
         if status_r not in ("-", "not_applicable"):
             model = f" · {_safe(reporting.get('model'))}" if reporting.get("model") else ""
             lines.append(f"LLM report: {status_r}{model}")
     return lines
+
+
+def _usage_metric_pairs(usage: dict[str, Any] | None) -> list[tuple[str, str]]:
+    if not usage:
+        return []
+    pairs: list[tuple[str, str]] = []
+    cost = usage.get("costUsd")
+    if isinstance(cost, (int, float)):
+        pairs.append(("Cost", format_cost_usd(float(cost))))
+    n_in = usage.get("nInputTokens")
+    if isinstance(n_in, int):
+        pairs.append(("Input tokens", format_token_count(n_in)))
+    n_out = usage.get("nOutputTokens")
+    if isinstance(n_out, int):
+        pairs.append(("Output tokens", format_token_count(n_out)))
+    n_cache = usage.get("nCacheTokens")
+    if isinstance(n_cache, int) and n_cache > 0:
+        pairs.append(("Cache tokens", format_token_count(n_cache)))
+    return pairs
 
 
 def _render_facet_distribution(
@@ -872,6 +899,9 @@ def build_batch_report_pdf(
 
     pdf.section("Overview")
     pdf.metric_strip(_coverage_metrics(coverage))
+    usage_pairs = _usage_metric_pairs(usage_from_job_result(job.get("result")))
+    if usage_pairs:
+        pdf.metric_strip(usage_pairs)
     if is_survey and questions:
         type_counts: dict[str, int] = {}
         for ctx in questions:
@@ -1132,6 +1162,12 @@ def build_trial_report_pdf(
         ])
         if verifier.get("detail"):
             pdf.body(_safe(verifier.get("detail"), limit=800), size=9)
+
+    usage = debrief.get("usage") if isinstance(debrief.get("usage"), dict) else None
+    usage_pairs = _usage_metric_pairs(usage)
+    if usage_pairs:
+        pdf.section("Usage")
+        pdf.metric_strip(usage_pairs)
 
     # ---- Task Output (structured decision from trialEvaluation) ----
     trial_eval = (

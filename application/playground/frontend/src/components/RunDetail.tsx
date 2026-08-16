@@ -36,6 +36,10 @@ import {
 import { FOCUS_RING, SCORE_BAND_CLASS, Sym, humanizeToken, scoreBand } from "./cockpit/cockpitShared";
 import { api, ApiError } from "@/lib/api";
 import {
+  asLlmUsage,
+  usageTableRows,
+} from "@/lib/llmUsage";
+import {
   countSurveyQuestionTypes,
   formatSurveyTrajectoryValue,
   groupSurveyTrajectory,
@@ -104,6 +108,8 @@ export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
   const absoluteWhen = run
     ? run.surveyResult?.createdAt ?? run.webResult?.createdAt ?? run.createdAt ?? null
     : null;
+  const usage = run ? asLlmUsage(run.usage) : null;
+  const usageRows = usageTableRows(usage);
 
   return (
     <StudioPageFrame>
@@ -136,10 +142,23 @@ export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
         }
       />
 
-      <p className="-mt-2 mb-3.5 break-all font-mono text-[12px] leading-relaxed text-text-dim">
+      <p className="-mt-2 mb-2 break-all font-mono text-[12px] leading-relaxed text-text-dim">
         {harborTrial.trialName} · {harborTrial.jobName}
         {absoluteWhen ? ` · ${fmtRunDateFriendly(absoluteWhen)}` : ""}
       </p>
+      {usageRows.length > 0 ? (
+        <div
+          className="mb-3.5 grid gap-px overflow-hidden rounded-lg border border-outline/40 bg-outline/25 text-[12px]"
+          style={{ gridTemplateColumns: `repeat(${usageRows.length}, minmax(0, 1fr))` }}
+        >
+          {usageRows.map((row) => (
+            <div key={row.label} className="flex items-baseline gap-1.5 bg-surface/80 px-2.5 py-1.5">
+              <span className="font-medium uppercase tracking-wide text-text-dim">{row.label}</span>
+              <span className="font-mono tabular-nums text-text-variant">{row.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {query.isLoading ? (
         <DetailLoading />

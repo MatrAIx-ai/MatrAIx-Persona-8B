@@ -47,6 +47,11 @@ def test_build_batch_report_pdf_returns_pdf_bytes():
             "result": {
                 "started_at": "2026-07-12T00:00:00Z",
                 "finished_at": "2026-07-12T00:01:00Z",
+                "stats": {
+                    "n_input_tokens": 4200,
+                    "n_output_tokens": 880,
+                    "cost_usd": 0.21,
+                },
             },
             "config": {
                 "tasks": [{"path": "application/tasks/example-survey_product-feedback"}],
@@ -134,6 +139,8 @@ def test_build_batch_report_pdf_returns_pdf_bytes():
     assert "Task" in text
     assert "Persona strategy" in text
     assert "Cohort" in text
+    assert "Cost: $0.210" in text or "Cost: $0.21" in text
+    assert "4,200 in" in text
     # Flat field dump should not dominate when question contexts exist.
     assert text.count("Selected response") <= 2
 
@@ -330,6 +337,11 @@ def test_build_trial_report_pdf_survey_returns_pdf_bytes():
             "persona": {"id": "p1", "name": "Alex", "source": "pool", "dimensions": {"age": "25-34"}},
             "config": {"taskPath": "application/tasks/example-survey_product-feedback"},
             "verifier": {"reward": 1.0, "passed": True, "details": "ok"},
+            "usage": {
+                "nInputTokens": 1500,
+                "nOutputTokens": 220,
+                "costUsd": 0.018,
+            },
             "surveyResult": {
                 "completed": True,
                 "instrument": {"id": "inst-1", "title": "Product feedback"},
@@ -345,3 +357,8 @@ def test_build_trial_report_pdf_survey_returns_pdf_bytes():
     )
     assert payload.startswith(b"%PDF")
     assert len(payload) > 400
+    text = _pdf_text(payload)
+    assert "Usage" in text
+    assert "Cost" in text
+    assert "1,500" in text
+    assert "220" in text

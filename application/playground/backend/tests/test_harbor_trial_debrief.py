@@ -247,6 +247,19 @@ def test_map_trial_debrief_survey_from_events_without_output_dir(tmp_path: Path)
 def test_map_trial_debrief_chatbot(tmp_path: Path) -> None:
     repo = tmp_path
     _write_chat_trial(repo, "job-1", "trial-0")
+    trial_dir = repo / "jobs" / "job-1" / "trial-0"
+    (trial_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "agent_result": {
+                    "n_input_tokens": 900,
+                    "n_output_tokens": 120,
+                    "cost_usd": 0.0042,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     debrief = map_trial_debrief(
         repo_root=repo,
         jobs_dir=repo / "jobs",
@@ -256,6 +269,11 @@ def test_map_trial_debrief_chatbot(tmp_path: Path) -> None:
     assert debrief["applicationType"] == "chatbot"
     assert debrief["transcript"][0]["assistantMessage"] == "Hello"
     assert debrief["harbor"]["trialName"] == "trial-0"
+    assert debrief["usage"] == {
+        "nInputTokens": 900,
+        "nOutputTokens": 120,
+        "costUsd": 0.0042,
+    }
 
 
 def test_map_trial_debrief_attaches_task_self_report_schema(tmp_path: Path) -> None:
@@ -972,3 +990,42 @@ def test_map_trial_debrief_web_restores_harbor_import_paths_when_missing(
 
     assert debrief["applicationType"] == "web"
     assert debrief["webResult"]["selectedProductId"] == "desk-002"
+
+
+def test_map_trial_debrief_web_resolves_hyphen_task_path_and_decision_artifact(tmp_path: Path) -> None:
+    """Legacy Harbor configs may spell web_task dirs with hyphens instead of underscores."""
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "web_notion-plan-comparison"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text(
+        '[metadata]\ntype = "web"\n[task]\nname = "application/notion-plan-comparison"\n',
+        encoding="utf-8",
+    )
+    job = "job-notion"
+    trial = "web-notion-plan-comparison__abc"
+    trial_dir = repo / "jobs" / job / trial
+    out = trial_dir / "artifacts" / "app" / "output"
+    out.mkdir(parents=True)
+    (trial_dir / "config.json").write_text(
+        json.dumps({"task": {"path": "application/tasks/web-notion-plan-comparison"}}),
+        encoding="utf-8",
+    )
+    (out / "notion_plan_comparison.json").write_text(
+        json.dumps(
+            {
+                "decision_subject_id": "plus",
+                "decision_subject_label": "Plus",
+                "decision_outcome": "selected",
+                "reason": "Plus covers workspace needs without overpaying for team seats.",
+            }
+        ),
+        encoding="utf-8",
+    )
+    debrief = map_trial_debrief(
+        repo_root=repo,
+        jobs_dir=repo / "jobs",
+        job_name=job,
+        trial_name=trial,
+    )
+    assert debrief["applicationType"] == "web"
+    assert debrief["webResult"] is not None

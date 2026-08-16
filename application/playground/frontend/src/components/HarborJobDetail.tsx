@@ -15,6 +15,15 @@ import {
   type BatchReportPdfPersonaStrategy,
   type BatchReportPdfSnapshot,
 } from "@/lib/exportBatchReportPdf";
+import {
+  formatCostUsd,
+  formatTokenCount,
+  hasUsage,
+  usageCompactLine,
+  usageFromJobResult,
+  usageFromTrialResult,
+  usageListPrimary,
+} from "@/lib/llmUsage";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import {
   surveyQuestionTypeChipClass,
@@ -2865,6 +2874,7 @@ function buildBatchReportPdfMeta(
     (job?.applicationType ?? job?.metaType ?? "").trim() ||
     (taskPath && /\/survey[_-]/i.test(taskPath) ? "survey" : null);
   const personas = buildPersonaRoster(job?.trials);
+  const usage = usageFromJobResult(result);
 
   return {
     jobName,
@@ -2888,6 +2898,7 @@ function buildBatchReportPdfMeta(
     personaStrategy: normalizePersonaStrategy(job?.personaStrategy),
     personas,
     snapshot: buildCoverageSnapshot(job?.aggregation),
+    usage,
   };
 }
 
@@ -3002,6 +3013,39 @@ function BatchReportMetaByline({ meta }: { meta: BatchReportPdfMeta }) {
       value: runValue,
       title: meta.runWindow ?? undefined,
     });
+  }
+  if (hasUsage(meta.usage)) {
+    if (meta.usage?.costUsd != null) {
+      facts.push({
+        label: "Cost",
+        value: formatCostUsd(meta.usage.costUsd),
+        title: "Estimated agent LLM cost for this job",
+      });
+    }
+    const tokenBits: string[] = [];
+    if (meta.usage?.nInputTokens != null) {
+      tokenBits.push(`${formatTokenCount(meta.usage.nInputTokens)} in`);
+    }
+    if (meta.usage?.nOutputTokens != null) {
+      tokenBits.push(`${formatTokenCount(meta.usage.nOutputTokens)} out`);
+    }
+    if (meta.usage?.nCacheTokens != null && meta.usage.nCacheTokens > 0) {
+      tokenBits.push(`${formatTokenCount(meta.usage.nCacheTokens)} cache`);
+    }
+    if (tokenBits.length) {
+      facts.push({
+        label: "Tokens",
+        value: tokenBits.join(" · "),
+        title: "Agent token usage rolled up across trials",
+      });
+    }
+    if (meta.usage?.costUsd != null && personasRun > 0) {
+      facts.push({
+        label: "Avg / trial",
+        value: formatCostUsd(meta.usage.costUsd / personasRun),
+        title: `Total cost divided by ${personasRun} personas run`,
+      });
+    }
   }
   // "Report" generated time is shown globally in the panel header, not here.
 
@@ -5725,9 +5769,10 @@ export function HarborJobDetail({ jobName, onBack, onOpenTrial }: HarborJobDetai
                 · one conversation per persona — open any for its full transcript
               </span>
             </div>
-            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_5.5rem_2rem] gap-3 border-b border-outline/40 px-4 py-2.5 text-[12px] uppercase tracking-wide text-text-dim">
+            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_5.5rem_5.5rem_2rem] gap-3 border-b border-outline/40 px-4 py-2.5 text-[12px] uppercase tracking-wide text-text-dim">
               <span>Persona</span>
               <span>Run</span>
+              <span>Cost</span>
               <span>Status</span>
               <span className="sr-only">Open</span>
             </div>
@@ -5741,6 +5786,9 @@ export function HarborJobDetail({ jobName, onBack, onOpenTrial }: HarborJobDetai
               ) : (
                 trials.map((trial) => {
                   const clickable = Boolean(onOpenTrial);
+                  const trialUsage = usageFromTrialResult(trial.result);
+                  const costLabel = usageListPrimary(trialUsage);
+                  const usageTitle = usageCompactLine(trialUsage);
                   return (
                     <li key={trial.trialName}>
                       <button
@@ -5752,13 +5800,19 @@ export function HarborJobDetail({ jobName, onBack, onOpenTrial }: HarborJobDetai
                           prefetchTrialDebrief(trial.trialName);
                           onOpenTrial?.(trial.trialName);
                         }}
-                        className={`grid w-full grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_5.5rem_2rem] items-center gap-3 px-4 py-3 text-left text-[15px] ${
+                        className={`grid w-full grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_5.5rem_5.5rem_2rem] items-center gap-3 px-4 py-3 text-left text-[15px] ${
                           clickable ? "hover:bg-surface/40" : ""
                         } ${FOCUS_RING}`}
                       >
                         <TrialPersonaIdentity trial={trial} />
                         <span className="truncate font-mono text-[13px] text-text-variant">
                           {trial.trialName}
+                        </span>
+                        <span
+                          className="truncate font-mono text-[12px] tabular-nums text-text-dim"
+                          title={usageTitle ?? undefined}
+                        >
+                          {costLabel ?? "—"}
                         </span>
                         <TrialStatusBadge trial={trial} />
                         <Sym
