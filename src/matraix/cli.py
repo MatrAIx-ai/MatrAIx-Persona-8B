@@ -256,9 +256,10 @@ def main(argv: list[str] | None = None) -> None:
         "results",
         help="Summarize and export a finished job without another LLM call.",
         description=(
-            "Reads jobs/<job>/result.json, per-trial result.json, and known "
-            "artifacts (e.g. survey_result.json). Prints a text summary by "
-            "default; use --format json,csv for machine export."
+            "Deterministic job ledger + type-aware outcome lens for Survey, "
+            "Chat, Web, and OS-app jobs. Reads jobs/<job>/ result.json, "
+            "verifier/structured_output.json, and known artifacts. Default "
+            "path never calls another model. Use --format json,csv for export."
         ),
     )
     results_parser.add_argument(
