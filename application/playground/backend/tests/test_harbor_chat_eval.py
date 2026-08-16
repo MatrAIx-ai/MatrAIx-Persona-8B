@@ -224,8 +224,18 @@ async def test_run_harbor_chat_eval_for_persona_writes_output_artifacts(
         task_path=None,
         persona_yaml_path=None,
         repo_root=None,
+        job_dir=None,
     ):
-        del persona, sut_description, created_at, on_event, task_path, persona_yaml_path, repo_root
+        del (
+            persona,
+            sut_description,
+            created_at,
+            on_event,
+            task_path,
+            persona_yaml_path,
+            repo_root,
+            job_dir,
+        )
         session._session_id = "sess-1"
         return PlaygroundResult(
             config=config,
