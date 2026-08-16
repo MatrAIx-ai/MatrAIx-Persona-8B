@@ -10,6 +10,7 @@
 import type { ReactNode } from "react";
 
 import { SCORE_BAND_CLASS, Sym, type ScoreBand } from "./cockpit/cockpitShared";
+import { useI18n, type I18nContextValue } from "@/i18n/I18nProvider";
 import type {
   Domain,
   PlaygroundResult,
@@ -19,6 +20,8 @@ import type {
   WebResult,
   WebTrace,
 } from "@/lib/types";
+
+export type RunsTranslate = I18nContextValue["t"];
 
 // ---------------------------------------------------------------------------
 // Narrowed run-detail shapes (what RunDetail / RunCompare actually read)
@@ -38,7 +41,12 @@ export interface RunTranscriptTurn {
   turnIndex: number;
   userMessage: string;
   assistantMessage: string;
-  structuredExposure?: { key?: string | null; label?: string | null; format?: string | null; value?: unknown }[];
+  structuredExposure?: {
+    key?: string | null;
+    label?: string | null;
+    format?: string | null;
+    value?: unknown;
+  }[];
   decision: RunDecision | string;
   durationSeconds: number | null;
 }
@@ -78,7 +86,12 @@ export interface RunPersona {
  */
 export type RunDetailView = Omit<
   PlaygroundResult,
-  "config" | "persona" | "transcript" | "questionnaire" | "metricScores" | "prompts"
+  | "config"
+  | "persona"
+  | "transcript"
+  | "questionnaire"
+  | "metricScores"
+  | "prompts"
 > & {
   createdAt?: string | null;
   config: RunConfig;
@@ -141,10 +154,10 @@ export function asRunDetail(raw: PlaygroundResult): RunDetailView {
 export function runApplicationType(run: RunDetailView): RunApplicationType {
   const explicit = (run.applicationType ?? "").toString().toLowerCase();
   if (
-    explicit === "survey"
-    || explicit === "web"
-    || explicit === "os-app"
-    || explicit === "chatbot"
+    explicit === "survey" ||
+    explicit === "web" ||
+    explicit === "os-app" ||
+    explicit === "chatbot"
   ) {
     return explicit as RunApplicationType;
   }
@@ -189,43 +202,65 @@ function shortAbsolute(d: Date): string {
  * Relative age for run lists / meta lines.
  * Always includes "ago" so `22m` is not mistaken for a duration.
  */
-export function fmtRunDate(iso: string | null | undefined): string {
+export function fmtRunDate(
+  iso: string | null | undefined,
+  t?: RunsTranslate,
+): string {
   if (!iso) return "-";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "-";
-  const date = new Date(t);
-  const diffMs = Date.now() - t;
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) return "-";
+  const date = new Date(timestamp);
+  const diffMs = Date.now() - timestamp;
   const sec = Math.round(diffMs / 1000);
   if (sec < 0) return shortAbsolute(date); // clock skew: just show the date
-  if (sec < 45) return "just now";
+  if (sec < 45) return t ? t("runs.relative.justNow") : "just now";
   const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
+  if (min < 60) {
+    return t
+      ? t("runs.relative.compactMinutes", { count: min })
+      : `${min}m ago`;
+  }
   const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) {
+    return t ? t("runs.relative.compactHours", { count: hr }) : `${hr}h ago`;
+  }
   const day = Math.round(hr / 24);
-  if (day < 7) return `${day}d ago`;
+  if (day < 7) {
+    return t ? t("runs.relative.compactDays", { count: day }) : `${day}d ago`;
+  }
   return shortAbsolute(date);
 }
 
 /** Spelled-out relative time for debrief headers (`22 minutes ago`). */
-export function fmtRunDateFriendly(iso: string | null | undefined): string {
+export function fmtRunDateFriendly(
+  iso: string | null | undefined,
+  t?: RunsTranslate,
+): string {
   if (!iso) return "";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "";
-  const date = new Date(t);
-  const diffMs = Date.now() - t;
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) return "";
+  const date = new Date(timestamp);
+  const diffMs = Date.now() - timestamp;
   const sec = Math.round(diffMs / 1000);
   if (sec < 0) return shortAbsolute(date);
-  if (sec < 45) return "just now";
+  if (sec < 45) return t ? t("runs.relative.justNow") : "just now";
   const min = Math.round(sec / 60);
-  if (min === 1) return "1 minute ago";
-  if (min < 60) return `${min} minutes ago`;
+  if (min === 1) return t ? t("runs.relative.minute") : "1 minute ago";
+  if (min < 60) {
+    return t
+      ? t("runs.relative.minutes", { count: min })
+      : `${min} minutes ago`;
+  }
   const hr = Math.round(min / 60);
-  if (hr === 1) return "1 hour ago";
-  if (hr < 24) return `${hr} hours ago`;
+  if (hr === 1) return t ? t("runs.relative.hour") : "1 hour ago";
+  if (hr < 24) {
+    return t ? t("runs.relative.hours", { count: hr }) : `${hr} hours ago`;
+  }
   const day = Math.round(hr / 24);
-  if (day === 1) return "yesterday";
-  if (day < 7) return `${day} days ago`;
+  if (day === 1) return t ? t("runs.relative.yesterday") : "yesterday";
+  if (day < 7) {
+    return t ? t("runs.relative.days", { count: day }) : `${day} days ago`;
+  }
   return shortAbsolute(date);
 }
 
@@ -238,7 +273,8 @@ export function fmtDomain(domain: string | null | undefined): string {
 
 /** Render a persona `source`, falling back to "curated" when absent. */
 export function fmtSource(source: string | null | undefined): string {
-  if (source === null || source === undefined || source === "") return "curated";
+  if (source === null || source === undefined || source === "")
+    return "curated";
   return source;
 }
 
@@ -272,7 +308,9 @@ export function RecChip({ item }: { item: RunRecItem }) {
       title={item.title ?? undefined}
     >
       <span className="font-mono text-[12px] text-text-dim">{item.id}</span>
-      {item.title && <span className="truncate text-text-variant">{item.title}</span>}
+      {item.title && (
+        <span className="truncate text-text-variant">{item.title}</span>
+      )}
     </span>
   );
 }
@@ -292,43 +330,69 @@ const APP_DISPLAY_NAMES: Record<string, string> = {
 /** The app's real name for the transcript label + meta line. No hardcoded
  * product fallback — callers should prefer the trial's task title when the
  * applicationId is unknown. */
-export function appName(applicationId: string | null | undefined): string {
-  if (!applicationId) return "Chat app";
+export function appName(
+  applicationId: string | null | undefined,
+  t?: RunsTranslate,
+): string {
+  if (!applicationId) return t ? t("runs.chatApp") : "Chat app";
   return APP_DISPLAY_NAMES[applicationId] ?? fmtDomain(applicationId);
 }
 
 /** Per-kind glyph + label for the list "Kind" tag (Material Symbols, like the cockpit switch). */
-const APP_TYPE_META: Record<string, { icon: string; label: string }> = {
-  chatbot: { icon: "forum", label: "Chatbot" },
-  survey: { icon: "fact_check", label: "Survey" },
-  web: { icon: "language", label: "Web" },
-  "os-app": { icon: "apps", label: "OS app" },
-  unknown: { icon: "help_outline", label: "Unknown" },
+const APP_TYPE_META: Record<string, { icon: string }> = {
+  chatbot: { icon: "forum" },
+  survey: { icon: "fact_check" },
+  web: { icon: "language" },
+  "os-app": { icon: "apps" },
+  unknown: { icon: "help_outline" },
 };
+
+function appTypeLabel(type: string, t: RunsTranslate): string {
+  switch (type) {
+    case "survey":
+      return t("runs.appType.survey");
+    case "web":
+      return t("runs.appType.web");
+    case "os-app":
+      return t("runs.appType.osApp");
+    case "unknown":
+      return t("runs.appType.unknown");
+    default:
+      return t("runs.appType.chatbot");
+  }
+}
 
 /**
  * A small app-type tag for the runs list, so a (future) mixed list reads at a
  * glance. Renders from whatever type the summary carries; absent → chatbot.
  */
 export function AppTypeTag({ type }: { type?: string | null }) {
+  const { t } = useI18n();
   const key = (type ?? "chatbot").toString().toLowerCase();
   const meta = APP_TYPE_META[key] ?? APP_TYPE_META.chatbot;
+  const label = appTypeLabel(key in APP_TYPE_META ? key : "chatbot", t);
   return (
     <span
       className="glass-tile inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[13px] text-text-variant"
-      title="Application type for this run."
+      title={t("runs.applicationTypeTooltip")}
     >
       <Sym name={meta.icon} size={13} />
-      {meta.label}
+      {label}
     </span>
   );
 }
 
 /** Read a run summary's app type defensively (the summary may not carry one). */
 export function runSummaryAppType(summary: unknown): RunApplicationType {
-  const t = ((summary as { applicationType?: string | null } | null)?.applicationType ?? "").toString().toLowerCase();
+  const t = (
+    (summary as { applicationType?: string | null } | null)?.applicationType ??
+    ""
+  )
+    .toString()
+    .toLowerCase();
   if (t === "cua" || t === "appworld") return "os-app";
-  if (t === "survey" || t === "web" || t === "os-app") return t as RunApplicationType;
+  if (t === "survey" || t === "web" || t === "os-app")
+    return t as RunApplicationType;
   return "chatbot";
 }
 
@@ -366,10 +430,18 @@ export function StatTile({
   lead?: boolean;
 }) {
   const color = band ? SCORE_BAND_CLASS[band] : null;
-  const leadBorder = lead ? `border-l-4 ${band ? bandBorderL(band) : "border-l-secondary"}` : "";
-  const captionTone = lead ? (color ? color.text : "text-secondary") : "text-text-dim";
+  const leadBorder = lead
+    ? `border-l-4 ${band ? bandBorderL(band) : "border-l-secondary"}`
+    : "";
+  const captionTone = lead
+    ? color
+      ? color.text
+      : "text-secondary"
+    : "text-text-dim";
   return (
-    <div className={`glass-tile flex flex-col justify-center rounded-lg p-4 backdrop-blur-sm ${leadBorder}`}>
+    <div
+      className={`glass-tile flex flex-col justify-center rounded-lg p-4 backdrop-blur-sm ${leadBorder}`}
+    >
       <span className={`hud text-[11px] ${captionTone}`}>{caption}</span>
       <div className="mt-1.5 flex items-baseline gap-1">
         <span
@@ -377,7 +449,9 @@ export function StatTile({
         >
           {value}
         </span>
-        {unit && <span className="font-sans text-[15px] text-text-dim">{unit}</span>}
+        {unit && (
+          <span className="font-sans text-[15px] text-text-dim">{unit}</span>
+        )}
       </div>
     </div>
   );

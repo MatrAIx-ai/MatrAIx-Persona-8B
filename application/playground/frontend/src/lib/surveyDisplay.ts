@@ -154,12 +154,12 @@ export function surveyTrajectoryQuestionType(
 
 export function formatSurveyTrajectoryValue(
   value: unknown,
-  t?: Translate,
+  t: Translate,
 ): string {
   if (Array.isArray(value)) return value.map((item) => String(item)).join(", ");
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") {
-    return t ? localizedBooleanLabel(value, t) : value ? "Yes" : "No";
+    return localizedBooleanLabel(value, t);
   }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);

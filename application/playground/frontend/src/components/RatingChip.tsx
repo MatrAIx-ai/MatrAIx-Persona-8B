@@ -15,6 +15,7 @@
  * chips aligned.
  */
 import { SCORE_BAND_CLASS, scoreBand } from "./cockpit/cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export interface RatingChipProps {
   rating: number | null | undefined;
@@ -23,20 +24,28 @@ export interface RatingChipProps {
   className?: string;
 }
 
-export function RatingChip({ rating, size = "sm", className = "" }: RatingChipProps) {
+export function RatingChip({
+  rating,
+  size = "sm",
+  className = "",
+}: RatingChipProps) {
+  const { t } = useI18n();
   // Band on the normalized [0,1] scale so the chip shares the scorecard's bands.
   const band = scoreBand(
-    rating === null || rating === undefined || Number.isNaN(rating) ? null : rating / 10,
+    rating === null || rating === undefined || Number.isNaN(rating)
+      ? null
+      : rating / 10,
   );
   const color = SCORE_BAND_CLASS[band];
-  const pad = size === "md" ? "px-2.5 py-1 text-[15px]" : "px-2 py-0.5 text-[13px]";
+  const pad =
+    size === "md" ? "px-2.5 py-1 text-[15px]" : "px-2 py-0.5 text-[13px]";
 
   if (band === "none") {
     return (
       <span
         className={`inline-flex items-center whitespace-nowrap rounded-md border border-outline bg-surface-high font-mono tabular-nums text-text-dim ${pad} ${className}`}
-        title="Not scored"
-        aria-label="No rating"
+        title={t("runs.notScored")}
+        aria-label={t("runs.noRating")}
       >
         -
       </span>
@@ -46,7 +55,7 @@ export function RatingChip({ rating, size = "sm", className = "" }: RatingChipPr
   return (
     <span
       className={`inline-flex items-baseline whitespace-nowrap rounded-md font-mono font-semibold tabular-nums ${color.text} ${color.soft} ${pad} ${className}`}
-      aria-label={`Rating ${rating} out of 10`}
+      aria-label={t("runs.ratingAria", { rating: rating ?? "" })}
     >
       {rating}
       <span className="ml-px text-[0.82em] font-medium opacity-70">/10</span>

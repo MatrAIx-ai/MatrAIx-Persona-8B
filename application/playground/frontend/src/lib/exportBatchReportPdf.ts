@@ -7,6 +7,7 @@
  */
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
+import type { I18nContextValue } from "@/i18n/I18nProvider";
 
 import { usageMetaLines, type LlmUsageView } from "./llmUsage";
 
@@ -23,6 +24,8 @@ const WASH = { r: 245, g: 249, b: 252 };
 const CHIP_BG = { r: 232, g: 242, b: 250 };
 const SOFT = { r: 248, g: 250, b: 252 };
 const PAGE_BOTTOM = A4_HEIGHT_MM - 14;
+
+type ReportTranslate = I18nContextValue["t"];
 
 export type BatchReportPdfPersona = {
   id: string;
@@ -103,11 +106,21 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(
+  src: string,
+  t?: ReportTranslate,
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Failed to decode captured report image."));
+    img.onerror = () =>
+      reject(
+        new Error(
+          t
+            ? t("reports.pdf.decodeImage")
+            : "Failed to decode captured report image.",
+        ),
+      );
     img.src = src;
   });
 }
@@ -116,6 +129,7 @@ function cropPageSlice(
   source: HTMLImageElement,
   sourceY: number,
   sliceHeightPx: number,
+  t?: ReportTranslate,
 ): string {
   const canvas = document.createElement("canvas");
   const width = source.width;
@@ -124,7 +138,11 @@ function cropPageSlice(
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    throw new Error("Could not allocate canvas for PDF page slice.");
+    throw new Error(
+      t
+        ? t("reports.pdf.allocatePageSlice")
+        : "Could not allocate canvas for PDF page slice.",
+    );
   }
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
@@ -147,7 +165,9 @@ function formatTs(iso: string | null | undefined): string | null {
   });
 }
 
-export function humanizePathLeaf(path: string | null | undefined): string | null {
+export function humanizePathLeaf(
+  path: string | null | undefined,
+): string | null {
   if (!path) return null;
   const leaf = path.split("/").filter(Boolean).pop() || path;
   return leaf.replace(/[-_]+/g, " ");
@@ -226,12 +246,20 @@ function drawWatermark(pdf: jsPDF): void {
   pdf.restoreGraphicsState();
 }
 
-function wrapLines(pdf: jsPDF, text: string, width: number, maxLines?: number): string[] {
+function wrapLines(
+  pdf: jsPDF,
+  text: string,
+  width: number,
+  maxLines?: number,
+): string[] {
   const lines = pdf.splitTextToSize(text, width) as string[];
   if (maxLines == null || lines.length <= maxLines) return lines;
   const kept = lines.slice(0, maxLines);
   const last = kept[maxLines - 1] ?? "";
-  kept[maxLines - 1] = last.length > 3 ? `${last.slice(0, Math.max(0, last.length - 1))}...` : `${last}...`;
+  kept[maxLines - 1] =
+    last.length > 3
+      ? `${last.slice(0, Math.max(0, last.length - 1))}...`
+      : `${last}...`;
   return kept;
 }
 
@@ -329,7 +357,13 @@ function drawLabeledFactGrid(
   return y + rows * (cellH + 2) + 1;
 }
 
-function drawSectionRule(pdf: jsPDF, x: number, y: number, w: number, title: string): number {
+function drawSectionRule(
+  pdf: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  title: string,
+): number {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(8);
   pdf.setTextColor(BRAND.r, BRAND.g, BRAND.b);
@@ -340,7 +374,11 @@ function drawSectionRule(pdf: jsPDF, x: number, y: number, w: number, title: str
   return 8;
 }
 
-function drawContentHeader(pdf: jsPDF, meta: BatchReportPdfMeta, subtitle: string): void {
+function drawContentHeader(
+  pdf: jsPDF,
+  meta: BatchReportPdfMeta,
+  subtitle: string,
+): void {
   drawWordmark(pdf, SIDE_MM, 10, 11);
   pdf.setFont("helvetica", "");
   pdf.setFontSize(8.5);
@@ -350,11 +388,18 @@ function drawContentHeader(pdf: jsPDF, meta: BatchReportPdfMeta, subtitle: strin
   pdf.setLineWidth(0.55);
   pdf.line(SIDE_MM, 12.5, A4_WIDTH_MM - SIDE_MM, 12.5);
   pdf.setFontSize(7.5);
-  const job = meta.jobName.length > 72 ? `${meta.jobName.slice(0, 71)}...` : meta.jobName;
+  const job =
+    meta.jobName.length > 72 ? `${meta.jobName.slice(0, 71)}...` : meta.jobName;
   pdf.text(job, SIDE_MM, 16);
 }
 
-function drawContentFooter(pdf: jsPDF, meta: BatchReportPdfMeta, page: number, total: number): void {
+function drawContentFooter(
+  pdf: jsPDF,
+  meta: BatchReportPdfMeta,
+  page: number,
+  total: number,
+  t?: ReportTranslate,
+): void {
   const y = A4_HEIGHT_MM - 8;
   pdf.setDrawColor(RULE.r, RULE.g, RULE.b);
   pdf.setLineWidth(0.3);
@@ -362,8 +407,19 @@ function drawContentFooter(pdf: jsPDF, meta: BatchReportPdfMeta, page: number, t
   pdf.setFont("helvetica", "");
   pdf.setFontSize(8);
   pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-  pdf.text("MatrAIx  |  Confidential evaluation report", SIDE_MM, y);
-  pdf.text(`Page ${page} of ${total}`, A4_WIDTH_MM - SIDE_MM, y, { align: "right" });
+  pdf.text(
+    t
+      ? t("reports.pdf.confidentialReport")
+      : "MatrAIx  |  Confidential evaluation report",
+    SIDE_MM,
+    y,
+  );
+  pdf.text(
+    t ? t("reports.pdf.pageOf", { page, total }) : `Page ${page} of ${total}`,
+    A4_WIDTH_MM - SIDE_MM,
+    y,
+    { align: "right" },
+  );
   const stamp = formatTs(meta.generatedAt);
   if (stamp) {
     pdf.setFontSize(7);
@@ -375,7 +431,10 @@ function drawContentFooter(pdf: jsPDF, meta: BatchReportPdfMeta, page: number, t
  * Task content as whole documents — Instruction and Context stay intact.
  * Blocks are separate; content inside each block is not split.
  */
-function buildTaskNarrative(meta: BatchReportPdfMeta): Array<{ heading: string; body: string }> {
+function buildTaskNarrative(
+  meta: BatchReportPdfMeta,
+  t?: ReportTranslate,
+): Array<{ heading: string; body: string }> {
   const title = (meta.taskTitle || "").trim();
   const instruction = (meta.taskInstruction || "").trim();
   const contextRaw = (meta.taskContext || "").trim();
@@ -390,7 +449,11 @@ function buildTaskNarrative(meta: BatchReportPdfMeta): Array<{ heading: string; 
       return paras.slice(1).join("\n\n").trim();
     }
     // Drop a markdown-style first line that matches title after stripping
-    if (paras[0].length < 120 && title && normText(paras[0]).includes(normText(title))) {
+    if (
+      paras[0].length < 120 &&
+      title &&
+      normText(paras[0]).includes(normText(title))
+    ) {
       const rest = paras.slice(1).join("\n\n").trim();
       if (rest) return rest;
     }
@@ -400,15 +463,26 @@ function buildTaskNarrative(meta: BatchReportPdfMeta): Array<{ heading: string; 
   // Prefer full instruction.md as one block
   if (instruction) {
     const body = stripLeadingTitle(instruction);
-    if (body) sections.push({ heading: "Instruction", body });
+    if (body)
+      sections.push({
+        heading: t ? t("reports.pdf.instruction") : "Instruction",
+        body,
+      });
   } else if (description) {
-    sections.push({ heading: "Instruction", body: description });
+    sections.push({
+      heading: t ? t("reports.pdf.instruction") : "Instruction",
+      body: description,
+    });
   }
 
   // Full context.md as one block
   if (contextRaw) {
     const body = stripLeadingTitle(contextRaw);
-    if (body) sections.push({ heading: "Context", body });
+    if (body)
+      sections.push({
+        heading: t ? t("reports.pdf.context") : "Context",
+        body,
+      });
   }
 
   return sections;
@@ -421,19 +495,28 @@ function ensureSpace(
   meta: BatchReportPdfMeta,
   cursor: FrontCursor,
   need: number,
+  t?: ReportTranslate,
 ): void {
   if (cursor.y + need <= PAGE_BOTTOM) return;
   pdf.addPage();
   cursor.page += 1;
   drawWatermark(pdf);
-  drawContentHeader(pdf, meta, "Simulation setup");
+  drawContentHeader(
+    pdf,
+    meta,
+    t ? t("reports.pdf.simulationSetup") : "Simulation setup",
+  );
   cursor.y = HEADER_MM + 6;
 }
 
 /**
  * Draw front matter once. Returns number of front-matter pages.
  */
-function drawFrontMatter(pdf: jsPDF, meta: BatchReportPdfMeta): number {
+function drawFrontMatter(
+  pdf: jsPDF,
+  meta: BatchReportPdfMeta,
+  t?: ReportTranslate,
+): number {
   const contentW = A4_WIDTH_MM - SIDE_MM * 2;
   const cursor: FrontCursor = { page: 1, y: 0 };
 
@@ -447,14 +530,29 @@ function drawFrontMatter(pdf: jsPDF, meta: BatchReportPdfMeta): number {
   pdf.setFont("helvetica", "");
   pdf.setFontSize(8);
   pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-  pdf.text("Playground", A4_WIDTH_MM - SIDE_MM, 11, { align: "right" });
+  pdf.text(
+    t ? t("reports.pdf.playground") : "Playground",
+    A4_WIDTH_MM - SIDE_MM,
+    11,
+    {
+      align: "right",
+    },
+  );
   pdf.setFontSize(8);
   pdf.setTextColor(BRAND.r, BRAND.g, BRAND.b);
-  pdf.text("EVALUATION REPORT", SIDE_MM, 21);
+  pdf.text(
+    t ? t("reports.pdf.evaluationReport") : "EVALUATION REPORT",
+    SIDE_MM,
+    21,
+  );
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(16);
   pdf.setTextColor(INK.r, INK.g, INK.b);
-  pdf.text("Persona-Task Batch Report", SIDE_MM, 29);
+  pdf.text(
+    t ? t("reports.pdf.batchReportTitle") : "Persona-Task Batch Report",
+    SIDE_MM,
+    29,
+  );
   pdf.setFont("helvetica", "");
   pdf.setFontSize(8);
   pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
@@ -462,47 +560,75 @@ function drawFrontMatter(pdf: jsPDF, meta: BatchReportPdfMeta): number {
   cursor.y = 40;
 
   // ---- Task (run meta lives in the captured batch report below) ----
-  ensureSpace(pdf, meta, cursor, 28);
-  cursor.y += drawSectionRule(pdf, SIDE_MM, cursor.y, contentW, "Task");
+  ensureSpace(pdf, meta, cursor, 28, t);
+  cursor.y += drawSectionRule(
+    pdf,
+    SIDE_MM,
+    cursor.y,
+    contentW,
+    t ? t("reports.pdf.task") : "Task",
+  );
 
-  const title = meta.taskTitle || humanizePathLeaf(meta.taskPath) || "Task";
+  const title =
+    meta.taskTitle ||
+    humanizePathLeaf(meta.taskPath) ||
+    (t ? t("reports.pdf.task") : "Task");
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(13);
   pdf.setTextColor(INK.r, INK.g, INK.b);
   const titleLines = wrapLines(pdf, title, contentW, 2);
-  ensureSpace(pdf, meta, cursor, titleLines.length * 5 + 10);
+  ensureSpace(pdf, meta, cursor, titleLines.length * 5 + 10, t);
   pdf.text(titleLines, SIDE_MM, cursor.y + 4);
   cursor.y += titleLines.length * 5 + 2;
 
   // Task.toml fields as labeled facts (not mixed with tags)
   const taskFacts: Array<{ label: string; value: string }> = [];
-  if (meta.applicationType) taskFacts.push({ label: "Type", value: meta.applicationType });
-  if (meta.taskDomain) taskFacts.push({ label: "Domain", value: meta.taskDomain });
-  if (meta.taskDifficulty) taskFacts.push({ label: "Difficulty", value: meta.taskDifficulty });
-  if (meta.taskPath) taskFacts.push({ label: "Path", value: shortenPath(meta.taskPath, 42) });
+  if (meta.applicationType)
+    taskFacts.push({
+      label: t ? t("reports.pdf.type") : "Type",
+      value: meta.applicationType,
+    });
+  if (meta.taskDomain)
+    taskFacts.push({
+      label: t ? t("reports.pdf.domain") : "Domain",
+      value: meta.taskDomain,
+    });
+  if (meta.taskDifficulty)
+    taskFacts.push({
+      label: t ? t("reports.pdf.difficulty") : "Difficulty",
+      value: meta.taskDifficulty,
+    });
+  if (meta.taskPath)
+    taskFacts.push({
+      label: t ? t("reports.pdf.path") : "Path",
+      value: shortenPath(meta.taskPath, 42),
+    });
   if (taskFacts.length) {
-    ensureSpace(pdf, meta, cursor, 16);
-    cursor.y = drawLabeledFactGrid(pdf, SIDE_MM, cursor.y, contentW, taskFacts, 4) + 2;
+    ensureSpace(pdf, meta, cursor, 16, t);
+    cursor.y =
+      drawLabeledFactGrid(pdf, SIDE_MM, cursor.y, contentW, taskFacts, 4) + 2;
   }
 
   // Actual tags only here
   if (meta.taskTags?.length) {
-    ensureSpace(pdf, meta, cursor, 10);
+    ensureSpace(pdf, meta, cursor, 10, t);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(7.5);
     pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-    pdf.text("Tags", SIDE_MM, cursor.y + 3);
-    const tagX = SIDE_MM + pdf.getTextWidth("Tags") + 3;
-    cursor.y = drawPillFlow(pdf, tagX, cursor.y + 3, SIDE_MM + contentW, meta.taskTags, {
-      fill: CHIP_BG,
-      text: BRAND,
-      size: 7.5,
-    }) + 3;
+    const tagsLabel = t ? t("reports.pdf.tags") : "Tags";
+    pdf.text(tagsLabel, SIDE_MM, cursor.y + 3);
+    const tagX = SIDE_MM + pdf.getTextWidth(tagsLabel) + 3;
+    cursor.y =
+      drawPillFlow(pdf, tagX, cursor.y + 3, SIDE_MM + contentW, meta.taskTags, {
+        fill: CHIP_BG,
+        text: BRAND,
+        size: 7.5,
+      }) + 3;
   }
 
-  const narrative = buildTaskNarrative(meta);
+  const narrative = buildTaskNarrative(meta, t);
   for (const section of narrative) {
-    ensureSpace(pdf, meta, cursor, 16);
+    ensureSpace(pdf, meta, cursor, 16, t);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(8);
     pdf.setTextColor(BRAND.r, BRAND.g, BRAND.b);
@@ -517,7 +643,7 @@ function drawFrontMatter(pdf: jsPDF, meta: BatchReportPdfMeta): number {
     for (const para of paras.length ? paras : [section.body]) {
       const bodyLines = wrapLines(pdf, para, contentW);
       for (const line of bodyLines) {
-        ensureSpace(pdf, meta, cursor, 5);
+        ensureSpace(pdf, meta, cursor, 5, t);
         pdf.text(line, SIDE_MM, cursor.y + 3.5);
         cursor.y += 4.3;
       }
@@ -527,69 +653,113 @@ function drawFrontMatter(pdf: jsPDF, meta: BatchReportPdfMeta): number {
   }
 
   if (narrative.length === 0) {
-    ensureSpace(pdf, meta, cursor, 10);
+    ensureSpace(pdf, meta, cursor, 10, t);
     pdf.setFont("helvetica", "");
     pdf.setFontSize(9);
     pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-    pdf.text("No task instruction or context was available for this job.", SIDE_MM, cursor.y + 4);
+    pdf.text(
+      t
+        ? t("reports.pdf.noTaskNarrative")
+        : "No task instruction or context was available for this job.",
+      SIDE_MM,
+      cursor.y + 4,
+    );
     cursor.y += 10;
   }
 
   // ---- Persona strategy (once) ----
   const strategy = meta.personaStrategy;
-  const filters = Object.entries(strategy?.dimensionFilters ?? {}).filter(([, v]) => v?.length);
+  const filters = Object.entries(strategy?.dimensionFilters ?? {}).filter(
+    ([, v]) => v?.length,
+  );
   const stratify = strategy?.fields ?? [];
-  ensureSpace(pdf, meta, cursor, 24);
+  ensureSpace(pdf, meta, cursor, 24, t);
   cursor.y += 1;
-  cursor.y += drawSectionRule(pdf, SIDE_MM, cursor.y, contentW, "Persona sampling strategy");
+  cursor.y += drawSectionRule(
+    pdf,
+    SIDE_MM,
+    cursor.y,
+    contentW,
+    t ? t("reports.pdf.personaSamplingStrategy") : "Persona sampling strategy",
+  );
 
   const strategyFacts: Array<{ label: string; value: string }> = [];
-  if (strategy?.mode) strategyFacts.push({ label: "Mode", value: humanizeKey(String(strategy.mode)) });
+  if (strategy?.mode) {
+    strategyFacts.push({
+      label: t ? t("reports.pdf.mode") : "Mode",
+      value: humanizeKey(String(strategy.mode)),
+    });
+  }
   if (strategy?.allocation) {
-    strategyFacts.push({ label: "Allocation", value: humanizeAllocation(strategy.allocation) });
+    strategyFacts.push({
+      label: t ? t("reports.pdf.allocation") : "Allocation",
+      value: humanizeAllocation(strategy.allocation),
+    });
   }
   if (strategy?.allocation === "perCell" && strategy.perCell != null) {
-    strategyFacts.push({ label: "Per cell", value: String(strategy.perCell) });
+    strategyFacts.push({
+      label: t ? t("reports.pdf.perCell") : "Per cell",
+      value: String(strategy.perCell),
+    });
   } else if (strategy?.perCell != null && !strategy?.allocation) {
-    strategyFacts.push({ label: "Per cell", value: String(strategy.perCell) });
+    strategyFacts.push({
+      label: t ? t("reports.pdf.perCell") : "Per cell",
+      value: String(strategy.perCell),
+    });
   } else if (strategy?.sampleSize != null) {
-    strategyFacts.push({ label: "Sample size", value: String(strategy.sampleSize) });
+    strategyFacts.push({
+      label: t ? t("reports.pdf.sampleSize") : "Sample size",
+      value: String(strategy.sampleSize),
+    });
   }
   if (stratify.length) {
-    strategyFacts.push({ label: "Stratify", value: stratify.map(humanizeKey).join(", ") });
+    strategyFacts.push({
+      label: t ? t("reports.pdf.stratify") : "Stratify",
+      value: stratify.map(humanizeKey).join(", "),
+    });
   }
   if (meta.personaPool) {
-    strategyFacts.push({ label: "Pool", value: meta.personaPool });
+    strategyFacts.push({
+      label: t ? t("reports.pdf.pool") : "Pool",
+      value: meta.personaPool,
+    });
   }
   if (strategyFacts.length) {
-    ensureSpace(pdf, meta, cursor, 16);
-    cursor.y = drawLabeledFactGrid(pdf, SIDE_MM, cursor.y, contentW, strategyFacts, 2) + 2;
+    ensureSpace(pdf, meta, cursor, 16, t);
+    cursor.y =
+      drawLabeledFactGrid(pdf, SIDE_MM, cursor.y, contentW, strategyFacts, 2) +
+      2;
   }
 
   if (filters.length) {
-    ensureSpace(pdf, meta, cursor, 8);
+    ensureSpace(pdf, meta, cursor, 8, t);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(7.5);
     pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-    pdf.text("Audience filters", SIDE_MM, cursor.y + 3);
+    pdf.text(
+      t ? t("reports.pdf.audienceFilters") : "Audience filters",
+      SIDE_MM,
+      cursor.y + 3,
+    );
     cursor.y += 5;
 
     for (const [dim, values] of filters) {
-      ensureSpace(pdf, meta, cursor, 8);
+      ensureSpace(pdf, meta, cursor, 8, t);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(8);
       pdf.setTextColor(INK.r, INK.g, INK.b);
       const label = humanizeKey(dim);
       pdf.text(label, SIDE_MM, cursor.y + 3);
       const lw = pdf.getTextWidth(label) + 2;
-      cursor.y = drawPillFlow(
-        pdf,
-        SIDE_MM + lw,
-        cursor.y + 3,
-        SIDE_MM + contentW,
-        values,
-        { fill: SOFT, text: INK, size: 7.5 },
-      ) + 2.5;
+      cursor.y =
+        drawPillFlow(
+          pdf,
+          SIDE_MM + lw,
+          cursor.y + 3,
+          SIDE_MM + contentW,
+          values,
+          { fill: SOFT, text: INK, size: 7.5 },
+        ) + 2.5;
     }
   }
 
@@ -604,21 +774,41 @@ function drawFrontMatter(pdf: jsPDF, meta: BatchReportPdfMeta): number {
  * page(s). Kept out of the front matter so the setup stays compact and the
  * detailed per-persona list lands at the end.
  */
-function drawPersonaRoster(pdf: jsPDF, meta: BatchReportPdfMeta): number {
+function drawPersonaRoster(
+  pdf: jsPDF,
+  meta: BatchReportPdfMeta,
+  t?: ReportTranslate,
+): number {
   const personas = meta.personas ?? [];
   const contentW = A4_WIDTH_MM - SIDE_MM * 2;
 
   pdf.addPage();
   drawWatermark(pdf);
-  drawContentHeader(pdf, meta, "Persona cohort");
+  drawContentHeader(
+    pdf,
+    meta,
+    t ? t("reports.pdf.personaCohort") : "Persona cohort",
+  );
   let y = HEADER_MM + 6;
 
-  y += drawSectionRule(pdf, SIDE_MM, y, contentW, `Persona cohort  (${personas.length})`);
+  y += drawSectionRule(
+    pdf,
+    SIDE_MM,
+    y,
+    contentW,
+    t
+      ? t("reports.pdf.personaCohortCount", { count: personas.length })
+      : `Persona cohort  (${personas.length})`,
+  );
 
   const newPage = () => {
     pdf.addPage();
     drawWatermark(pdf);
-    drawContentHeader(pdf, meta, "Persona cohort");
+    drawContentHeader(
+      pdf,
+      meta,
+      t ? t("reports.pdf.personaCohort") : "Persona cohort",
+    );
     y = HEADER_MM + 6;
   };
 
@@ -626,7 +816,13 @@ function drawPersonaRoster(pdf: jsPDF, meta: BatchReportPdfMeta): number {
     pdf.setFont("helvetica", "");
     pdf.setFontSize(9);
     pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-    pdf.text("Roster unavailable for this job.", SIDE_MM, y + 4);
+    pdf.text(
+      t
+        ? t("reports.pdf.rosterUnavailable")
+        : "Roster unavailable for this job.",
+      SIDE_MM,
+      y + 4,
+    );
     return 1;
   }
 
@@ -645,7 +841,11 @@ function drawPersonaRoster(pdf: jsPDF, meta: BatchReportPdfMeta): number {
     pdf.setFontSize(8.5);
     pdf.setTextColor(INK.r, INK.g, INK.b);
     const l = left[i];
-    pdf.text(wrapLines(pdf, `${l.id}  ${l.name}`, colW - 2, 1)[0], SIDE_MM, y + 3);
+    pdf.text(
+      wrapLines(pdf, `${l.id}  ${l.name}`, colW - 2, 1)[0],
+      SIDE_MM,
+      y + 3,
+    );
     const r = right[i];
     if (r) {
       pdf.text(
@@ -662,6 +862,7 @@ function drawPersonaRoster(pdf: jsPDF, meta: BatchReportPdfMeta): number {
 export async function exportBatchReportPdf(
   root: HTMLElement,
   meta: BatchReportPdfMeta,
+  t?: ReportTranslate,
 ): Promise<void> {
   const filename = `${meta.jobName}-persona-task-batch-report.pdf`;
   root.classList.add("batch-report-pdf-capture");
@@ -682,7 +883,7 @@ export async function exportBatchReportPdf(
       },
     });
 
-    const img = await loadImage(dataUrl);
+    const img = await loadImage(dataUrl, t);
     const contentWidthMm = A4_WIDTH_MM - SIDE_MM * 2;
     const contentTopMm = HEADER_MM + 4;
     const contentBottomMm = A4_HEIGHT_MM - FOOTER_MM;
@@ -696,12 +897,16 @@ export async function exportBatchReportPdf(
       const remaining = img.height - sourceY;
       const slicePx = Math.min(pageHeightPx, remaining);
       slices.push({
-        dataUrl: cropPageSlice(img, sourceY, slicePx),
+        dataUrl: cropPageSlice(img, sourceY, slicePx, t),
         heightMm: slicePx / pxPerMm,
       });
       sourceY += slicePx;
       if (slices.length > 80) {
-        throw new Error("Batch report is too long to export as a PDF.");
+        throw new Error(
+          t
+            ? t("reports.pdf.tooLong")
+            : "Batch report is too long to export as a PDF.",
+        );
       }
     }
 
@@ -712,21 +917,35 @@ export async function exportBatchReportPdf(
       compress: true,
     });
 
-    drawFrontMatter(pdf, meta);
+    drawFrontMatter(pdf, meta, t);
 
     if (slices.length === 0) {
       pdf.addPage();
       drawWatermark(pdf);
-      drawContentHeader(pdf, meta, "Batch results");
+      drawContentHeader(
+        pdf,
+        meta,
+        t ? t("reports.pdf.batchResults") : "Batch results",
+      );
       pdf.setFont("helvetica", "");
       pdf.setFontSize(11);
       pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
-      pdf.text("No report content was available to capture.", SIDE_MM, contentTopMm + 10);
+      pdf.text(
+        t
+          ? t("reports.pdf.noReportContent")
+          : "No report content was available to capture.",
+        SIDE_MM,
+        contentTopMm + 10,
+      );
     } else {
       slices.forEach((slice) => {
         pdf.addPage();
         drawWatermark(pdf);
-        drawContentHeader(pdf, meta, "Batch results");
+        drawContentHeader(
+          pdf,
+          meta,
+          t ? t("reports.pdf.batchResults") : "Batch results",
+        );
         pdf.addImage(
           slice.dataUrl,
           "JPEG",
@@ -741,21 +960,29 @@ export async function exportBatchReportPdf(
     }
 
     // Full persona roster as the closing section.
-    drawPersonaRoster(pdf, meta);
+    drawPersonaRoster(pdf, meta, t);
 
     // Footers last, once total page count is known.
     const totalPages = pdf.getNumberOfPages();
     for (let p = 1; p <= totalPages; p += 1) {
       pdf.setPage(p);
-      drawContentFooter(pdf, meta, p, totalPages);
+      drawContentFooter(pdf, meta, p, totalPages, t);
     }
 
     pdf.setProperties({
-      title: `MatrAIx Persona-Task Batch Report - ${meta.jobName}`,
-      subject: "Playground batch report",
+      title: t
+        ? t("reports.pdf.documentTitle", { jobName: meta.jobName })
+        : `MatrAIx Persona-Task Batch Report - ${meta.jobName}`,
+      subject: t ? t("reports.pdf.documentSubject") : "Playground batch report",
       author: "MatrAIx",
       creator: "MatrAIx Playground",
-      keywords: ["MatrAIx", "persona", "task", "batch report", meta.applicationType || "eval"]
+      keywords: [
+        "MatrAIx",
+        "persona",
+        "task",
+        "batch report",
+        meta.applicationType || "eval",
+      ]
         .filter(Boolean)
         .join(", "),
     });
@@ -767,17 +994,73 @@ export async function exportBatchReportPdf(
   }
 }
 
-export function formatBatchReportMetaLines(meta: BatchReportPdfMeta): string[] {
+export function formatBatchReportMetaLines(
+  meta: BatchReportPdfMeta,
+  t?: ReportTranslate,
+): string[] {
   const lines: string[] = [];
-  lines.push(`Job: ${meta.jobName}`);
-  if (meta.taskTitle || meta.taskPath) lines.push(`Task: ${meta.taskTitle || meta.taskPath}`);
-  if (meta.personaPool) lines.push(`Dataset: ${meta.personaPool}`);
-  if (meta.agentModel) lines.push(`Agent model: ${meta.agentModel}`);
-  if (meta.parallelism != null) lines.push(`Parallelism: ${meta.parallelism}`);
-  if (meta.personas?.length) lines.push(`Personas: ${meta.personas.length}`);
-  if (meta.personaStrategy?.mode) lines.push(`Persona mode: ${meta.personaStrategy.mode}`);
-  if (meta.runWindow) lines.push(`Run: ${meta.runWindow}`);
-  if (meta.generatedAt) lines.push(`Report: ${meta.generatedAt}`);
+  lines.push(
+    t
+      ? t("reports.pdf.jobLine", { value: meta.jobName })
+      : `Job: ${meta.jobName}`,
+  );
+  if (meta.taskTitle || meta.taskPath) {
+    lines.push(
+      t
+        ? t("reports.pdf.taskLine", {
+            value: meta.taskTitle || meta.taskPath || "",
+          })
+        : `Task: ${meta.taskTitle || meta.taskPath}`,
+    );
+  }
+  if (meta.personaPool) {
+    lines.push(
+      t
+        ? t("reports.pdf.datasetLine", { value: meta.personaPool })
+        : `Dataset: ${meta.personaPool}`,
+    );
+  }
+  if (meta.agentModel) {
+    lines.push(
+      t
+        ? t("reports.pdf.agentModelLine", { value: meta.agentModel })
+        : `Agent model: ${meta.agentModel}`,
+    );
+  }
+  if (meta.parallelism != null) {
+    lines.push(
+      t
+        ? t("reports.pdf.parallelismLine", { value: meta.parallelism })
+        : `Parallelism: ${meta.parallelism}`,
+    );
+  }
+  if (meta.personas?.length) {
+    lines.push(
+      t
+        ? t("reports.pdf.personasLine", { value: meta.personas.length })
+        : `Personas: ${meta.personas.length}`,
+    );
+  }
+  if (meta.personaStrategy?.mode) {
+    lines.push(
+      t
+        ? t("reports.pdf.personaModeLine", { value: meta.personaStrategy.mode })
+        : `Persona mode: ${meta.personaStrategy.mode}`,
+    );
+  }
+  if (meta.runWindow)
+    lines.push(
+      t
+        ? t("reports.pdf.runLine", { value: meta.runWindow })
+        : `Run: ${meta.runWindow}`,
+    );
+  if (meta.generatedAt) {
+    lines.push(
+      t
+        ? t("reports.pdf.reportLine", { value: meta.generatedAt })
+        : `Report: ${meta.generatedAt}`,
+    );
+  }
   lines.push(...usageMetaLines(meta.usage));
   return lines;
 }

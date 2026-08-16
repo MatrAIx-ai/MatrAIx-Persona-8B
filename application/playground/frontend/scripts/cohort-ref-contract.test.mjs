@@ -74,6 +74,19 @@ for (const [name, file, key] of [
   });
 }
 
+test("artifact paths stay inside complete rich messages", () => {
+  const runs = read("src/components/RunsView.tsx");
+  const debrief = read("src/components/ChatTrialDebrief.tsx");
+  const messages = JSON.parse(read("src/i18n/messages/en-US.json"));
+
+  assert.match(runs, /rich\("runs\.jobsSubtitle"/);
+  assert.match(debrief, /rich\("runs\.noPersonaSelfReport"/);
+  assert.match(messages["runs.jobsSubtitle"], /<path>jobs\/<\/path>/);
+  assert.match(messages["runs.noPersonaSelfReport"], /<path>user_feedback\.json<\/path>/);
+  assert.equal(messages["runs.jobsSubtitle.beforePath"], undefined);
+  assert.equal(messages["runs.noPersonaSelfReport.beforePath"], undefined);
+});
+
 test("batch progress, completion, and cancellation copy uses the active locale", () => {
   const hook = read("src/components/cockpit/setup/useCockpitBatchJob.ts");
   const messages = JSON.parse(read("src/i18n/messages/en-US.json"));

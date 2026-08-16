@@ -6,6 +6,13 @@ import type { ReactNode } from "react";
 
 import { PersonaBubble, RecBotBubble } from "./cockpit/TurnBubble";
 import { humanizeToken } from "./cockpit/cockpitShared";
+import { useI18n } from "@/i18n/I18nProvider";
+import {
+  localizedBooleanLabel,
+  localizedDecisionLabel,
+  localizedStructuredChoiceLabel,
+  type Translate,
+} from "@/lib/localizedDisplayValues";
 import {
   StatTile,
   appName,
@@ -16,7 +23,10 @@ import {
 } from "./runsShared";
 import type { TurnView } from "@/lib/types";
 import type { PlaygroundQuestionnaire } from "@/lib/types";
-import type { TrialEvaluationArtifact, TrialEvaluationContext } from "@/lib/types";
+import type {
+  TrialEvaluationArtifact,
+  TrialEvaluationContext,
+} from "@/lib/types";
 import type { SelfReportSchema, UserFeedbackArtifact } from "@/lib/types";
 import { SchemaSelfReportPanel } from "./SchemaSelfReportPanel";
 
@@ -51,7 +61,9 @@ function SectionHeading({ children }: { children: ReactNode }) {
 }
 
 function SubsectionHeading({ children }: { children: ReactNode }) {
-  return <h3 className="text-[14px] font-semibold text-text-main">{children}</h3>;
+  return (
+    <h3 className="text-[14px] font-semibold text-text-main">{children}</h3>
+  );
 }
 
 function previewText(value: string | null | undefined, limit = 180): string {
@@ -66,32 +78,44 @@ function contextOfType(
   contextType: string,
 ): TrialEvaluationContext | null {
   return (
-    trialEvaluation?.contexts.find((context) => context.contextType === contextType) ?? null
+    trialEvaluation?.contexts.find(
+      (context) => context.contextType === contextType,
+    ) ?? null
   );
 }
 
-function facetValue(context: TrialEvaluationContext | null, key: string): string | number | boolean | null {
+function facetValue(
+  context: TrialEvaluationContext | null,
+  key: string,
+): string | number | boolean | null {
   const facet = context?.facets.find((item) => item.key === key);
   return facet?.value ?? null;
 }
 
-function facetText(context: TrialEvaluationContext | null, key: string): string {
+function facetText(
+  context: TrialEvaluationContext | null,
+  key: string,
+): string {
   const value = facetValue(context, key);
   return typeof value === "string" ? value : "";
 }
 
-function facetNumber(context: TrialEvaluationContext | null, key: string): number | null {
+function facetNumber(
+  context: TrialEvaluationContext | null,
+  key: string,
+): number | null {
   const value = facetValue(context, key);
   return typeof value === "number" ? value : null;
 }
 
-function formatFacetToken(value: string | number | boolean | null | undefined): string {
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+function formatFacetToken(
+  value: string | number | boolean | null | undefined,
+  t: Translate,
+): string {
+  if (typeof value === "boolean") return localizedBooleanLabel(value, t);
   if (typeof value === "number") return String(value);
   if (!value) return "-";
-  if (value === "true") return "Yes";
-  if (value === "false") return "No";
-  return humanizeToken(value);
+  return localizedStructuredChoiceLabel(value, t) ?? humanizeToken(value);
 }
 
 function SummarySignalCard({
@@ -115,8 +139,14 @@ function SummarySignalCard({
           </span>
         ) : null}
       </div>
-      <div className="mt-2 text-[20px] font-semibold leading-tight text-text-main">{value}</div>
-      {detail ? <p className="mt-2 text-[14px] leading-relaxed text-text-variant">{detail}</p> : null}
+      <div className="mt-2 text-[20px] font-semibold leading-tight text-text-main">
+        {value}
+      </div>
+      {detail ? (
+        <p className="mt-2 text-[14px] leading-relaxed text-text-variant">
+          {detail}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -126,62 +156,86 @@ function ChatContractSummary({
 }: {
   trialEvaluation: TrialEvaluationArtifact | null | undefined;
 }) {
+  const { t } = useI18n();
   const outcome = contextOfType(trialEvaluation, "task_outcome");
   const conversation = contextOfType(trialEvaluation, "conversation_summary");
   const feedback =
-    contextOfType(trialEvaluation, "user_feedback") ?? contextOfType(trialEvaluation, "feedback");
+    contextOfType(trialEvaluation, "user_feedback") ??
+    contextOfType(trialEvaluation, "feedback");
 
   if (!outcome && !conversation && !feedback) return null;
 
-  const outcomeStatus = formatFacetToken(facetValue(outcome, "outcome_status"));
+  const outcomeStatus = formatFacetToken(
+    facetValue(outcome, "outcome_status"),
+    t,
+  );
   const resolutionBasis = facetText(outcome, "resolution_basis");
   const outcomeReason = previewText(facetText(outcome, "outcome_reason"), 140);
 
-  const conversationPath = formatFacetToken(facetValue(conversation, "conversation_path"));
+  const conversationPath = formatFacetToken(
+    facetValue(conversation, "conversation_path"),
+    t,
+  );
   const turnCount = facetNumber(conversation, "message_count");
-  const clarificationCount = facetNumber(conversation, "clarification_question_count");
-  const processNotes = previewText(facetText(conversation, "process_notes"), 140);
+  const clarificationCount = facetNumber(
+    conversation,
+    "clarification_question_count",
+  );
+  const processNotes = previewText(
+    facetText(conversation, "process_notes"),
+    140,
+  );
 
   const rating = facetNumber(feedback, "overall_experience_rating");
-  const needSatisfaction = formatFacetToken(facetValue(feedback, "need_constraint_satisfaction"));
-  const feedbackReason = previewText(facetText(feedback, "feedback_reason"), 140);
+  const needSatisfaction = formatFacetToken(
+    facetValue(feedback, "need_constraint_satisfaction"),
+    t,
+  );
+  const feedbackReason = previewText(
+    facetText(feedback, "feedback_reason"),
+    140,
+  );
 
   return (
     <div className="space-y-3 glass-tile rounded-md p-4">
       <div className="space-y-1">
-        <SubsectionHeading>Trial summary</SubsectionHeading>
+        <SubsectionHeading>{t("runs.trialSummary")}</SubsectionHeading>
         <p className="text-[14px] leading-relaxed text-text-variant">
-          Chat-specific signals from this trial: outcome, how the conversation unfolded, and the
-          persona&apos;s post-chat rating.
+          {t("runs.trialSummaryDescription")}
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {outcome ? (
           <SummarySignalCard
-            title="Task outcome"
+            title={t("runs.taskOutcome")}
             value={outcomeStatus}
-            eyebrow={resolutionBasis ? formatFacetToken(resolutionBasis) : null}
-            detail={outcomeReason || "No outcome explanation was recorded."}
+            eyebrow={
+              resolutionBasis ? formatFacetToken(resolutionBasis, t) : null
+            }
+            detail={outcomeReason || t("runs.noOutcomeExplanation")}
           />
         ) : null}
         {conversation ? (
           <SummarySignalCard
-            title="Conversation path"
+            title={t("runs.conversationPath")}
             value={conversationPath}
             eyebrow={
               turnCount != null || clarificationCount != null
-                ? `${turnCount ?? "-"} msgs · ${clarificationCount ?? "-"} clarifications`
+                ? t("runs.messagesAndClarifications", {
+                    messages: turnCount ?? "-",
+                    clarifications: clarificationCount ?? "-",
+                  })
                 : null
             }
-            detail={processNotes || "No process summary was recorded."}
+            detail={processNotes || t("runs.noProcessSummary")}
           />
         ) : null}
         {feedback ? (
           <SummarySignalCard
-            title="User feedback"
+            title={t("runs.userFeedback")}
             value={rating != null ? `${rating}/10` : needSatisfaction}
             eyebrow={rating != null ? needSatisfaction : null}
-            detail={feedbackReason || "No feedback explanation was recorded."}
+            detail={feedbackReason || t("runs.noFeedbackExplanation")}
           />
         ) : null}
       </div>
@@ -200,7 +254,9 @@ const _DEFAULT_FEEDBACK_KEYS = new Set([
   "feltUnderstood",
 ]);
 
-function inferSchemaFromFeedback(feedback: UserFeedbackArtifact): SelfReportSchema {
+function inferSchemaFromFeedback(
+  feedback: UserFeedbackArtifact,
+): SelfReportSchema {
   const fields: SelfReportSchema["fields"] = [];
   for (const [key, value] of Object.entries(feedback)) {
     if (value === null || value === undefined || value === "") continue;
@@ -216,7 +272,9 @@ function inferSchemaFromFeedback(feedback: UserFeedbackArtifact): SelfReportSche
       }
     } else if (
       typeof value === "string" &&
-      ["yes", "no", "partially", "unsure", "true", "false"].includes(value.trim().toLowerCase())
+      ["yes", "no", "partially", "unsure", "true", "false"].includes(
+        value.trim().toLowerCase(),
+      )
     ) {
       kind = "enum";
     }
@@ -240,7 +298,9 @@ function inferSchemaFromFeedback(feedback: UserFeedbackArtifact): SelfReportSche
     if (_DEFAULT_FEEDBACK_KEYS.has(key)) return 2;
     return 3;
   };
-  fields.sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key));
+  fields.sort(
+    (a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key),
+  );
   return { fields };
 }
 
@@ -254,6 +314,7 @@ export function ChatSelfReport({
   userFeedback?: UserFeedbackArtifact | null;
   selfReportSchema?: SelfReportSchema | null;
 }) {
+  const { rich } = useI18n();
   const feedback: UserFeedbackArtifact | null =
     userFeedback && Object.keys(userFeedback).length > 0
       ? userFeedback
@@ -277,7 +338,8 @@ export function ChatSelfReport({
                     ? "partially"
                     : "no"
                 : undefined,
-            askedUsefulClarificationQuestions: questionnaire.askedUsefulClarifyingQuestions,
+            askedUsefulClarificationQuestions:
+              questionnaire.askedUsefulClarifyingQuestions,
             clarifyingNotes: questionnaire.clarifyingNotes,
             ...Object.fromEntries(
               Object.entries(questionnaire).filter(
@@ -297,12 +359,11 @@ export function ChatSelfReport({
           } as UserFeedbackArtifact)
         : null;
 
-  const schema =
-    selfReportSchema?.fields?.length
-      ? selfReportSchema
-      : feedback
-        ? inferSchemaFromFeedback(feedback)
-        : null;
+  const schema = selfReportSchema?.fields?.length
+    ? selfReportSchema
+    : feedback
+      ? inferSchemaFromFeedback(feedback)
+      : null;
 
   if (schema?.fields?.length && feedback) {
     return <SchemaSelfReportPanel schema={schema} feedback={feedback} />;
@@ -310,8 +371,11 @@ export function ChatSelfReport({
 
   return (
     <DashedNote>
-      No persona self-report was recorded. The simulator writes{" "}
-      <span className="font-mono text-[13px]">user_feedback.json</span> after the conversation ends.
+      {rich("runs.noPersonaSelfReport", {
+        path: (parts) => (
+          <span className="font-mono text-[13px]">{parts}</span>
+        ),
+      })}
     </DashedNote>
   );
 }
@@ -324,6 +388,7 @@ export function ChatObjectiveEvaluation({
   metrics: RunDetailView["metricScores"];
   verifier?: ChatTrialVerifier | null;
 }) {
+  const { t } = useI18n();
   const artifactMissing =
     verifier &&
     !verifier.passed &&
@@ -333,32 +398,41 @@ export function ChatObjectiveEvaluation({
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatTile caption="Turns" value={metrics?.numTurns ?? "-"} />
+        <StatTile caption={t("runs.turns")} value={metrics?.numTurns ?? "-"} />
         {verifier ? (
           <div
             className={`flex flex-col justify-center rounded-lg px-3 py-2.5 ${
               verifier.passed ? "bg-secondary/10" : "bg-danger/10"
             }`}
           >
-            <span className="hud text-[11px] text-text-dim">Run complete</span>
+            <span className="hud text-[11px] text-text-dim">
+              {t("runs.runComplete")}
+            </span>
             <div className="mt-1 flex items-center gap-2">
               <span className="text-[15px] font-semibold text-text-main">
-                {verifier.passed ? "Passed checks" : "Failed checks"}
+                {verifier.passed
+                  ? t("runs.passedChecks")
+                  : t("runs.failedChecks")}
               </span>
-              <span className="font-mono text-[13px] text-text-variant">reward {verifier.reward}</span>
+              <span className="font-mono text-[13px] text-text-variant">
+                {t("runs.reward", { reward: verifier.reward })}
+              </span>
             </div>
           </div>
         ) : (
           <div className="flex flex-col justify-center rounded-lg glass-tile glass-tile--dim px-3 py-2.5">
-            <span className="hud text-[11px] text-text-dim">Run complete</span>
-            <span className="mt-1 text-[15px] text-text-variant">Checks pending</span>
+            <span className="hud text-[11px] text-text-dim">
+              {t("runs.runComplete")}
+            </span>
+            <span className="mt-1 text-[15px] text-text-variant">
+              {t("runs.checksPending")}
+            </span>
           </div>
         )}
       </div>
       {artifactMissing ? (
         <p className="text-[14px] leading-relaxed text-text-variant">
-          Scores above were recovered from the live event stream. Artifact checks failed because
-          output files were missing on this run. Re-run the job for a clean pass.
+          {t("runs.artifactMissingDescription")}
         </p>
       ) : null}
       {verifier?.detail && !verifier.passed ? (
@@ -381,8 +455,9 @@ export function ChatTrialTranscript({
   domain?: string;
   persona?: RunPersona | null;
 }) {
+  const { t } = useI18n();
   if (transcript.length === 0) {
-    return <DashedNote>No conversation turns were recorded for this trial.</DashedNote>;
+    return <DashedNote>{t("runs.noConversationTurns")}</DashedNote>;
   }
   return (
     <div className="space-y-7 rounded-md glass-panel p-5">
@@ -414,25 +489,31 @@ export function ChatTrialDebriefBody({
   taskTitle,
   showSectionHeadings = true,
 }: ChatTrialDebriefBodyProps) {
+  const { t } = useI18n();
   const applicationId = config.applicationId?.trim() || null;
-  const app = applicationId ? appName(applicationId) : taskTitle?.trim() || appName(null);
+  const app = applicationId
+    ? appName(applicationId, t)
+    : taskTitle?.trim() || appName(null, t);
 
   return (
     <div className="space-y-6">
       <section className="space-y-4">
-        {showSectionHeadings && <SectionHeading>Evaluation</SectionHeading>}
+        {showSectionHeadings && (
+          <SectionHeading>{t("runs.evaluation")}</SectionHeading>
+        )}
         <div className="space-y-2 glass-tile rounded-md p-3">
           <p className="text-[14px] leading-relaxed text-text-variant">
-            Run checks confirm the conversation finished and artifacts are valid — not a quality
-            score.
+            {t("runs.evaluationDescription")}
           </p>
           <ChatObjectiveEvaluation metrics={metricScores} verifier={verifier} />
         </div>
         <ChatContractSummary trialEvaluation={trialEvaluation} />
         <div className="space-y-3 glass-tile rounded-md p-4">
-          {showSectionHeadings && <SubsectionHeading>Persona self-report</SubsectionHeading>}
+          {showSectionHeadings && (
+            <SubsectionHeading>{t("runs.personaSelfReport")}</SubsectionHeading>
+          )}
           <p className="text-[14px] leading-relaxed text-text-variant">
-            How the simulated user rated the chat after it ended.
+            {t("runs.personaSelfReportDescription")}
           </p>
           <ChatSelfReport
             questionnaire={questionnaire}
@@ -443,7 +524,9 @@ export function ChatTrialDebriefBody({
       </section>
 
       <section className="space-y-3">
-        {showSectionHeadings && <SectionHeading>Conversation</SectionHeading>}
+        {showSectionHeadings && (
+          <SectionHeading>{t("runs.conversation")}</SectionHeading>
+        )}
         <ChatTrialTranscript
           transcript={transcript}
           appLabel={app}
@@ -468,6 +551,7 @@ function TranscriptTurn({
   domain: string;
   persona?: RunPersona | null;
 }) {
+  const { t } = useI18n();
   const turnView: TurnView = {
     userMessage: turn.userMessage,
     assistantMessage: turn.assistantMessage ?? "",
@@ -479,10 +563,15 @@ function TranscriptTurn({
   return (
     <div
       className="space-y-7 rise-in"
-      style={{ animationDelay: `${Math.min(index, 6) * 30}ms`, animationFillMode: "backwards" }}
+      style={{
+        animationDelay: `${Math.min(index, 6) * 30}ms`,
+        animationFillMode: "backwards",
+      }}
     >
       <div className="flex items-center justify-center">
-        <span className="hud text-[11px] text-text-dim">Turn {index + 1}</span>
+        <span className="hud text-[11px] text-text-dim">
+          {t("runs.turn", { count: index + 1 })}
+        </span>
       </div>
       <PersonaBubble
         message={turn.userMessage}
@@ -508,13 +597,18 @@ function TranscriptTurn({
 }
 
 function DecisionTag({ decision }: { decision: string }) {
+  const { t } = useI18n();
   const satisfied = decision === "satisfied";
   const cls = satisfied
     ? "text-secondary bg-secondary/10"
     : "text-warn bg-warn/10";
-  const label = satisfied ? "Got what they needed" : decision === "give_up" ? "Gave up" : humanizeToken(decision);
+  const label = localizedDecisionLabel(decision, t) ?? humanizeToken(decision);
   return (
-    <span className={`inline-flex items-center rounded px-1.5 py-px hud text-[11px] ${cls}`}>{label}</span>
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-px hud text-[11px] ${cls}`}
+    >
+      {label}
+    </span>
   );
 }
 
