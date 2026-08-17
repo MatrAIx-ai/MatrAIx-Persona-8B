@@ -140,4 +140,19 @@ describe("provider and locale popover", () => {
     await waitFor(() => expect(window.localStorage.getItem("matraix.uiLocale")).toBe("en-US"));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("returns focus to the trigger after selecting a locale with the mouse", async () => {
+    render(
+      <I18nProvider>
+        <LocalePopover />
+      </I18nProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: SOURCE_MESSAGES["locale.buttonLabel"] });
+    fireEvent.click(trigger);
+    const englishOption = screen.getByRole("button", { name: "English" });
+    await waitFor(() => expect(document.activeElement).toBe(englishOption));
+    fireEvent.click(englishOption);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
 });

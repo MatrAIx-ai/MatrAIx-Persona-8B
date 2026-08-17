@@ -12,6 +12,7 @@ export function LocalePopover() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const firstOptionRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef(false);
   const [position, setPosition] = useState({ left: 12, top: 56 });
 
   const updatePosition = useCallback(() => {
@@ -62,6 +63,13 @@ export function LocalePopover() {
     firstOptionRef.current?.focus();
   }, [open, updatePosition]);
 
+  useEffect(() => {
+    if (open || !restoreFocusRef.current) return;
+    restoreFocusRef.current = false;
+    const raf = requestAnimationFrame(() => triggerRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
+
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -111,8 +119,8 @@ export function LocalePopover() {
                       aria-current={active ? "true" : undefined}
                       onClick={() => {
                         void setLocale(definition.code);
+                        restoreFocusRef.current = true;
                         setOpen(false);
-                        triggerRef.current?.focus();
                       }}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-start text-sm transition ${FOCUS_RING} ${
                         active
