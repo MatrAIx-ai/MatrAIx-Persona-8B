@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useI18n } from "@/i18n/I18nProvider";
-import { listWebEvalTasks, api, ApiError } from "@/lib/api";
+import { listWebEvalTasks, api } from "@/lib/api";
 import {
   findPersonaAgent,
   personaModelPipelineLabel,

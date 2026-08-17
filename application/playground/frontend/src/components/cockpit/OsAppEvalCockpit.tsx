@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useI18n } from "@/i18n/I18nProvider";
-import { listOsAppEvalTasks, api, ApiError, harborTrialLiveScreenshotUrl } from "@/lib/api";
+import { listOsAppEvalTasks, api, harborTrialLiveScreenshotUrl } from "@/lib/api";
 import {
   cuaPersonaModelSelectOptions,
   DEFAULT_CUA_AGENT_MODEL,
