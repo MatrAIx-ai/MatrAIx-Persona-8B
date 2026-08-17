@@ -1,5 +1,6 @@
 import { FOCUS_RING, Sym } from "../cockpitShared";
 import { useI18n } from "@/i18n/I18nProvider";
+import type { MessageKey } from "@/i18n/types";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import type { PersonaPoolPersonaCard } from "@/lib/types";
 import { PersonaAvatar } from "./PersonaAvatar";
@@ -7,13 +8,13 @@ import type { PersonaSearchHit } from "./personaSearchHits";
 import { CHIP_TEXT_CLASS, personaDimChipTone } from "./taskCardLabels";
 import { ToneChip } from "./ToneChip";
 
-const DIM_LABELS: Record<string, string> = {
-  age_bracket: "Age",
-  region: "Region",
-  domain: "Domain",
-  intent: "Intent",
-  life_stage: "Life stage",
-  source: "Source",
+const DIM_LABEL_KEYS: Record<string, MessageKey> = {
+  age_bracket: "cockpitSetup.persona.field.age",
+  region: "cockpitSetup.persona.field.region",
+  domain: "cockpitSetup.persona.field.domain",
+  intent: "cockpitSetup.persona.field.intent",
+  life_stage: "cockpitSetup.persona.field.lifeStage",
+  source: "cockpitSetup.persona.field.source",
 };
 
 export interface BenchPersonaCardProps {
@@ -160,7 +161,9 @@ export function BenchPersonaCard({
         >
           <dl className="space-y-2">
             {dims.map(([key, value], index) => {
-              const label = DIM_LABELS[key] ?? key.replace(/_/g, " ");
+              const label = key in DIM_LABEL_KEYS
+                ? t(DIM_LABEL_KEYS[key])
+                : key.replace(/_/g, " ");
               return (
                 <div
                   key={key}

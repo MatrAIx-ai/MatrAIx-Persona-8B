@@ -1061,6 +1061,6 @@ export function formatBatchReportMetaLines(
         : `Report: ${meta.generatedAt}`,
     );
   }
-  lines.push(...usageMetaLines(meta.usage));
+  lines.push(...usageMetaLines(meta.usage, t));
   return lines;
 }

@@ -11,6 +11,8 @@ import type { ReactNode } from "react";
 
 import { SCORE_BAND_CLASS, Sym, type ScoreBand } from "./cockpit/cockpitShared";
 import { useI18n, type I18nContextValue } from "@/i18n/I18nProvider";
+import { SOURCE_MESSAGES } from "@/i18n/source";
+import type { MessageKey } from "@/i18n/types";
 import type {
   Domain,
   PlaygroundResult,
@@ -320,11 +322,11 @@ export function RecChip({ item }: { item: RunRecItem }) {
 // ---------------------------------------------------------------------------
 
 /** Friendly display name for the chatbot adapter that was under test. */
-const APP_DISPLAY_NAMES: Record<string, string> = {
-  meal_planning_nutrition: "Meal planning",
-  finance_openbb: "OpenBB",
-  acme_support_api: "ACME support API",
-  acme_support_mcp: "ACME support MCP",
+const APP_DISPLAY_NAME_KEYS: Record<string, MessageKey> = {
+  meal_planning_nutrition: "runs.app.mealPlanningNutrition",
+  finance_openbb: "runs.app.financeOpenbb",
+  acme_support_api: "runs.app.acmeSupportApi",
+  acme_support_mcp: "runs.app.acmeSupportMcp",
 };
 
 /** The app's real name for the transcript label + meta line. No hardcoded
@@ -335,7 +337,12 @@ export function appName(
   t?: RunsTranslate,
 ): string {
   if (!applicationId) return t ? t("runs.chatApp") : "Chat app";
-  return APP_DISPLAY_NAMES[applicationId] ?? fmtDomain(applicationId);
+  if (applicationId in APP_DISPLAY_NAME_KEYS) {
+    return t
+      ? t(APP_DISPLAY_NAME_KEYS[applicationId])
+      : SOURCE_MESSAGES[APP_DISPLAY_NAME_KEYS[applicationId]];
+  }
+  return fmtDomain(applicationId);
 }
 
 /** Per-kind glyph + label for the list "Kind" tag (Material Symbols, like the cockpit switch). */

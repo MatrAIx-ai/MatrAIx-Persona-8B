@@ -1,5 +1,9 @@
 /** Normalize Harbor token/cost receipts for Playground UI and PDF meta. */
 
+import type { I18nContextValue } from "@/i18n/I18nProvider";
+
+type Translate = I18nContextValue["t"];
+
 export type LlmUsageView = {
   nInputTokens?: number | null;
   nOutputTokens?: number | null;
@@ -123,59 +127,109 @@ export function formatTokenCount(value: number): string {
   return Math.round(value).toLocaleString();
 }
 
-/** Compact one-line summary for tooltips / dense bylines. */
-export function usageCompactLine(usage: LlmUsageView | null | undefined): string | null {
-  if (!hasUsage(usage)) return null;
+function tokenInLabel(count: string, t?: Translate): string {
+  return t ? t("reports.usage.tokenIn", { count }) : `${count} in`;
+}
+
+function tokenOutLabel(count: string, t?: Translate): string {
+  return t ? t("reports.usage.tokenOut", { count }) : `${count} out`;
+}
+
+function tokenCacheLabel(count: string, t?: Translate): string {
+  return t ? t("reports.usage.tokenCache", { count }) : `${count} cache`;
+}
+
+function tokenBits(usage: LlmUsageView, t?: Translate): string[] {
   const bits: string[] = [];
-  if (usage?.costUsd != null) bits.push(formatCostUsd(usage.costUsd));
-  const tokenBits: string[] = [];
-  if (usage?.nInputTokens != null) tokenBits.push(`${formatTokenCount(usage.nInputTokens)} in`);
-  if (usage?.nOutputTokens != null) tokenBits.push(`${formatTokenCount(usage.nOutputTokens)} out`);
-  if (usage?.nCacheTokens != null && usage.nCacheTokens > 0) {
-    tokenBits.push(`${formatTokenCount(usage.nCacheTokens)} cache`);
+  if (usage.nInputTokens != null) {
+    bits.push(tokenInLabel(formatTokenCount(usage.nInputTokens), t));
   }
-  if (tokenBits.length) bits.push(tokenBits.join(" · "));
+  if (usage.nOutputTokens != null) {
+    bits.push(tokenOutLabel(formatTokenCount(usage.nOutputTokens), t));
+  }
+  if (usage.nCacheTokens != null && usage.nCacheTokens > 0) {
+    bits.push(tokenCacheLabel(formatTokenCount(usage.nCacheTokens), t));
+  }
+  return bits;
+}
+
+/** Compact one-line summary for tooltips / dense bylines. */
+export function usageCompactLine(
+  usage: LlmUsageView | null | undefined,
+  t?: Translate,
+): string | null {
+  if (!hasUsage(usage) || !usage) return null;
+  const bits: string[] = [];
+  if (usage.costUsd != null) bits.push(formatCostUsd(usage.costUsd));
+  const tokens = tokenBits(usage, t);
+  if (tokens.length) bits.push(tokens.join(" · "));
   return bits.length ? bits.join(" · ") : null;
 }
 
 /** Compact cost-first cell for dense trial lists (full detail stays in title). */
-export function usageListPrimary(usage: LlmUsageView | null | undefined): string | null {
-  if (!hasUsage(usage)) return null;
-  if (usage?.costUsd != null) return formatCostUsd(usage.costUsd);
-  if (usage?.nInputTokens != null) return `${formatTokenCount(usage.nInputTokens)} in`;
-  if (usage?.nOutputTokens != null) return `${formatTokenCount(usage.nOutputTokens)} out`;
+export function usageListPrimary(
+  usage: LlmUsageView | null | undefined,
+  t?: Translate,
+): string | null {
+  if (!hasUsage(usage) || !usage) return null;
+  if (usage.costUsd != null) return formatCostUsd(usage.costUsd);
+  if (usage.nInputTokens != null) {
+    return tokenInLabel(formatTokenCount(usage.nInputTokens), t);
+  }
+  if (usage.nOutputTokens != null) {
+    return tokenOutLabel(formatTokenCount(usage.nOutputTokens), t);
+  }
   return null;
 }
 
 /** Rows for a small usage table on trial debrief. */
 export function usageTableRows(
   usage: LlmUsageView | null | undefined,
+  t?: Translate,
 ): Array<{ label: string; value: string }> {
-  if (!hasUsage(usage)) return [];
+  if (!hasUsage(usage) || !usage) return [];
   const rows: Array<{ label: string; value: string }> = [];
-  if (usage?.costUsd != null) rows.push({ label: "Cost", value: formatCostUsd(usage.costUsd) });
-  if (usage?.nInputTokens != null) {
-    rows.push({ label: "Input", value: formatTokenCount(usage.nInputTokens) });
+  if (usage.costUsd != null) {
+    rows.push({
+      label: t ? t("reports.usage.cost") : "Cost",
+      value: formatCostUsd(usage.costUsd),
+    });
   }
-  if (usage?.nOutputTokens != null) {
-    rows.push({ label: "Output", value: formatTokenCount(usage.nOutputTokens) });
+  if (usage.nInputTokens != null) {
+    rows.push({
+      label: t ? t("reports.usage.input") : "Input",
+      value: formatTokenCount(usage.nInputTokens),
+    });
   }
-  if (usage?.nCacheTokens != null && usage.nCacheTokens > 0) {
-    rows.push({ label: "Cache", value: formatTokenCount(usage.nCacheTokens) });
+  if (usage.nOutputTokens != null) {
+    rows.push({
+      label: t ? t("reports.usage.output") : "Output",
+      value: formatTokenCount(usage.nOutputTokens),
+    });
+  }
+  if (usage.nCacheTokens != null && usage.nCacheTokens > 0) {
+    rows.push({
+      label: t ? t("reports.usage.cache") : "Cache",
+      value: formatTokenCount(usage.nCacheTokens),
+    });
   }
   return rows;
 }
 
-export function usageMetaLines(usage: LlmUsageView | null | undefined): string[] {
-  if (!hasUsage(usage)) return [];
+export function usageMetaLines(
+  usage: LlmUsageView | null | undefined,
+  t?: Translate,
+): string[] {
+  if (!hasUsage(usage) || !usage) return [];
   const lines: string[] = [];
-  if (usage?.costUsd != null) lines.push(`Cost: ${formatCostUsd(usage.costUsd)}`);
-  const bits: string[] = [];
-  if (usage?.nInputTokens != null) bits.push(`${formatTokenCount(usage.nInputTokens)} in`);
-  if (usage?.nOutputTokens != null) bits.push(`${formatTokenCount(usage.nOutputTokens)} out`);
-  if (usage?.nCacheTokens != null && usage.nCacheTokens > 0) {
-    bits.push(`${formatTokenCount(usage.nCacheTokens)} cache`);
+  if (usage.costUsd != null) {
+    const value = formatCostUsd(usage.costUsd);
+    lines.push(t ? t("reports.usage.costLine", { value }) : `Cost: ${value}`);
   }
-  if (bits.length) lines.push(`Tokens: ${bits.join(" · ")}`);
+  const bits = tokenBits(usage, t);
+  if (bits.length) {
+    const joined = bits.join(" · ");
+    lines.push(t ? t("reports.usage.tokensLine", { bits: joined }) : `Tokens: ${joined}`);
+  }
   return lines;
 }

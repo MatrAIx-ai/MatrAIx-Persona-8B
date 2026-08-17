@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useI18n } from "@/i18n/I18nProvider";
+import type { MessageKey } from "@/i18n/types";
 import { api, ApiError } from "@/lib/api";
 import { personaDisplayId, personaPrimaryName } from "@/lib/personaDisplay";
 import {
@@ -14,13 +15,21 @@ import { PersonaAvatar } from "./PersonaAvatar";
 import { personaRosterLines } from "./simulatedPersonaVisual";
 import { personaDimChipTone } from "./taskCardLabels";
 
-const SPOTLIGHT: Array<{ key: string; label: string }> = [
-  { key: "age_bracket", label: "Age" },
-  { key: "life_stage", label: "Life stage" },
-  { key: "domain", label: "Domain" },
-  { key: "region", label: "Region" },
-  { key: "intent", label: "Intent" },
-];
+const SPOTLIGHT_KEYS = [
+  "age_bracket",
+  "life_stage",
+  "domain",
+  "region",
+  "intent",
+] as const;
+
+const SPOTLIGHT_LABEL_KEYS: Record<(typeof SPOTLIGHT_KEYS)[number], MessageKey> = {
+  age_bracket: "cockpitSetup.persona.field.age",
+  life_stage: "cockpitSetup.persona.field.lifeStage",
+  domain: "cockpitSetup.persona.field.domain",
+  region: "cockpitSetup.persona.field.region",
+  intent: "cockpitSetup.persona.field.intent",
+};
 
 export interface BenchPersonaDetailPanelProps {
   persona: PersonaPoolPersonaCard | null;
@@ -239,10 +248,12 @@ export function BenchPersonaDetailPanel({
 
   const spotlight = useMemo(
     () =>
-      SPOTLIGHT.map((item) => ({ ...item, value: dims[item.key] })).filter(
-        (item) => item.value,
-      ),
-    [dims],
+      SPOTLIGHT_KEYS.map((key) => ({
+        key,
+        label: t(SPOTLIGHT_LABEL_KEYS[key]),
+        value: dims[key],
+      })).filter((item) => item.value),
+    [dims, t],
   );
 
   if (!persona) return null;

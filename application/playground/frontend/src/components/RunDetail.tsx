@@ -151,7 +151,7 @@ export function RunDetail({ harborTrial, onBack }: RunDetailProps) {
       null)
     : null;
   const usage = run ? asLlmUsage(run.usage) : null;
-  const usageRows = usageTableRows(usage);
+  const usageRows = usageTableRows(usage, t);
 
   return (
     <StudioPageFrame>
