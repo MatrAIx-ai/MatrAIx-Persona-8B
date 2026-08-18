@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable, Dict, Optional
 
 from backend.service.appworld_types import (
@@ -11,6 +12,7 @@ from backend.service.appworld_types import (
     AppWorldResultArtifact,
     AppWorldTrace,
 )
+from playground.persona_language import resolve_persona_language_with_source
 from playground.types import Persona
 from playground.user_sim.prompt import render_persona_block
 
@@ -42,6 +44,8 @@ class LocalAppWorldEvalRunner:
         *,
         created_at: str,
         on_event: Optional[Callable[[Dict[str, Any]], None]] = None,
+        persona_language: str | None = None,
+        persona_language_source: str | None = None,
     ) -> AppWorldEvalResult:
         config = config or AppWorldEvalConfig()
 
@@ -49,7 +53,24 @@ class LocalAppWorldEvalRunner:
             if on_event is not None:
                 on_event(event)
 
-        persona_prompt = render_persona_block(persona).strip()
+        language = resolve_persona_language_with_source(
+            persona_language if persona_language is not None else config.persona_language,
+            requested_source=(
+                persona_language_source
+                if persona_language_source is not None
+                else config.persona_language_source
+            ),
+            environ={},
+        )
+        config = replace(
+            config,
+            persona_language=language.language,
+            persona_language_source=language.source,
+        )
+        persona_prompt = render_persona_block(
+            persona,
+            persona_language=language.language,
+        ).strip()
         task_prompt = build_appworld_task_prompt(task)
         prompts = {
             "personaPrompt": persona_prompt,

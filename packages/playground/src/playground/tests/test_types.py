@@ -98,3 +98,27 @@ def test_config_to_dict_mirrors_application_context_when_domain_missing():
 
     assert cfg.to_dict()["applicationContext"] == "meal_planning"
     assert cfg.to_dict()["domain"] == "meal_planning"
+
+
+def test_config_persists_effective_persona_language_and_source():
+    default = PlaygroundConfig()
+    assert default.persona_language == "en"
+    assert default.persona_language_source == "default"
+    assert default.effective_language == "en"
+    assert default.language_source == "default"
+    assert default.to_dict()["effectiveLanguage"] == "en"
+    assert default.to_dict()["languageSource"] == "default"
+
+    cfg = PlaygroundConfig(
+        persona_language="zh-Hant",
+        persona_language_source="follow_ui",
+    )
+    assert cfg.to_dict()["effectiveLanguage"] == "zh-Hant"
+    assert cfg.to_dict()["languageSource"] == "follow_ui"
+    assert cfg.effective_language == "zh-Hant"
+    assert cfg.language_source == "follow_ui"
+
+    cfg.effective_language = "ja"
+    cfg.language_source = "explicit"
+    assert cfg.persona_language == "ja"
+    assert cfg.persona_language_source == "explicit"

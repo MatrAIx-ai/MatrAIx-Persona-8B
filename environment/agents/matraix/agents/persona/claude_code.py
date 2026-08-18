@@ -32,12 +32,16 @@ class PersonaClaudeCode(PersonaMixin, ClaudeCode):
         logs_dir: Path,
         persona_path: str | None = None,
         persona_template_path: str | None = None,
+        persona_language: str | None = None,
+        persona_language_source: str | None = None,
         **kwargs,
     ) -> None:
         self._init_persona(
             persona_path,
             AgentName.PERSONA_CLAUDE_CODE.value,
             persona_template_path=persona_template_path,
+            persona_language=persona_language,
+            persona_language_source=persona_language_source,
         )
         kwargs["append_system_prompt"] = _merge_append_system_prompt(
             kwargs.get("append_system_prompt"),

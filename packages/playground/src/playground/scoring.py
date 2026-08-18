@@ -100,6 +100,29 @@ def _config_from_dict(value: Dict[str, Any]) -> PlaygroundConfig:
             value.get("resourceMode", value.get("resource_mode", "recai_resources"))
         ),
         max_turns=int(raw_max_turns) if raw_max_turns not in (None, "") else None,
+        persona_language=str(
+            value.get(
+                "effectiveLanguage",
+                value.get(
+                    "effective_language",
+                    value.get("personaLanguage", value.get("persona_language", "en")),
+                ),
+            )
+            or "en"
+        ),
+        persona_language_source=str(
+            value.get(
+                "languageSource",
+                value.get(
+                    "language_source",
+                    value.get(
+                        "personaLanguageSource",
+                        value.get("persona_language_source", "default"),
+                    ),
+                ),
+            )
+            or "default"
+        ),
     )
 
 
@@ -200,7 +223,11 @@ class OriginalPromptFeedbackScorer:
             if task_path
             else None
         )
-        system_prompt = assemble_report_system_prompt(persona, task_bundle=task_bundle)
+        system_prompt = assemble_report_system_prompt(
+            persona,
+            task_bundle=task_bundle,
+            persona_language=config.effective_language,
+        )
         transcript = [
             _turn_from_view(index, turn) for index, turn in enumerate(turn_views)
         ]

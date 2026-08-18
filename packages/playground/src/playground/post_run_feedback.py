@@ -10,6 +10,7 @@ from backend.service.harbor_trial_debrief import (
     _application_type_from_task_toml,
     _load_playground_persona,
     _persona_path_from_trial,
+    _recorded_persona_language,
     _task_path_from_trial,
     find_trial_logs_dir,
     find_trial_output_dir,
@@ -225,6 +226,7 @@ def maybe_write_trial_user_feedback(*, repo_root: Path, trial_dir: Path) -> Path
         persona,
         persona_yaml_path=persona_rel,
         task_bundle=task_bundle,
+        persona_language=_recorded_persona_language(trial_dir).language,
     )
     user_prompt = _REFLECTION_USER.format(
         application_label=_application_label(app_type),

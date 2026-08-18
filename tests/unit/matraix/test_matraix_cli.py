@@ -5,9 +5,16 @@ import types
 from pathlib import Path
 
 import pytest
+import yaml
 
 from matraix import cli
-from matraix.launch_env import required_pythonpath_entries
+from matraix.launch_env import (
+    PERSONA_LANGUAGE_ENV,
+    PERSONA_LANGUAGE_SOURCE_ENV,
+    build_persona_language_env,
+    required_pythonpath_entries,
+)
+from playground.persona_language import resolve_persona_language_with_source
 
 
 def _write_job(
@@ -96,6 +103,54 @@ def test_resolve_run_invocation_respects_user_exported_env(
     assert "MATRIX_SURVEY_TASK_PATH" not in env_updates
 
 
+def test_persona_language_env_normalizes_tokens_and_records_explicit_source() -> None:
+    assert build_persona_language_env(" zh-cn ") == {
+        PERSONA_LANGUAGE_ENV: "zh-Hans",
+        PERSONA_LANGUAGE_SOURCE_ENV: "explicit",
+    }
+
+
+def test_persona_language_validation_rejects_unknown_tokens() -> None:
+    with pytest.raises(ValueError, match="en, ko, zh-Hans, zh-Hant, ja, pt-BR, es"):
+        build_persona_language_env("fr")
+
+
+def test_resolve_run_invocation_explicit_language_overrides_env_and_generated_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv(PERSONA_LANGUAGE_ENV, "en")
+    monkeypatch.setenv(PERSONA_LANGUAGE_SOURCE_ENV, "env")
+    config = _write_job(
+        tmp_path,
+        header_exports=[
+            "#   export MATRIX_PERSONA_LANGUAGE=ko",
+            "#   export MATRIX_PERSONA_LANGUAGE_SOURCE=task",
+        ],
+    )
+
+    _, env_updates = cli.resolve_run_invocation(
+        config, tmp_path, persona_language="ZH-hant"
+    )
+
+    assert env_updates[PERSONA_LANGUAGE_ENV] == "zh-Hant"
+    assert env_updates[PERSONA_LANGUAGE_SOURCE_ENV] == "explicit"
+
+
+def test_resolve_run_invocation_without_language_preserves_existing_env_behavior(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv(PERSONA_LANGUAGE_ENV, "ko")
+    monkeypatch.setenv(PERSONA_LANGUAGE_SOURCE_ENV, "env")
+    config = _write_job(tmp_path)
+
+    _, env_updates = cli.resolve_run_invocation(config, tmp_path)
+
+    assert PERSONA_LANGUAGE_ENV not in env_updates
+    assert PERSONA_LANGUAGE_SOURCE_ENV not in env_updates
+    assert os.environ[PERSONA_LANGUAGE_ENV] == "ko"
+    assert os.environ[PERSONA_LANGUAGE_SOURCE_ENV] == "env"
+
+
 def test_main_run_delegates_to_harbor_with_launch_env(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -160,6 +215,10 @@ def _stub_harbor(monkeypatch) -> dict[str, object]:
     def fake_app(*, args: list[str], prog_name: str) -> None:
         calls["args"] = args
         calls["pythonpath"] = os.environ.get("PYTHONPATH", "")
+        calls["persona_language"] = os.environ.get(PERSONA_LANGUAGE_ENV)
+        calls["persona_language_source"] = os.environ.get(
+            PERSONA_LANGUAGE_SOURCE_ENV
+        )
 
     stub = types.ModuleType("harbor.cli.main")
     stub.app = fake_app
@@ -191,6 +250,119 @@ def test_main_run_accepts_positional_config(tmp_path: Path, monkeypatch) -> None
         "configs/jobs/application-task-job-recipe/example-survey-auto-n1.yaml",
         "--yes",
     ]
+
+
+def test_main_run_accepts_persona_language_override(tmp_path: Path, monkeypatch) -> None:
+    root = _fake_checkout(tmp_path)
+    config = _write_job(root)
+    calls = _stub_harbor(monkeypatch)
+    monkeypatch.delenv(PERSONA_LANGUAGE_ENV, raising=False)
+    monkeypatch.delenv(PERSONA_LANGUAGE_SOURCE_ENV, raising=False)
+
+    original_cwd = Path.cwd()
+    original_sys_path = list(sys.path)
+    try:
+        cli.main(
+            [
+                "run",
+                "-c",
+                str(config),
+                "--persona-language",
+                "ZH-hant",
+                "--yes",
+            ]
+        )
+    finally:
+        os.chdir(original_cwd)
+        sys.path[:] = original_sys_path
+        monkeypatch.delenv(PERSONA_LANGUAGE_ENV, raising=False)
+        monkeypatch.delenv(PERSONA_LANGUAGE_SOURCE_ENV, raising=False)
+
+    assert calls["args"] == [
+        "run",
+        "-c",
+        str(
+            Path("configs")
+            / "jobs"
+            / "application-task-job-recipe"
+            / "example-survey-auto-n1.yaml"
+        ),
+        "--yes",
+    ]
+    assert calls["persona_language"] == "zh-Hant"
+    assert calls["persona_language_source"] == "explicit"
+
+
+def test_cli_language_override_beats_generated_agent_kwargs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _fake_checkout(tmp_path)
+    config = _write_job(root)
+    config.write_text(
+        """job_name: example
+agents:
+- name: persona-json-survey
+  kwargs:
+    persona_language: en
+    persona_language_source: follow_ui
+tasks: []
+""",
+        encoding="utf-8",
+    )
+    calls: dict[str, object] = {}
+
+    def fake_app(*, args: list[str], prog_name: str) -> None:
+        config_arg = Path(args[args.index("-c") + 1])
+        payload = yaml.safe_load(config_arg.read_text(encoding="utf-8"))
+        kwargs = payload["agents"][0]["kwargs"]
+        resolution = resolve_persona_language_with_source(
+            kwargs["persona_language"],
+            requested_source=kwargs["persona_language_source"],
+        )
+        calls["language"] = resolution.language
+        calls["source"] = resolution.source
+
+    stub = types.ModuleType("harbor.cli.main")
+    stub.app = fake_app
+    monkeypatch.setitem(sys.modules, "harbor.cli.main", stub)
+    monkeypatch.delenv(PERSONA_LANGUAGE_ENV, raising=False)
+    monkeypatch.delenv("MATRIX_PERSONA_LANGUAGE_OVERRIDE", raising=False)
+    monkeypatch.delenv(PERSONA_LANGUAGE_SOURCE_ENV, raising=False)
+
+    original_cwd = Path.cwd()
+    original_sys_path = list(sys.path)
+    try:
+        cli.main(
+            [
+                "run",
+                "-c",
+                str(config),
+                "--persona-language",
+                "zh-Hant",
+            ]
+        )
+    finally:
+        os.chdir(original_cwd)
+        sys.path[:] = original_sys_path
+        monkeypatch.delenv(PERSONA_LANGUAGE_ENV, raising=False)
+        monkeypatch.delenv("MATRIX_PERSONA_LANGUAGE_OVERRIDE", raising=False)
+        monkeypatch.delenv(PERSONA_LANGUAGE_SOURCE_ENV, raising=False)
+
+    assert calls == {"language": "zh-Hant", "source": "explicit"}
+
+
+def test_main_rejects_unknown_persona_language(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(
+            [
+                "run",
+                "--repo-root",
+                str(tmp_path),
+                "--persona-language",
+                "fr",
+            ]
+        )
+    assert excinfo.value.code == 2
 
 
 def test_main_run_without_config_passes_args_through(

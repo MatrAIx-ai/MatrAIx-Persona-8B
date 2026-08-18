@@ -6,12 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from playground.persona_language import (
+    persona_language_contract,
+    resolve_persona_language,
+)
 from playground.task_content_bundle import TaskContentBundle
 from playground.types import Persona
 
 _GUIDELINES_PATH = Path(__file__).resolve().parent / "sim_guidelines.md"
-
-
 def load_sim_guidelines() -> str:
     return _GUIDELINES_PATH.read_text(encoding="utf-8").strip()
 
@@ -43,7 +45,13 @@ def _persona_context(persona: Persona) -> str:
     return "\n".join(parts)
 
 
-def render_persona_block(persona: Persona, *, persona_yaml_path: Optional[str] = None) -> str:
+def render_persona_block(
+    persona: Persona,
+    *,
+    persona_yaml_path: Optional[str] = None,
+    persona_language: Optional[str] = None,
+) -> str:
+    effective_language = resolve_persona_language(persona_language)
     if persona_yaml_path:
         try:
             from matraix.agents.persona.loader import load_persona
@@ -55,10 +63,17 @@ def render_persona_block(persona: Persona, *, persona_yaml_path: Optional[str] =
 
             loaded = load_persona(persona_yaml_path)
             template = resolve_persona_template(loaded, None, PERSONA_SYSTEM_TEMPLATE)
-            return render_persona_template(template, loaded).strip()
+            return render_persona_template(
+                template,
+                loaded,
+                language=effective_language,
+            ).strip()
         except Exception:
             pass
-    return _persona_context(persona)
+    return "{}\n\n{}".format(
+        _persona_context(persona),
+        persona_language_contract(effective_language),
+    ).strip()
 
 
 def _section(title: str, body: str) -> str:
@@ -73,10 +88,15 @@ def assemble_system_prompt(
     *,
     persona_yaml_path: Optional[str] = None,
     task_bundle: Optional[TaskContentBundle] = None,
+    persona_language: Optional[str] = None,
 ) -> str:
     task_bundle = task_bundle or TaskContentBundle()
     blocks = [
-        render_persona_block(persona, persona_yaml_path=persona_yaml_path),
+        render_persona_block(
+            persona,
+            persona_yaml_path=persona_yaml_path,
+            persona_language=persona_language,
+        ),
         current_date_block(),
         load_sim_guidelines(),
         _section("Task instruction", task_bundle.instruction_markdown),
@@ -90,10 +110,15 @@ def assemble_report_system_prompt(
     *,
     persona_yaml_path: Optional[str] = None,
     task_bundle: Optional[TaskContentBundle] = None,
+    persona_language: Optional[str] = None,
 ) -> str:
     task_bundle = task_bundle or TaskContentBundle()
     blocks = [
-        render_persona_block(persona, persona_yaml_path=persona_yaml_path),
+        render_persona_block(
+            persona,
+            persona_yaml_path=persona_yaml_path,
+            persona_language=persona_language,
+        ),
         current_date_block(),
         _section("Task instruction", task_bundle.instruction_markdown),
         _section("Task context", task_bundle.context_markdown),
@@ -107,13 +132,19 @@ def prompt_bundle(
     persona_yaml_path: Optional[str] = None,
     task_bundle: Optional[TaskContentBundle] = None,
     task_prompt: str = "",
+    persona_language: Optional[str] = None,
 ) -> dict[str, str]:
     task_bundle = task_bundle or TaskContentBundle()
-    persona_block = render_persona_block(persona, persona_yaml_path=persona_yaml_path)
+    persona_block = render_persona_block(
+        persona,
+        persona_yaml_path=persona_yaml_path,
+        persona_language=persona_language,
+    )
     system = assemble_system_prompt(
         persona,
         persona_yaml_path=persona_yaml_path,
         task_bundle=task_bundle,
+        persona_language=persona_language,
     )
 
     task_parts: list[str] = []

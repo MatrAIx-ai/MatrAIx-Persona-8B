@@ -54,6 +54,37 @@ def test_appworld_eval_service_persists_trace_and_reloads_view(tmp_path):
     assert persisted["trace"]["raw"]["trajectory"][0]["action"] == "list_apps"
 
 
+def test_local_appworld_eval_localizes_persona_prompt_only() -> None:
+    persona = _persona("p1")
+    task = get_appworld_eval_task("appworld-demo-personal-admin")
+    result = LocalAppWorldEvalRunner()(
+        persona,
+        task,
+        created_at="2026-06-29T00:00:00Z",
+        persona_language="zh-Hans",
+        persona_language_source="explicit",
+    )
+
+    assert result.config.persona_language == "zh-Hans"
+    assert result.config.persona_language_source == "explicit"
+    assert result.config.to_dict()["effectiveLanguage"] == "zh-Hans"
+    assert result.config.to_dict()["languageSource"] == "explicit"
+    assert "Write persona narrative" in result.prompts["personaPrompt"]
+    assert "Application: AppWorld" in result.prompts["taskPrompt"]
+    assert "Write persona narrative" not in result.prompts["taskPrompt"]
+
+
+def test_local_appworld_eval_legacy_defaults_to_english() -> None:
+    result = LocalAppWorldEvalRunner()(
+        _persona("p1"),
+        get_appworld_eval_task("appworld-demo-personal-admin"),
+        created_at="2026-06-29T00:00:00Z",
+    )
+
+    assert result.config.persona_language == "en"
+    assert result.config.persona_language_source == "default"
+
+
 def _wait_done(service: AppWorldEvalService, job_id: str) -> dict[str, object]:
     deadline = time.time() + 5
     while True:

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 
-from playground.scoring import OriginalPromptFeedbackScorer, score_harbor_artifacts
+from playground.scoring import (
+    OriginalPromptFeedbackScorer,
+    _config_from_dict,
+    score_harbor_artifacts,
+)
 from playground.types import Persona, PlaygroundConfig
 
 
@@ -60,6 +64,33 @@ def test_original_prompt_feedback_scorer_reuses_canonical_feedback_prompt():
     assert "RecAI: Try Movie A." in call["user"]
     assert "Recommended items" not in call["user"]
     assert "Name: Persona One" in call["system"]
+
+
+def test_scoring_deserializes_and_uses_effective_persona_language():
+    config = _config_from_dict(
+        {
+            "domain": "movie",
+            "engine": "gpt-4o-mini",
+            "effectiveLanguage": "zh-Hans",
+            "languageSource": "follow_ui",
+        }
+    )
+    assert config.persona_language == "zh-Hans"
+    assert config.persona_language_source == "follow_ui"
+
+    fake_client = FakeClient()
+    OriginalPromptFeedbackScorer(
+        client_factory=lambda _model: fake_client
+    )(
+        persona=Persona(id="p1", name="Persona One", context="A careful user."),
+        sut_description="A movie recommender.",
+        config=config,
+        turn_views=[],
+    )
+
+    assert "Effective persona language: Simplified Chinese (zh-Hans)." in (
+        fake_client.calls[0]["system"]
+    )
 
 
 def test_score_harbor_artifacts_writes_original_questionnaire(tmp_path):

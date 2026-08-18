@@ -372,3 +372,103 @@ def test_persona_computer_1_docker_uses_identity_channel(monkeypatch, tmp_path) 
     assert "schema" not in identity.lower()
     assert "Open Settings and enable Do Not Disturb." not in identity
 
+
+def test_persona_json_survey_uploads_complete_reproducible_result(
+    monkeypatch, tmp_path
+) -> None:
+    import asyncio
+    import json
+
+    from backend.service.survey_types import (
+        SurveyAnswer,
+        SurveyEvalConfig,
+        SurveyEvalResult,
+        SurveyInstrument,
+        SurveyMetrics,
+        SurveyQuestion,
+        SurveyTaskContent,
+        TrajectoryEvent,
+    )
+    from harbor.models.agent.context import AgentContext
+    from matraix.agents.persona import json_survey as json_survey_mod
+    from playground.types import Persona
+
+    instrument = SurveyInstrument(
+        id="artifact-language-contract",
+        title="Artifact language contract",
+        questions=[SurveyQuestion(id="q1", prompt="Choose", type="likert")],
+    )
+    content = SurveyTaskContent(
+        title=instrument.title,
+        instruction_markdown="Answer the questionnaire.",
+        instrument=instrument,
+    )
+    expected_result = SurveyEvalResult(
+        config=SurveyEvalConfig(
+            persona_model="dashscope/qwen-flash",
+            persona_language="zh-Hans",
+            persona_language_source="explicit",
+        ),
+        persona=Persona(id="0001", name="Tomas Horvat", source="wiki"),
+        instrument=instrument,
+        answers=[SurveyAnswer(question_id="q1", value=4)],
+        trajectory=[
+            TrajectoryEvent(
+                timestamp="2026-08-18T00:00:00Z",
+                actor="system",
+                action="survey_completed",
+            )
+        ],
+        metrics=SurveyMetrics(num_questions=1, num_answered=1, mean_likert=4.0),
+        created_at="2026-08-18T00:00:00Z",
+        prompts={
+            "personaPrompt": "Reply in Simplified Chinese (zh-Hans).",
+            "harborPrompt": "Reply in Simplified Chinese (zh-Hans).",
+            "taskPrompt": "Answer the questionnaire.",
+        },
+    )
+
+    monkeypatch.setattr(
+        json_survey_mod,
+        "_load_survey_content",
+        lambda **_kwargs: (instrument, content),
+    )
+
+    class _FakeRunner:
+        def __call__(self, *_args, **_kwargs):
+            return expected_result
+
+    monkeypatch.setattr(json_survey_mod, "InprocessSurveyEvalRunner", _FakeRunner)
+
+    uploaded: dict[str, dict] = {}
+
+    class _Environment:
+        async def upload_file(self, source_path, target_path):
+            if target_path == "/app/output/survey_result.json":
+                uploaded[target_path] = json.loads(
+                    pathlib.Path(source_path).read_text(encoding="utf-8")
+                )
+
+    logs_dir = tmp_path / "job" / "trial" / "agent"
+    logs_dir.mkdir(parents=True)
+    agent = json_survey_mod.PersonaJsonSurvey(
+        logs_dir=logs_dir,
+        model_name="dashscope/qwen-flash",
+        persona_path=str(
+            ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0001.yaml"
+        ),
+        persona_language="zh-CN",
+        persona_language_source="explicit",
+        survey_task_path="application/tasks/example-survey_product-feedback",
+    )
+
+    asyncio.run(agent.run("", _Environment(), AgentContext()))
+
+    payload = uploaded["/app/output/survey_result.json"]
+    assert payload["effectiveLanguage"] == "zh-Hans"
+    assert payload["languageSource"] == "explicit"
+    assert payload["config"]["effectiveLanguage"] == "zh-Hans"
+    assert payload["prompts"] == expected_result.prompts
+    assert payload["persona"]["id"] == "0001"
+    assert payload["metrics"]["numAnswered"] == 1
+    assert payload["createdAt"] == "2026-08-18T00:00:00Z"

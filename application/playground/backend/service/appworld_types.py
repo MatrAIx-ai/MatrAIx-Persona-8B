@@ -37,11 +37,15 @@ class AppWorldEvalConfig:
 
     persona_model: str = DEFAULT_PERSONA_MODEL
     mode: str = "local_persona_appworld"
+    persona_language: str = "en"
+    persona_language_source: str = "default"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "personaModel": self.persona_model,
             "mode": self.mode,
+            "effectiveLanguage": self.persona_language,
+            "languageSource": self.persona_language_source,
         }
 
 

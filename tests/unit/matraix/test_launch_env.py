@@ -1,12 +1,49 @@
 import os
 from pathlib import Path
 
+import pytest
+
 from matraix.launch_env import (
     build_launch_env,
     find_repo_root,
     merge_pythonpath,
+    normalize_persona_language,
+    normalize_persona_language_source,
     required_pythonpath_entries,
 )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("en", "en"),
+        ("en-US", "en"),
+        ("ko", "ko"),
+        ("ko-KR", "ko"),
+        ("zh", "zh-Hans"),
+        ("zh-CN", "zh-Hans"),
+        ("zh-Hans-CN", "zh-Hans"),
+        ("zh-Hant", "zh-Hant"),
+        ("zh-TW", "zh-Hant"),
+        ("ja", "ja"),
+        ("ja-JP", "ja"),
+        ("pt", "pt-BR"),
+        ("pt-BR", "pt-BR"),
+        ("es", "es"),
+        ("es-ES", "es"),
+        ("es-419", "es"),
+    ],
+)
+def test_normalize_persona_language_uses_canonical_tags(value: str, expected: str) -> None:
+    assert normalize_persona_language(value) == expected
+
+
+@pytest.mark.parametrize("source", ["ui", "env", "default", "cli"])
+def test_normalize_persona_language_source_rejects_internal_or_legacy_sources(
+    source: str,
+) -> None:
+    with pytest.raises(ValueError, match="follow_ui, explicit"):
+        normalize_persona_language_source(source)
 
 
 def test_required_entries_cover_all_monorepo_import_roots(tmp_path: Path) -> None:

@@ -72,17 +72,7 @@ def _load_survey_content(*, task_path: str | None, instrument_path: str | None):
 
 
 def _survey_result_payload(result) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "instrument": {
-            "id": result.instrument.id,
-            "title": result.instrument.title,
-        },
-        "answers": [answer.to_dict() for answer in result.answers],
-        "trajectory": [event.to_dict() for event in result.trajectory],
-    }
-    if getattr(result, "usage", None):
-        payload["usage"] = dict(result.usage)
-    return payload
+    return result.to_dict()
 
 
 def _apply_usage_to_context(context: AgentContext, usage: dict | None) -> None:
@@ -130,6 +120,8 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
         logs_dir: Path,
         persona_path: str | None = None,
         persona_template_path: str | None = None,
+        persona_language: str | None = None,
+        persona_language_source: str | None = None,
         survey_task_path: str | None = None,
         survey_instrument_path: str | None = None,
         **kwargs,
@@ -138,6 +130,8 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
             persona_path,
             AgentName.PERSONA_JSON_SURVEY.value,
             persona_template_path=persona_template_path,
+            persona_language=persona_language,
+            persona_language_source=persona_language_source,
         )
         self._survey_task_path = survey_task_path
         self._survey_instrument_path = survey_instrument_path
@@ -213,6 +207,8 @@ class PersonaJsonSurvey(PersonaMixin, BaseAgent):
             on_event=on_event,
             persona_yaml_path=persona_yaml_path,
             job_dir=job_dir,
+            persona_language=self.effective_persona_language,
+            persona_language_source=self.persona_language_source,
         )
         _apply_usage_to_context(context, result.usage)
         payload = _survey_result_payload(result)

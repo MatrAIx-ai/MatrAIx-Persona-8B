@@ -23,6 +23,7 @@ import yaml
 from backend.service.config import harbor_persona_model
 from playground.structured_exposure import coerce_turn_view
 from playground.feedback import questionnaire_from_feedback
+from playground.persona_language import persona_language_contract
 from playground.types import Persona, PlaygroundConfig
 from matraix.persona_agent_context import apply_persona_context_to_agent_spec
 
@@ -189,9 +190,20 @@ def harbor_persona_system_prompt(persona: Persona) -> str:
     return persona.context or persona.summary or persona.name
 
 
-def _prompt_bundle(persona: Persona, task_prompt: str) -> Dict[str, str]:
+def _prompt_bundle(
+    persona: Persona,
+    task_prompt: str,
+    *,
+    persona_language: str | None = None,
+) -> Dict[str, str]:
+    harbor_prompt = harbor_persona_system_prompt(persona)
+    if persona_language:
+        harbor_prompt = "{}\n\n{}".format(
+            harbor_prompt,
+            persona_language_contract(persona_language),
+        )
     return {
-        "harborPrompt": harbor_persona_system_prompt(persona),
+        "harborPrompt": harbor_prompt,
         "taskPrompt": task_prompt,
     }
 
@@ -221,9 +233,13 @@ def _json_env(value: Dict[str, Any]) -> str:
 def _verifier_env_assignments(
     *, persona: Persona, sut_description: str, config: PlaygroundConfig
 ) -> Dict[str, str]:
+    persona_language = config.effective_language or "en"
+    persona_language_source = config.language_source or "default"
     return {
         "OPENAI_API_KEY": "${OPENAI_API_KEY}",
         "OPENAI_BASE_URL": "${OPENAI_BASE_URL:-https://api.openai.com/v1}",
+        "MATRIX_PERSONA_LANGUAGE": persona_language,
+        "MATRIX_PERSONA_LANGUAGE_SOURCE": persona_language_source,
         "MATRIX_SCORER_PACKAGE_PARENT": SCORER_PACKAGE_PARENT,
         "MATRIX_SCORER_MODULE": "playground.scoring",
         "MATRIX_SCORER_OUTPUT_PATH": SCORER_OUTPUT_PATH,
@@ -248,13 +264,21 @@ def _agent_env_args(assignments: Dict[str, str]) -> List[str]:
 
 
 def _normalize_prompts(
-    prompts: Optional[Dict[str, Any]], *, persona: Persona
+    prompts: Optional[Dict[str, Any]],
+    *,
+    persona: Persona,
+    persona_language: str | None = None,
 ) -> Dict[str, str]:
     data = prompts or {}
+    harbor_prompt = str(data.get("harborPrompt") or "").strip()
+    if not harbor_prompt:
+        harbor_prompt = _prompt_bundle(
+            persona,
+            "",
+            persona_language=persona_language,
+        )["harborPrompt"]
     return {
-        "harborPrompt": str(
-            data.get("harborPrompt") or harbor_persona_system_prompt(persona)
-        ),
+        "harborPrompt": harbor_prompt,
         "taskPrompt": str(data.get("taskPrompt") or ""),
     }
 
@@ -382,7 +406,11 @@ class HarborPlaygroundRunner:
             sut_description=sut_description,
         )
         task_prompt_path.write_text(task_prompt, encoding="utf-8")
-        prompts = _prompt_bundle(persona, task_prompt)
+        prompts = _prompt_bundle(
+            persona,
+            task_prompt,
+            persona_language=config.effective_language,
+        )
 
         job_config_path = run_dir / "harbor_job.yaml"
         job_config = {
@@ -406,7 +434,12 @@ class HarborPlaygroundRunner:
                     {
                         "name": "persona-claude-code",
                         "model_name": config.persona_model or harbor_persona_model(),
-                        "kwargs": {"persona_path": str(persona_path)},
+                        "kwargs": {
+                            "persona_path": str(persona_path),
+                            "persona_language": config.effective_language or "en",
+                            "persona_language_source": config.language_source
+                            or "default",
+                        },
                     }
                 )
             ],
@@ -452,6 +485,9 @@ class HarborPlaygroundRunner:
             "MATRIX_CHATBOT_API_URL": "http://chatbot-api:8000",
             "MATRIX_CHATBOT_PERSONA_MODEL": config.persona_model
             or harbor_persona_model(),
+            "MATRIX_PERSONA_LANGUAGE": config.effective_language or "en",
+            "MATRIX_PERSONA_LANGUAGE_SOURCE": config.language_source
+            or "default",
         }
         if config.max_turns is not None:
             agent_env["MATRIX_CHATBOT_MAX_TURNS"] = str(config.max_turns)
@@ -464,6 +500,13 @@ class HarborPlaygroundRunner:
             "--agent-env",
             "CLAUDE_CODE_TMPDIR=/logs/agent/claude-tmp",
             *_agent_env_args(agent_env),
+            *_verifier_env_args(
+                _verifier_env_assignments(
+                    persona=persona,
+                    sut_description=sut_description,
+                    config=config,
+                )
+            ),
             "-y",
         ]
         if env_file.is_file():
@@ -537,7 +580,14 @@ def _application_result_payload(output_dir: Path) -> Dict[str, Any]:
         return {}
     payload = _read_json(path)
     summary: Dict[str, Any] = {}
-    for key in ("sessionId", "applicationId", "applicationContext", "turnCount"):
+    for key in (
+        "sessionId",
+        "applicationId",
+        "applicationContext",
+        "turnCount",
+        "config",
+        "prompts",
+    ):
         if key in payload:
             summary[key] = payload[key]
     return summary
@@ -781,9 +831,22 @@ def build_result_from_harbor_artifacts(
     """Map Harbor task artifacts into the existing Playground UI result."""
     transcript = _read_json(output_dir / "transcript.json")
     turn_views = _turn_views(transcript)
-    _application_result_payload(output_dir)
+    application_result = _application_result_payload(output_dir)
     feedback_path = _feedback_path(output_dir)
     feedback = _read_json(feedback_path) if feedback_path is not None else {}
+    artifact_prompts = application_result.get("prompts")
+    if prompts is None and isinstance(artifact_prompts, dict):
+        result_prompts = {
+            str(key): str(value)
+            for key, value in artifact_prompts.items()
+            if isinstance(key, str) and isinstance(value, str) and value.strip()
+        }
+    else:
+        result_prompts = _normalize_prompts(
+            prompts,
+            persona=persona,
+            persona_language=config.effective_language,
+        )
 
     metric_scores = {
         "numTurns": len(turn_views),
@@ -796,5 +859,5 @@ def build_result_from_harbor_artifacts(
         questionnaire=_questionnaire(feedback),
         metric_scores=metric_scores,
         created_at=created_at,
-        prompts=_normalize_prompts(prompts, persona=persona),
+        prompts=result_prompts,
     )

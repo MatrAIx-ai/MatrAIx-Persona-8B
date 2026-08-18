@@ -24,6 +24,100 @@ REQUIRED_PYTHONPATH_SUBDIRS: tuple[str, ...] = (
 
 _REPO_ROOT_MARKER = Path("environment") / "runtime" / "harbor"
 
+# Runtime/persona language is deliberately carried on MATRIX_* fields. Remote
+# dispatch already admits the MATRIX_* namespace, so this feature does not
+# need to change remote-runner environment policy.
+PERSONA_LANGUAGE_ENV = "MATRIX_PERSONA_LANGUAGE"
+PERSONA_LANGUAGE_SOURCE_ENV = "MATRIX_PERSONA_LANGUAGE_SOURCE"
+# CLI-only authority marker. The normal language/source pair remains the
+# persisted runtime contract; this field only establishes override precedence.
+PERSONA_LANGUAGE_OVERRIDE_ENV = "MATRIX_PERSONA_LANGUAGE_OVERRIDE"
+PERSONA_LANGUAGE_TOKENS: tuple[str, ...] = (
+    "en",
+    "ko",
+    "zh-Hans",
+    "zh-Hant",
+    "ja",
+    "pt-BR",
+    "es",
+)
+PERSONA_LANGUAGE_SOURCE_TOKENS: tuple[str, ...] = ("follow_ui", "explicit")
+
+_PERSONA_LANGUAGE_ALIASES: dict[str, str] = {
+    "en": "en",
+    "en-us": "en",
+    "en-gb": "en",
+    "ko": "ko",
+    "ko-kr": "ko",
+    "zh": "zh-Hans",
+    "zh-cn": "zh-Hans",
+    "zh-hans": "zh-Hans",
+    "zh-hans-cn": "zh-Hans",
+    "zh-tw": "zh-Hant",
+    "zh-hk": "zh-Hant",
+    "zh-hant": "zh-Hant",
+    "ja": "ja",
+    "ja-jp": "ja",
+    "pt": "pt-BR",
+    "pt-br": "pt-BR",
+    "es": "es",
+    "es-es": "es",
+    "es-419": "es",
+}
+
+
+def canonicalize_persona_language(language: str | None) -> str | None:
+    """Return the canonical runtime token, or ``None`` if unsupported."""
+    if language is None:
+        return None
+    candidate = str(language).strip().replace("_", "-").casefold()
+    return _PERSONA_LANGUAGE_ALIASES.get(candidate)
+
+
+def normalize_persona_language(language: str | None) -> str | None:
+    """Validate and return a canonical runtime language token."""
+    if language is None:
+        return None
+    canonical = canonicalize_persona_language(language)
+    if canonical is None:
+        supported = ", ".join(PERSONA_LANGUAGE_TOKENS)
+        raise ValueError(
+            f"persona language must be one of: {supported}; received {language!r}"
+        )
+    return canonical
+
+
+def normalize_persona_language_source(source: str | None) -> str | None:
+    """Validate the caller-owned language provenance contract."""
+    if source is None:
+        return None
+    normalized = str(source).strip().casefold()
+    if normalized in PERSONA_LANGUAGE_SOURCE_TOKENS:
+        return normalized
+    supported = ", ".join(PERSONA_LANGUAGE_SOURCE_TOKENS)
+    raise ValueError(
+        f"persona language source must be one of: {supported}; received {source!r}"
+    )
+
+
+def build_persona_language_env(language: str | None) -> dict[str, str]:
+    """Build the explicit runtime-language env contract for a CLI override."""
+    normalized = normalize_persona_language(language)
+    if normalized is None:
+        return {}
+    return {
+        PERSONA_LANGUAGE_ENV: normalized,
+        PERSONA_LANGUAGE_SOURCE_ENV: "explicit",
+    }
+
+
+def build_persona_language_override_env(language: str | None) -> dict[str, str]:
+    """Build the highest-precedence language contract for a CLI override."""
+    env = build_persona_language_env(language)
+    if env:
+        env[PERSONA_LANGUAGE_OVERRIDE_ENV] = env[PERSONA_LANGUAGE_ENV]
+    return env
+
 
 def required_pythonpath_entries(repo_root: Path | str) -> list[str]:
     """Absolute ``PYTHONPATH`` entries every Harbor launcher must inject."""

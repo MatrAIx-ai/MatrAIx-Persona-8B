@@ -15,8 +15,10 @@ import sys
 from pathlib import Path
 
 from matraix.launch_env import (
+    build_persona_language_override_env,
     find_repo_root,
     merge_pythonpath,
+    normalize_persona_language,
     required_pythonpath_entries,
 )
 from matraix.job_results import (
@@ -72,15 +74,27 @@ def _task_env_from_header(config_path: Path) -> dict[str, str]:
     return env
 
 
+def _persona_language_arg(value: str) -> str:
+    """Argparse converter for canonical runtime/persona language tokens."""
+    try:
+        normalized = normalize_persona_language(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    assert normalized is not None
+    return normalized
+
+
 def resolve_run_invocation(
     config_path: Path | None,
     repo_root: Path,
     passthrough: list[str] | None = None,
+    persona_language: str | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     """Return ``harbor`` argv and the env updates for a ``matraix run`` call.
 
     Environment variables already exported by the user always win over
-    values derived from the generated job files.
+    values derived from the generated job files.  A CLI persona-language
+    override is explicit and wins over both sources.
     """
     env_updates: dict[str, str] = {}
     config_args: list[str] = []
@@ -98,6 +112,10 @@ def resolve_run_invocation(
     env_updates["PYTHONPATH"] = merge_pythonpath(
         os.environ.get("PYTHONPATH"), repo_root
     )
+    if persona_language is not None:
+        # Apply this after generated task exports and existing-env filtering so
+        # the explicit CLI flag is the highest-precedence launch input.
+        env_updates.update(build_persona_language_override_env(persona_language))
     argv = ["run", *config_args, *(passthrough or [])]
     return argv, env_updates
 
@@ -129,17 +147,25 @@ def _cmd_run(args: argparse.Namespace, passthrough: list[str]) -> None:
         if args.repo_root
         else find_repo_root(config_path.parent if config_path else None)
     )
-    argv, env_updates = resolve_run_invocation(config_path, repo_root, passthrough)
+    argv, env_updates = resolve_run_invocation(
+        config_path,
+        repo_root,
+        passthrough,
+        persona_language=args.persona_language,
+    )
     if args.max_cost_usd is not None:
         if args.max_cost_usd < 0:
             sys.exit("matraix run: --max-cost-usd must be >= 0")
         env_updates["MATRIX_MAX_COST_USD"] = f"{args.max_cost_usd:g}"
     os.environ.update(env_updates)
+    explicit_persona_env = build_persona_language_override_env(args.persona_language)
     for name, value in env_updates.items():
         if name == "PYTHONPATH":
             continue
         if name == "MATRIX_MAX_COST_USD":
             print(f"matraix run: budget gate MATRIX_MAX_COST_USD={value}", file=sys.stderr)
+        elif name in explicit_persona_env:
+            print(f"matraix run: {name}={value} (from --persona-language)", file=sys.stderr)
         else:
             print(f"matraix run: {name}={value} (from generated job)", file=sys.stderr)
     # Make the injected paths visible to this process too, since Harbor loads
@@ -274,6 +300,18 @@ def main(argv: list[str] | None = None) -> None:
             "recorded spend meets this limit. Web/OS agents already report "
             "tokens/cost via their runtimes; this gate applies to host-native "
             "Survey/Chat today."
+        ),
+    )
+    run_parser.add_argument(
+        "--persona-language",
+        type=_persona_language_arg,
+        metavar="{en,ko,zh-Hans,zh-Hant,ja,pt-BR,es}",
+        default=None,
+        help=(
+            "Explicit runtime/persona language override. Emits the controlled "
+            "language/source launch fields plus a CLI authority marker so the "
+            "flag also overrides generated agent kwargs. Without this flag, "
+            "existing job/env/default resolution is unchanged."
         ),
     )
 

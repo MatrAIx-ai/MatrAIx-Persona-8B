@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from playground.persona_language import resolve_persona_language_with_source
+
 _DECISIONS = {"continue", "satisfied", "give_up"}
 DEFAULT_PERSONA_MODEL = "anthropic/claude-haiku-4-5"
 
@@ -63,6 +65,35 @@ class PlaygroundConfig:
     ranker_mode: str = "native"
     resource_mode: str = "recai_resources"
     max_turns: Optional[int] = None
+    persona_language: str = "en"
+    persona_language_source: str = "default"
+
+    def __post_init__(self) -> None:
+        language = resolve_persona_language_with_source(
+            self.persona_language,
+            requested_source=self.persona_language_source,
+            environ={},
+        )
+        self.persona_language = language.language
+        self.persona_language_source = language.source
+
+    @property
+    def effective_language(self) -> str:
+        """Compatibility alias used by Harbor launch/runtime metadata."""
+        return self.persona_language
+
+    @effective_language.setter
+    def effective_language(self, value: str) -> None:
+        self.persona_language = str(value or "en")
+
+    @property
+    def language_source(self) -> str:
+        """Compatibility alias used by Harbor launch/runtime metadata."""
+        return self.persona_language_source
+
+    @language_source.setter
+    def language_source(self, value: str) -> None:
+        self.persona_language_source = str(value or "default")
 
     def to_dict(self) -> Dict[str, Any]:
         application_context = self.application_context or self.domain
@@ -76,6 +107,8 @@ class PlaygroundConfig:
             "rankerMode": self.ranker_mode,
             "resourceMode": self.resource_mode,
             "maxTurns": self.max_turns,
+            "effectiveLanguage": self.persona_language,
+            "languageSource": self.persona_language_source,
         }
 
 

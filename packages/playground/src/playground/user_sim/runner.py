@@ -18,6 +18,10 @@ from playground.task_content_bundle import (
     load_task_content_bundle_for_task_path,
 )
 from playground.model_client import build_json_client
+from playground.persona_language import (
+    PersonaLanguageResolution,
+    resolve_persona_language_with_source,
+)
 from playground.types import (
     MetricScores,
     Persona,
@@ -49,6 +53,45 @@ def _tool_client_usage(tool_client: Any):
     if callable(getter):
         return getter()
     return None
+
+
+def _resolve_run_persona_language(
+    config: PlaygroundConfig,
+    persona_language: Optional[str],
+    persona_language_source: Optional[str],
+) -> PersonaLanguageResolution:
+    """Resolve one language/source pair for every prompt in a run.
+
+    A persisted config is useful when replaying an existing run, while an
+    explicit function argument remains the highest-priority override.  Older
+    ``PlaygroundConfig`` defaults provide the legacy English/default behavior.
+    """
+    requested_language = (
+        persona_language
+        if persona_language is not None
+        else config.persona_language
+    )
+    requested_source = (
+        persona_language_source
+        if persona_language_source is not None
+        else config.persona_language_source
+    )
+    return resolve_persona_language_with_source(
+        requested_language,
+        requested_source=requested_source,
+    )
+
+
+def _record_run_persona_language(
+    config: PlaygroundConfig,
+    resolution: PersonaLanguageResolution,
+) -> None:
+    """Attach reproducible runtime-language provenance to the run config.
+
+    The config serializer owns the wire/artifact field names.
+    """
+    config.persona_language = resolution.language
+    config.persona_language_source = resolution.source
 
 
 def _chat_result_with_usage(
@@ -167,6 +210,8 @@ def run_playground(
     persona_yaml_path: Optional[str] = None,
     repo_root: Optional[Path] = None,
     job_dir: Optional[Path] = None,
+    persona_language: Optional[str] = None,
+    persona_language_source: Optional[str] = None,
 ) -> PlaygroundResult:
     def emit(event: Dict[str, Any]) -> None:
         if on_event is not None:
@@ -181,6 +226,12 @@ def run_playground(
         task_path or "",
         repo_root=repo_root or Path("."),
     )
+    language = _resolve_run_persona_language(
+        config,
+        persona_language,
+        persona_language_source,
+    )
+    _record_run_persona_language(config, language)
 
     tool_client = build_tool_step_client(
         config.persona_model,
@@ -191,19 +242,30 @@ def run_playground(
         persona,
         persona_yaml_path=persona_yaml_path,
         task_bundle=task_bundle,
+        persona_language=language.language,
+        persona_language_source=language.source,
     )
     prompts = prompt_bundle(
         persona,
         persona_yaml_path=persona_yaml_path,
         task_bundle=task_bundle,
+        persona_language=language.language,
         task_prompt=goal_context.description,
     )
     report_prompt = assemble_report_system_prompt(
         persona,
         persona_yaml_path=persona_yaml_path,
         task_bundle=task_bundle,
+        persona_language=language.language,
     )
-    emit({"type": "prompts", "prompts": prompts})
+    emit(
+        {
+            "type": "prompts",
+            "prompts": prompts,
+            "effectiveLanguage": language.language,
+            "languageSource": language.source,
+        }
+    )
 
     transcript: List[PlaygroundTurn] = []
     action = sim.opening_action()
@@ -292,6 +354,8 @@ async def run_playground_async(
     persona_yaml_path: Optional[str] = None,
     repo_root: Optional[Path] = None,
     job_dir: Optional[Path] = None,
+    persona_language: Optional[str] = None,
+    persona_language_source: Optional[str] = None,
 ) -> PlaygroundResult:
     """Like :func:`run_playground` but awaits async Harbor sidecar turns."""
 
@@ -308,6 +372,12 @@ async def run_playground_async(
         task_path or "",
         repo_root=repo_root or Path("."),
     )
+    language = _resolve_run_persona_language(
+        config,
+        persona_language,
+        persona_language_source,
+    )
+    _record_run_persona_language(config, language)
 
     tool_client = build_tool_step_client(
         config.persona_model,
@@ -318,19 +388,30 @@ async def run_playground_async(
         persona,
         persona_yaml_path=persona_yaml_path,
         task_bundle=task_bundle,
+        persona_language=language.language,
+        persona_language_source=language.source,
     )
     prompts = prompt_bundle(
         persona,
         persona_yaml_path=persona_yaml_path,
         task_bundle=task_bundle,
+        persona_language=language.language,
         task_prompt=goal_context.description,
     )
     report_prompt = assemble_report_system_prompt(
         persona,
         persona_yaml_path=persona_yaml_path,
         task_bundle=task_bundle,
+        persona_language=language.language,
     )
-    emit({"type": "prompts", "prompts": prompts})
+    emit(
+        {
+            "type": "prompts",
+            "prompts": prompts,
+            "effectiveLanguage": language.language,
+            "languageSource": language.source,
+        }
+    )
 
     transcript: List[PlaygroundTurn] = []
     action = sim.opening_action()

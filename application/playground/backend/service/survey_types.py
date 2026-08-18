@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,8 @@ except ModuleNotFoundError:
     if str(core_src) not in sys.path:
         sys.path.insert(0, str(core_src))
     from playground.types import DEFAULT_PERSONA_MODEL, Persona
+
+from playground.persona_language import resolve_persona_language_with_source
 
 QUESTION_TYPES = {"likert", "single_choice", "multi_choice", "free_text"}
 
@@ -217,12 +219,25 @@ class SurveyEvalConfig:
     # Deprecated: rationale/confidence now come from questionnaire.yaml.
     # Kept for API compatibility; ignored by the survey runner.
     require_rationale: bool = True
+    persona_language: str = "en"
+    persona_language_source: str = "default"
+
+    def __post_init__(self) -> None:
+        resolution = resolve_persona_language_with_source(
+            self.persona_language,
+            requested_source=self.persona_language_source,
+            environ={},
+        )
+        self.persona_language = resolution.language
+        self.persona_language_source = resolution.source
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "personaModel": self.persona_model,
             "mode": self.mode,
             "requireRationale": self.require_rationale,
+            "effectiveLanguage": self.persona_language,
+            "languageSource": self.persona_language_source,
         }
 
 
@@ -345,6 +360,8 @@ class SurveyEvalResult:
     def to_dict(self) -> dict[str, Any]:
         payload = {
             "config": self.config.to_dict(),
+            "effectiveLanguage": self.config.persona_language,
+            "languageSource": self.config.persona_language_source,
             "persona": self.persona.to_dict(),
             "instrument": self.instrument.to_dict(),
             "trajectory": [event.to_dict() for event in self.trajectory],
@@ -465,6 +482,41 @@ def _normalize_survey_prompts(prompts: dict[str, Any] | None) -> dict[str, str]:
     }
 
 
+def _config_with_artifact_language(
+    config: SurveyEvalConfig,
+    payload: dict[str, Any],
+) -> SurveyEvalConfig:
+    """Recover the recorded runtime language without consulting the host env."""
+    raw_config = payload.get("config")
+    artifact_config = raw_config if isinstance(raw_config, dict) else {}
+    language = artifact_config.get(
+        "effectiveLanguage",
+        artifact_config.get(
+            "personaLanguage",
+            artifact_config.get("persona_language", payload.get("effectiveLanguage")),
+        ),
+    )
+    source = artifact_config.get(
+        "languageSource",
+        artifact_config.get(
+            "personaLanguageSource",
+            artifact_config.get("persona_language_source", payload.get("languageSource")),
+        ),
+    )
+    if language is None and source is None:
+        return config
+    resolution = resolve_persona_language_with_source(
+        language if language is not None else config.persona_language,
+        requested_source=source if source is not None else config.persona_language_source,
+        environ={},
+    )
+    return replace(
+        config,
+        persona_language=resolution.language,
+        persona_language_source=resolution.source,
+    )
+
+
 def build_survey_eval_result_from_artifacts(
     *,
     output_dir: Path,
@@ -475,6 +527,7 @@ def build_survey_eval_result_from_artifacts(
     prompts: dict[str, Any] | None = None,
 ) -> SurveyEvalResult:
     payload = _read_artifact_json(output_dir / "survey_result.json")
+    config = _config_with_artifact_language(config, payload)
     artifact_instrument = payload.get("instrument")
     if isinstance(artifact_instrument, dict):
         artifact_id = str(artifact_instrument.get("id", "")).strip()
@@ -497,6 +550,9 @@ def build_survey_eval_result_from_artifacts(
         except (TypeError, ValueError):
             continue
     mean = sum(likert_values) / len(likert_values) if likert_values else None
+    artifact_prompts = prompts if prompts is not None else payload.get("prompts")
+    if not isinstance(artifact_prompts, dict):
+        artifact_prompts = None
     return SurveyEvalResult(
         config=config,
         persona=persona,
@@ -509,7 +565,7 @@ def build_survey_eval_result_from_artifacts(
             mean_likert=mean,
         ),
         created_at=created_at,
-        prompts=_normalize_survey_prompts(prompts),
+        prompts=_normalize_survey_prompts(artifact_prompts),
     )
 
 
@@ -523,6 +579,8 @@ def survey_result_view(result: SurveyEvalResult) -> dict[str, Any]:
     ]
     metrics = result.metrics.to_dict()
     return {
+        "effectiveLanguage": result.config.persona_language,
+        "languageSource": result.config.persona_language_source,
         "instrument": result.instrument.to_dict(),
         "answers": [answer.to_dict() for answer in result.answers],
         "trajectory": [event.to_dict() for event in result.trajectory],

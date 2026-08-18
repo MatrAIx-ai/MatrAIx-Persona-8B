@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -21,13 +22,21 @@ from backend.service.survey_types import (
 )
 from playground.budget import assert_budget_allows_request, record_trial_cost
 from playground.model_client import build_json_client
+from playground.persona_language import resolve_persona_language_with_source
 from playground.types import Persona
 from playground.user_sim.prompt import render_persona_block
 
 
-def persona_system_prompt(persona: Persona, *, persona_yaml_path: str) -> str:
+def persona_system_prompt(
+    persona: Persona,
+    *,
+    persona_yaml_path: str,
+    persona_language: str | None = None,
+) -> str:
     persona_body = render_persona_block(
-        persona, persona_yaml_path=persona_yaml_path
+        persona,
+        persona_yaml_path=persona_yaml_path,
+        persona_language=persona_language,
     ).strip()
     if not persona_body:
         raise ValueError(f"empty persona render for yaml path: {persona_yaml_path}")
@@ -85,6 +94,8 @@ class InprocessSurveyEvalRunner:
         persona_yaml_path: str,
         on_event: Optional[Callable[[Dict[str, Any]], None]] = None,
         job_dir: Optional[Any] = None,
+        persona_language: str | None = None,
+        persona_language_source: str | None = None,
         client: Any | None = None,
         client_factory: Optional[Callable[[str], Any]] = None,
     ) -> SurveyEvalResult:
@@ -94,9 +105,28 @@ class InprocessSurveyEvalRunner:
             if on_event is not None:
                 on_event(event)
 
+        if persona_language is None:
+            requested_language = config.persona_language
+            requested_source = config.persona_language_source
+        else:
+            requested_language = persona_language
+            requested_source = persona_language_source
+        language = resolve_persona_language_with_source(
+            requested_language,
+            requested_source=requested_source,
+            environ={},
+        )
+        config = replace(
+            config,
+            persona_language=language.language,
+            persona_language_source=language.source,
+        )
+
         task_prompt = build_survey_task_prompt(instrument=instrument)
         persona_prompt = persona_system_prompt(
-            persona, persona_yaml_path=persona_yaml_path
+            persona,
+            persona_yaml_path=persona_yaml_path,
+            persona_language=language.language,
         )
         prompts = {
             "personaPrompt": persona_prompt,

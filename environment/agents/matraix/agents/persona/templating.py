@@ -8,6 +8,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFo
 
 from matraix.agents.persona.loader import Persona
 from matraix.persona_dimension_catalog import build_template_context_extras
+from playground.persona_language import persona_language_contract
 
 PERSONA_SYSTEM_TEMPLATE = "persona_system.md.j2"
 PERSONA_INSTRUCTION_TEMPLATE = "persona_instruction.md.j2"
@@ -46,6 +47,7 @@ def render_persona_template(
     persona: Persona,
     *,
     instruction: str | None = None,
+    language: str | None = None,
 ) -> str:
     env = Environment(
         loader=FileSystemLoader(template_path.parent),
@@ -58,7 +60,17 @@ def render_persona_template(
     except TemplateNotFound as exc:
         raise FileNotFoundError(f"Persona template not found: {template_path}") from exc
 
-    return template.render(
+    language_contract = persona_language_contract(language) if language else ""
+    rendered = template.render(
         **persona.template_context(instruction=instruction),
         **build_template_context_extras(persona.dimensions),
+        runtime_language_contract=language_contract,
     ).strip()
+    # Bundled templates place the contract inside the identity section. Put the
+    # fallback before custom templates so it can never trail task-owned content.
+    if language_contract and language_contract not in rendered:
+        rendered = "{}\n\n{}".format(
+            language_contract,
+            rendered,
+        ).strip()
+    return rendered

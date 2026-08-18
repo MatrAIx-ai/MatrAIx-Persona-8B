@@ -178,6 +178,8 @@ class PersonaComputer1(PersonaMixin, BaseAgent):
         model_name: str | None = None,
         persona_path: str | None = None,
         persona_template_path: str | None = None,
+        persona_language: str | None = None,
+        persona_language_source: str | None = None,
         cua_backend: str | None = None,
         cua_submission_profile: str | None = None,
         **kwargs: Any,
@@ -192,6 +194,8 @@ class PersonaComputer1(PersonaMixin, BaseAgent):
             persona_path,
             AgentName.PERSONA_COMPUTER_1.value,
             persona_template_path=persona_template_path,
+            persona_language=persona_language,
+            persona_language_source=persona_language_source,
         )
         self._cua_backend_override = cua_backend
         # Accepted for backward-compatible Harbor YAML / --ak, but ignored:

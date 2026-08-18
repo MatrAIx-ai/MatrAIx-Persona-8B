@@ -8,6 +8,7 @@ import os
 import shlex
 import tempfile
 import textwrap
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
@@ -31,6 +32,7 @@ from playground.task_content_bundle import (
     load_task_content_bundle_for_task_path,
 )
 from playground.persona_model import resolve_persona_model
+from playground.persona_language import resolve_persona_language_with_source
 from playground.types import (
     Persona,
     PlaygroundConfig,
@@ -112,6 +114,7 @@ def harbor_chat_config_from_env(
     )
     resolved_context = application_context or domain or "chatbot"
     resolved_domain = domain
+    language_resolution = resolve_persona_language_with_source()
     return PlaygroundConfig(
         domain=resolved_domain,
         application_id=application_id,
@@ -119,6 +122,8 @@ def harbor_chat_config_from_env(
         engine=engine,
         persona_model=persona_model,
         max_turns=max_turns,
+        persona_language=language_resolution.language,
+        persona_language_source=language_resolution.source,
     )
 
 
@@ -464,6 +469,8 @@ def harbor_output_artifacts_from_result(
         "applicationId": result.config.application_id,
         "applicationContext": application_context,
         "turnCount": len(result.transcript),
+        "config": result.config.to_dict(),
+        "prompts": dict(result.prompts),
     }
     return {
         "transcript.json": transcript_payload,
@@ -526,9 +533,28 @@ async def run_harbor_chat_eval(
     persona_yaml_path: Optional[str] = None,
     repo_root: Optional[Any] = None,
     job_dir: Optional[Any] = None,
+    persona_language: Optional[str] = None,
+    persona_language_source: Optional[str] = None,
 ) -> PlaygroundResult:
     """Async chat eval loop using a Harbor sidecar session."""
     from playground.user_sim.runner import run_playground_async
+
+    if persona_language is not None or persona_language_source is not None:
+        language_resolution = resolve_persona_language_with_source(
+            persona_language,
+            requested_source=persona_language_source,
+        )
+        config = replace(
+            config,
+            persona_language=language_resolution.language,
+            persona_language_source=language_resolution.source,
+        )
+    else:
+        config = replace(
+            config,
+            persona_language=config.effective_language or "en",
+            persona_language_source=config.language_source or "default",
+        )
 
     return await run_playground_async(
         session,
@@ -541,6 +567,8 @@ async def run_harbor_chat_eval(
         persona_yaml_path=persona_yaml_path,
         repo_root=repo_root,
         job_dir=job_dir,
+        persona_language=config.effective_language,
+        persona_language_source=config.language_source,
     )
 
 
@@ -550,6 +578,8 @@ async def run_harbor_chat_eval_for_persona(
     *,
     model_name: str | None = None,
     on_event: Optional[Callable[[Dict[str, Any]], None]] = None,
+    persona_language: str | None = None,
+    persona_language_source: str | None = None,
 ) -> tuple[PlaygroundResult, str]:
     """End-to-end Harbor chat eval for one loaded Harbor persona object."""
     from playground.harbor.playground import _repo_root
@@ -593,6 +623,8 @@ async def run_harbor_chat_eval_for_persona(
         persona_yaml_path=persona_path,
         repo_root=repo_root,
         job_dir=trial_dir.parent,
+        persona_language=persona_language,
+        persona_language_source=persona_language_source,
     )
     if on_event is not None:
         on_event({"type": "phase", "phase": "harbor_collecting_artifacts"})

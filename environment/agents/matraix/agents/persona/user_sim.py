@@ -33,12 +33,16 @@ class PersonaUserSim(PersonaMixin, BaseAgent):
         logs_dir: Path,
         persona_path: str | None = None,
         persona_template_path: str | None = None,
+        persona_language: str | None = None,
+        persona_language_source: str | None = None,
         **kwargs,
     ) -> None:
         self._init_persona(
             persona_path,
             AgentName.PERSONA_USER_SIM.value,
             persona_template_path=persona_template_path,
+            persona_language=persona_language,
+            persona_language_source=persona_language_source,
         )
         super().__init__(logs_dir=logs_dir, **kwargs)
 
@@ -63,6 +67,8 @@ class PersonaUserSim(PersonaMixin, BaseAgent):
             self._persona,
             model_name=self.model_name,
             on_event=on_event,
+            persona_language=self.effective_persona_language,
+            persona_language_source=self.persona_language_source,
         )
         from playground.llm_usage import apply_usage_dict_to_context
 
