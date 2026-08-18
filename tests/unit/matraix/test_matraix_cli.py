@@ -341,6 +341,7 @@ tasks: []
                 "zh-Hant",
             ]
         )
+        assert "MATRIX_PERSONA_LANGUAGE_OVERRIDE" not in os.environ
     finally:
         os.chdir(original_cwd)
         sys.path[:] = original_sys_path

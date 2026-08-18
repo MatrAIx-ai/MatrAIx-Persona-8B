@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from matraix.launch_env import (
+    PERSONA_LANGUAGE_OVERRIDE_ENV,
     build_persona_language_override_env,
     find_repo_root,
     merge_pythonpath,
@@ -157,6 +158,9 @@ def _cmd_run(args: argparse.Namespace, passthrough: list[str]) -> None:
         if args.max_cost_usd < 0:
             sys.exit("matraix run: --max-cost-usd must be >= 0")
         env_updates["MATRIX_MAX_COST_USD"] = f"{args.max_cost_usd:g}"
+    had_persona_override = PERSONA_LANGUAGE_OVERRIDE_ENV in os.environ
+    previous_persona_override = os.environ.get(PERSONA_LANGUAGE_OVERRIDE_ENV)
+    scopes_persona_override = PERSONA_LANGUAGE_OVERRIDE_ENV in env_updates
     os.environ.update(env_updates)
     explicit_persona_env = build_persona_language_override_env(args.persona_language)
     for name, value in env_updates.items():
@@ -178,7 +182,16 @@ def _cmd_run(args: argparse.Namespace, passthrough: list[str]) -> None:
 
     from harbor.cli.main import app as harbor_app
 
-    harbor_app(args=argv, prog_name="harbor")
+    try:
+        harbor_app(args=argv, prog_name="harbor")
+    finally:
+        # The override marker is authority for this CLI invocation only.  Do
+        # not let an in-process Harbor run leak it into later runs or tests.
+        if scopes_persona_override:
+            if had_persona_override and previous_persona_override is not None:
+                os.environ[PERSONA_LANGUAGE_OVERRIDE_ENV] = previous_persona_override
+            else:
+                os.environ.pop(PERSONA_LANGUAGE_OVERRIDE_ENV, None)
 
 
 def _cmd_results(args: argparse.Namespace) -> None:
