@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
 import type { HarborCockpitTaskKind } from "@/lib/harborCockpitMappers";
+import { withLaunchLanguage } from "@/lib/personaLanguage";
 import type { ConfigOptionsResponse } from "@/lib/types";
 
 import { buildPersonaLaunchFields, hasLaunchableCohort } from "./personaLaunchFields";
@@ -43,6 +45,7 @@ export function useCockpitLaunch(
   taskPath: string | null = null,
   isActive = true,
 ) {
+  const { locale } = useI18n();
   const sampling = useSetupPersonaSampling(options, taskKind, taskPath, isActive);
   const batch = useCockpitBatchJob(
     sampling.selectedPersonaIds,
@@ -90,14 +93,19 @@ export function useCockpitLaunch(
           useEntirePool,
           parallelTrials,
         });
-        const launched = await api.launchHarborJob({
-          taskPath: input.taskPath,
-          seed,
-          personaModel,
-          ...personaFields,
-          mode: "auto",
-          ...input.overrides,
-        });
+        const launched = await api.launchHarborJob(
+          withLaunchLanguage(
+            {
+              taskPath: input.taskPath,
+              seed,
+              personaModel,
+              ...personaFields,
+              mode: "auto",
+              ...input.overrides,
+            },
+            locale,
+          ),
+        );
         setBatchJobName(launched.jobName, { taskId: input.taskId, personaPool });
         return true;
       } catch (exc) {
@@ -115,6 +123,7 @@ export function useCockpitLaunch(
       parallelTrials,
       seed,
       personaModel,
+      locale,
       setBatchJobName,
     ],
   );

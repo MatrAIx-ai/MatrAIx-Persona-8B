@@ -57,6 +57,7 @@ describe("locale loading", () => {
         code: "en-US",
         nativeName: "English",
         englishName: "English",
+        personaLanguage: "en",
         dir: "ltr",
         fallback: null,
         load,
@@ -87,9 +88,9 @@ describe("locale loading", () => {
       "fr-CA": { "locale.english": "Anglais canadien" },
     } as const;
     const definitions: LocaleDefinition<TestLocale>[] = [
-      { code: "en-US", nativeName: "English", englishName: "English", dir: "ltr", fallback: null, load: async () => packs["en-US"] },
-      { code: "fr", nativeName: "Français", englishName: "French", dir: "ltr", fallback: "en-US", load: async () => packs.fr },
-      { code: "fr-CA", nativeName: "Français (Canada)", englishName: "Canadian French", dir: "ltr", fallback: "fr", load: async () => packs["fr-CA"] },
+      { code: "en-US", nativeName: "English", englishName: "English", personaLanguage: "en", dir: "ltr", fallback: null, load: async () => packs["en-US"] },
+      { code: "fr", nativeName: "Français", englishName: "French", personaLanguage: "en", dir: "ltr", fallback: "en-US", load: async () => packs.fr },
+      { code: "fr-CA", nativeName: "Français (Canada)", englishName: "Canadian French", personaLanguage: "en", dir: "ltr", fallback: "fr", load: async () => packs["fr-CA"] },
     ];
     const loader = createLocalePackLoader(definitions);
 

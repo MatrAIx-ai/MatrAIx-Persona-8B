@@ -11,7 +11,9 @@ import {
   type HarborCockpitTaskKind,
 } from "./harborCockpitMappers";
 import type { PlaygroundResult } from "./types";
+import { withLaunchLanguage } from "./personaLanguage";
 import { useUrlState } from "./useUrlState";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export type HarborLaunchMode = "auto" | "force_docker" | "smoke";
 export type HarborCockpitPhase = "idle" | "launching" | "running" | "done" | "error" | "timeout";
@@ -56,6 +58,7 @@ function normalizeTaskKind(value: unknown): HarborCockpitTaskKind | null {
 
 export function useHarborCockpitRun<TJob>(options: UseHarborCockpitRunOptions) {
   const { taskKind } = options;
+  const { locale } = useI18n();
   const { state: urlState, setState: setUrlState } = useUrlState();
 
   const [job, setJob] = useState<TJob | null>(null);
@@ -165,21 +168,26 @@ export function useHarborCockpitRun<TJob>(options: UseHarborCockpitRunOptions) {
       setHarborPhase("launching");
       setPhase("launching");
       try {
-        const launched = await api.launchHarborJob({
-          taskPath: input.taskPath,
-          sampleSize: 1,
-          personaIds: [input.personaId],
-          personaModel: input.personaModel,
-          agentName: input.agentName,
-          nConcurrentTrials: 1,
-          mode: input.mode ?? "auto",
-          chatDomain: input.chatDomain,
-          chatApplicationId: input.chatApplicationId,
-          chatApplicationContext: input.chatApplicationContext,
-          chatMaxTurns: input.chatMaxTurns,
-          osAppSubmissionProfile: input.osAppSubmissionProfile,
-          osAppBackend: input.osAppBackend,
-        });
+        const launched = await api.launchHarborJob(
+          withLaunchLanguage(
+            {
+              taskPath: input.taskPath,
+              sampleSize: 1,
+              personaIds: [input.personaId],
+              personaModel: input.personaModel,
+              agentName: input.agentName,
+              nConcurrentTrials: 1,
+              mode: input.mode ?? "auto",
+              chatDomain: input.chatDomain,
+              chatApplicationId: input.chatApplicationId,
+              chatApplicationContext: input.chatApplicationContext,
+              chatMaxTurns: input.chatMaxTurns,
+              osAppSubmissionProfile: input.osAppSubmissionProfile,
+              osAppBackend: input.osAppBackend,
+            },
+            locale,
+          ),
+        );
         setHarborJobName(launched.jobName);
         setUrlState({
           pgTask: taskKind,
@@ -196,7 +204,7 @@ export function useHarborCockpitRun<TJob>(options: UseHarborCockpitRunOptions) {
         clearCockpitUrl();
       }
     },
-    [clearCockpitUrl, setUrlState, taskKind],
+    [clearCockpitUrl, locale, setUrlState, taskKind],
   );
 
   // Restore a single-run job after refresh (only for this cockpit task tab).
