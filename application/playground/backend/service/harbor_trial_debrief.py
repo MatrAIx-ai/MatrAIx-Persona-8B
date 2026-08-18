@@ -17,6 +17,11 @@ from backend.service.llm_usage_view import usage_from_trial_dir
 from backend.service.survey_types import build_survey_eval_result_from_artifacts
 from backend.service.survey_types import survey_result_view
 from backend.service.survey_types import SurveyEvalConfig, SurveyInstrument, SurveyQuestion
+from playground.persona_language import (
+    PersonaLanguageResolution,
+    PERSONA_LANGUAGE_SOURCES,
+    normalize_persona_language,
+)
 from playground.types import Persona, PlaygroundConfig
 
 if TYPE_CHECKING:
@@ -696,13 +701,83 @@ def _read_persona_yaml_raw(repo_root: Path, persona_rel: str | None) -> dict[str
     return raw if isinstance(raw, dict) else None
 
 
+def _persona_language_from_meta(meta: dict[str, Any] | None) -> PersonaLanguageResolution | None:
+    if not isinstance(meta, dict):
+        return None
+    source = str(meta.get("language_source") or "").strip().lower()
+    if source not in PERSONA_LANGUAGE_SOURCES:
+        return None
+    try:
+        language = normalize_persona_language(meta.get("effective_language"))
+    except (TypeError, ValueError):
+        return None
+    if language is None:
+        return None
+    return PersonaLanguageResolution(language=language, source=source)
+
+
+def _inferred_launch_meta_paths(trial_dir: Path) -> tuple[Path, ...]:
+    """Return known launch metadata locations without creating or modifying files.
+
+    HarborJobService passes its configured path explicitly.  The fallback keeps
+    direct debrief callers useful for the repository layout used by Harbor:
+    ``<repo>/jobs/<job>/<trial>`` and ``<repo>/configs/jobs/<job>.launch.json``.
+    """
+    job_dir = trial_dir.parent
+    candidates = [job_dir / ".playground-launch.json"]
+    try:
+        repo_root = trial_dir.parents[2]
+    except IndexError:
+        return tuple(candidates)
+    candidates.append(repo_root / "configs" / "jobs" / "{}.launch.json".format(job_dir.name))
+    return tuple(candidates)
+
+
+def _recorded_persona_language(
+    trial_dir: Path,
+    *,
+    launch_meta_path: Path | None = None,
+) -> PersonaLanguageResolution:
+    """Read language metadata in trial -> launch -> English/default order.
+
+    Debrief is a read path: missing or malformed metadata is ignored and never
+    repaired by writing ``persona_meta.json``.  The explicit launch path is
+    used by HarborJobService because callers may configure a non-default jobs
+    config directory; direct callers use the repository-layout fallback.
+    """
+    paths: list[Path] = [trial_dir / "persona_meta.json"]
+    if launch_meta_path is not None:
+        paths.append(launch_meta_path)
+    paths.extend(_inferred_launch_meta_paths(trial_dir))
+    seen: set[Path] = set()
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            resolution = _persona_language_from_meta(_read_json(path))
+        except (OSError, ValueError):
+            resolution = None
+        if resolution is not None:
+            return resolution
+    return PersonaLanguageResolution(language="en", source="default")
+
+
 def _render_persona_prompt(
-    repo_root: Path, persona_rel: str | None, persona: Persona
+    repo_root: Path,
+    persona_rel: str | None,
+    persona: Persona,
+    *,
+    persona_language: str,
 ) -> str:
     from playground.user_sim.prompt import render_persona_block
 
     yaml_path = _persona_prompt_abs_path(repo_root, persona_rel)
-    block = render_persona_block(persona, persona_yaml_path=yaml_path).strip()
+    block = render_persona_block(
+        persona,
+        persona_yaml_path=yaml_path,
+        persona_language=persona_language,
+    ).strip()
     if block and not _is_thin_persona_prompt(block, persona=persona):
         return block
     raw = _read_persona_yaml_raw(repo_root, persona_rel)
@@ -762,10 +837,14 @@ def _enrich_debrief_prompts(
     repo_root: Path,
     persona_rel: str | None,
     persona: Persona,
+    launch_meta_path: Path | None = None,
 ) -> None:
     """Ensure debrief rails have persona profile + task instruction text."""
     existing = debrief.get("prompts")
     prompts = dict(existing) if isinstance(existing, dict) else {}
+    language = _recorded_persona_language(trial_dir, launch_meta_path=launch_meta_path)
+    debrief["effectiveLanguage"] = language.language
+    debrief["languageSource"] = language.source
 
     event_prompts = _read_prompts_event(trial_dir)
     done = _read_chat_done_event(trial_dir)
@@ -782,19 +861,42 @@ def _enrich_debrief_prompts(
     prompts = _merge_prompt_dicts(prompts, done_prompts)
     prompts = _merge_prompt_dicts(prompts, event_prompts)
 
-    persona_prompt = str(prompts.get("personaPrompt") or "").strip()
-    harbor_prompt = str(prompts.get("harborPrompt") or "").strip()
-    rendered = _render_persona_prompt(repo_root, persona_rel, persona)
-    if rendered and not _is_thin_persona_prompt(rendered, persona=persona):
-        persona_prompt = rendered
+    # Runtime events/artifacts are authoritative.  Preserve their exact
+    # prompt text even when it was rendered in a non-English language; a
+    # language-aware reconstruction is only a legacy fallback.
+    recorded_sources = (event_prompts, done_prompts, existing)
+    recorded_prompt_keys = {
+        str(key)
+        for source in recorded_sources
+        if isinstance(source, dict)
+        for key, value in source.items()
+        if isinstance(value, str) and value.strip()
+    }
+    persona_prompt = ""
+    harbor_prompt = ""
+    for source in recorded_sources:
+        if not isinstance(source, dict):
+            continue
+        candidate = str(source.get("personaPrompt") or "").strip()
+        if not persona_prompt and candidate:
+            persona_prompt = candidate
+        candidate = str(source.get("harborPrompt") or "").strip()
+        if not harbor_prompt and candidate:
+            harbor_prompt = candidate
+
+    if persona_prompt:
         prompts["personaPrompt"] = persona_prompt
-    elif not persona_prompt or _is_thin_persona_prompt(persona_prompt, persona=persona):
-        if harbor_prompt and not _is_thin_persona_prompt(harbor_prompt, persona=persona):
-            persona_prompt = harbor_prompt
-        elif rendered and not _is_thin_persona_prompt(rendered, persona=persona):
-            persona_prompt = rendered
-        if persona_prompt:
-            prompts["personaPrompt"] = persona_prompt
+    elif harbor_prompt:
+        prompts["personaPrompt"] = harbor_prompt
+    else:
+        rendered = _render_persona_prompt(
+            repo_root,
+            persona_rel,
+            persona,
+            persona_language=language.language,
+        )
+        if rendered and not _is_thin_persona_prompt(rendered, persona=persona):
+            prompts["personaPrompt"] = rendered
 
     task_prompt = str(prompts.get("taskPrompt") or "").strip()
     instruction = _read_trial_instruction_markdown(trial_dir, repo_root)
@@ -812,7 +914,11 @@ def _enrich_debrief_prompts(
     if instruction:
         if not task_prompt:
             prompts["taskPrompt"] = instruction
-        elif len(task_prompt) < 160 and instruction not in task_prompt:
+        elif (
+            "taskPrompt" not in recorded_prompt_keys
+            and len(task_prompt) < 160
+            and instruction not in task_prompt
+        ):
             prompts["taskPrompt"] = "{}\n\n---\n\n{}".format(instruction, task_prompt)
 
     if prompts:
@@ -1510,6 +1616,7 @@ def map_trial_debrief(
     jobs_dir: Path,
     job_name: str,
     trial_name: str,
+    launch_meta_path: Path | None = None,
 ) -> dict[str, Any]:
     """Build a Playground-compatible debrief payload for one Harbor trial."""
     trial_dir = jobs_dir / job_name / trial_name
@@ -1547,6 +1654,7 @@ def map_trial_debrief(
                     repo_root=repo_root,
                     persona_rel=persona_rel,
                     persona=persona,
+                    launch_meta_path=launch_meta_path,
                 )
                 _attach_verifier_artifacts(debrief, trial_dir)
                 return _attach_usage(debrief, trial_dir)
@@ -1570,6 +1678,7 @@ def map_trial_debrief(
             repo_root=repo_root,
             persona_rel=persona_rel,
             persona=persona,
+            launch_meta_path=launch_meta_path,
         )
         _attach_verifier_artifacts(debrief, trial_dir)
         return _attach_usage(debrief, trial_dir)
@@ -1705,5 +1814,6 @@ def map_trial_debrief(
         repo_root=repo_root,
         persona_rel=persona_rel,
         persona=persona,
+        launch_meta_path=launch_meta_path,
     )
     return _attach_usage(debrief, trial_dir)

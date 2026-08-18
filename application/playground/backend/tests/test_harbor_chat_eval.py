@@ -128,6 +128,8 @@ def test_harbor_output_artifacts_from_result_maps_chat_contract(monkeypatch):
         "applicationId": "meal_planning_nutrition",
         "applicationContext": "meal_planning",
         "turnCount": 2,
+        "config": result.config.to_dict(),
+        "prompts": {},
     }
     feedback = artifacts["user_feedback.json"]
     assert feedback["needConstraintSatisfaction"] == "yes"
@@ -191,11 +193,54 @@ def test_harbor_chat_config_from_env_prefers_harbor_model_name(monkeypatch) -> N
     assert config.persona_model == "anthropic/claude-sonnet-4-6"
 
 
+def test_harbor_chat_config_from_env_records_persona_language_source(monkeypatch):
+    monkeypatch.setenv("MATRIX_PERSONA_LANGUAGE", "zh-Hans")
+    monkeypatch.setenv("MATRIX_PERSONA_LANGUAGE_SOURCE", "follow_ui")
+
+    config = harbor_chat_config_from_env()
+
+    assert config.persona_language == "zh-Hans"
+    assert config.persona_language_source == "follow_ui"
+
+
+@pytest.mark.anyio
+async def test_run_harbor_chat_eval_passes_language_and_source_to_runner(monkeypatch):
+    received: dict[str, str] = {}
+
+    async def fake_run_playground_async(*args, **kwargs):
+        del args
+        received["persona_language"] = kwargs["persona_language"]
+        received["persona_language_source"] = kwargs["persona_language_source"]
+        return "result"
+
+    monkeypatch.setattr(
+        "playground.user_sim.runner.run_playground_async",
+        fake_run_playground_async,
+    )
+
+    result = await chat_eval_module.run_harbor_chat_eval(
+        object(),
+        Persona(id="p1", name="Persona One"),
+        "A chatbot.",
+        PlaygroundConfig(),
+        created_at="2026-06-30T00:00:00Z",
+        persona_language="zh-Hant",
+        persona_language_source="follow_ui",
+    )
+
+    assert result == "result"
+    assert received == {
+        "persona_language": "zh-Hant",
+        "persona_language_source": "follow_ui",
+    }
+
+
 @pytest.mark.anyio
 async def test_run_harbor_chat_eval_for_persona_writes_output_artifacts(
     tmp_path, monkeypatch
 ):
     uploaded: dict[str, dict] = {}
+    received_config: dict[str, str] = {}
 
     class FakeEnvironment:
         def __init__(self) -> None:
@@ -225,6 +270,8 @@ async def test_run_harbor_chat_eval_for_persona_writes_output_artifacts(
         persona_yaml_path=None,
         repo_root=None,
         job_dir=None,
+        persona_language=None,
+        persona_language_source=None,
     ):
         del (
             persona,
@@ -236,6 +283,10 @@ async def test_run_harbor_chat_eval_for_persona_writes_output_artifacts(
             repo_root,
             job_dir,
         )
+        received_config["persona_language"] = config.persona_language
+        received_config["persona_language_source"] = config.persona_language_source
+        assert persona_language is None
+        assert persona_language_source is None
         session._session_id = "sess-1"
         return PlaygroundResult(
             config=config,
@@ -324,6 +375,8 @@ async def test_run_harbor_chat_eval_for_persona_writes_output_artifacts(
             application_id="meal_planning_nutrition",
             application_context="meal_planning",
             engine="gpt-4o-mini",
+            persona_language="zh-Hans",
+            persona_language_source="follow_ui",
         ),
     )
     monkeypatch.setattr(
@@ -347,8 +400,19 @@ async def test_run_harbor_chat_eval_for_persona_writes_output_artifacts(
     )
 
     assert session_id == "sess-1"
+    assert received_config == {
+        "persona_language": "zh-Hans",
+        "persona_language_source": "follow_ui",
+    }
     assert result.metric_scores.num_turns == 2
     assert uploaded["/app/output/transcript.json"]["messages"][3]["content"] == "Try Past Lives"
     assert uploaded["/app/output/transcript.json"]["sessionId"] == "sess-1"
     assert uploaded["/app/output/application_result.json"]["turnCount"] == 2
+    assert uploaded["/app/output/application_result.json"]["config"][
+        "effectiveLanguage"
+    ] == "zh-Hans"
+    assert uploaded["/app/output/application_result.json"]["config"][
+        "languageSource"
+    ] == "follow_ui"
+    assert uploaded["/app/output/application_result.json"]["prompts"] == result.prompts
     assert uploaded["/app/output/user_feedback.json"]["overallExperienceRating"] == 8

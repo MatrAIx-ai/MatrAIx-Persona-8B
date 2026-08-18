@@ -61,6 +61,8 @@ def test_launch_remote_plane_dispatches_harbor_job(tmp_path, monkeypatch) -> Non
         persona_ids=["0001"],
         job_name="remote-survey-job",
         execution_plane="remote",
+        language="zh-CN",
+        language_source="follow_ui",
     )
 
     service._executor.shutdown(wait=True)
@@ -68,13 +70,26 @@ def test_launch_remote_plane_dispatches_harbor_job(tmp_path, monkeypatch) -> Non
     assert fake_client.calls
     assert fake_client.calls[0]["task_type"] == "harbor_job"
     assert "configYaml" in fake_client.calls[0]["payload"]
+    config_yaml = fake_client.calls[0]["payload"]["configYaml"]
+    assert "persona_language: zh-Hans" in config_yaml
+    assert "persona_language_source: follow_ui" in config_yaml
     remote_env = fake_client.calls[0]["payload"]["env"]
     assert remote_env["MATRIX_SURVEY_TASK_PATH"] == "application/tasks/example-survey_product-feedback"
     assert "PYTHONPATH" in remote_env
     assert "ANTHROPIC_API_KEY" not in remote_env
     assert "OPENAI_API_KEY" not in remote_env
     assert "REMOTE_RUNNER_API_URL" not in remote_env
+    launch_meta = service._launch_meta_path(job_name).read_text(encoding="utf-8")
+    assert '"effective_language": "zh-Hans"' in launch_meta
+    assert '"language_source": "follow_ui"' in launch_meta
     launch = service._launches[job_name]
+    assert launch.effective_language == "zh-Hans"
+    assert launch.language_source == "follow_ui"
     assert launch.execution_plane == "remote"
     assert launch.remote_run_id == "run_fake"
     assert launch.status == "completed"
+
+    detail = service.get_job(job_name)
+    assert detail is not None
+    assert detail["launch"]["effectiveLanguage"] == "zh-Hans"
+    assert detail["launch"]["languageSource"] == "follow_ui"

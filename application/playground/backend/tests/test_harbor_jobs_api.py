@@ -78,10 +78,14 @@ class _FakeHarborJobService:
     def launch(self, **kwargs: Any) -> str:
         self.launches.append(kwargs)
         job_name = kwargs.get("job_name") or "pg-launched"
+        launch = {"status": "queued"}
+        if kwargs.get("language") is not None:
+            launch["effectiveLanguage"] = kwargs["language"]
+            launch["languageSource"] = kwargs["language_source"]
         self._jobs[job_name] = {
             "jobName": job_name,
             "trials": [],
-            "launch": {"status": "queued"},
+            "launch": launch,
         }
         return job_name
 
@@ -199,6 +203,23 @@ def test_launch_harbor_job_with_persona_ids(client, fake_harbor_jobs):
     assert resp.status_code == 200
     assert fake_harbor_jobs.launches[-1]["persona_ids"] == ["0042"]
     assert fake_harbor_jobs.launches[-1]["execution_mode"] == "auto"
+
+
+def test_launch_harbor_job_passes_and_returns_runtime_language(client, fake_harbor_jobs):
+    resp = client.post(
+        "/api/harbor/jobs",
+        json={
+            "taskPath": "application/tasks/example-survey_product-feedback",
+            "language": "zh-CN",
+            "languageSource": "follow_ui",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert fake_harbor_jobs.launches[-1]["language"] == "zh-Hans"
+    assert fake_harbor_jobs.launches[-1]["language_source"] == "follow_ui"
+    assert resp.json()["effectiveLanguage"] == "zh-Hans"
+    assert resp.json()["languageSource"] == "follow_ui"
 
 
 def test_launch_harbor_job_prefers_chat_application_context(client, fake_harbor_jobs):

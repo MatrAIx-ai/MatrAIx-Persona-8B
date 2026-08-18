@@ -42,7 +42,13 @@ from matraix.application_job import (
     build_application_job_config,
     resolve_job_environment,
 )
-from matraix.launch_env import build_launch_env
+from matraix.launch_env import (
+    PERSONA_LANGUAGE_ENV,
+    build_launch_env,
+    canonicalize_persona_language,
+    normalize_persona_language,
+    normalize_persona_language_source,
+)
 
 DEFAULT_AGENT_BY_TYPE: dict[str, str] = {
     # Keys here stay canonical; ``normalize_metadata_type()`` handles legacy
@@ -61,6 +67,41 @@ AUTO_TRIAL_PROFILE_BY_TYPE: dict[str, str] = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+# Runtime/persona language is deliberately resolved at the Harbor boundary.
+# The token table and alias normalization live in launch_env so API, Harbor,
+# and CLI cannot drift apart.
+DEFAULT_PERSONA_LANGUAGE = "en"
+
+
+def resolve_harbor_persona_language(
+    language: str | None,
+    language_source: str | None,
+) -> tuple[str, str]:
+    """Resolve the reproducible language tuple stored with a Harbor job.
+
+    A request language is an explicit override unless the UI marks it as
+    locale-derived. When no request language is present, only this backend
+    reads ``MATRIX_PERSONA_LANGUAGE``; callers cannot claim ``env``.
+    Invalid or absent environment values fall back to English/default.
+    """
+
+    normalized_source = normalize_persona_language_source(language_source)
+    if language is not None:
+        normalized_language = normalize_persona_language(language)
+        return normalized_language, normalized_source or "explicit"
+
+    if normalized_source is not None:
+        raise ValueError(
+            "language_source requires language; env/default provenance is "
+            "derived server-side"
+        )
+
+    env_language = canonicalize_persona_language(os.environ.get(PERSONA_LANGUAGE_ENV))
+    if env_language is not None:
+        return env_language, "env"
+    return DEFAULT_PERSONA_LANGUAGE, "default"
 
 
 def _should_use_local_distributed_harbor(
@@ -485,6 +526,8 @@ class HarborLaunchRecord:
     exit_code: int | None = None
     execution_plane: str = "harbor"
     remote_run_id: str | None = None
+    effective_language: str = DEFAULT_PERSONA_LANGUAGE
+    language_source: str = "default"
 
 
 @dataclass
@@ -532,13 +575,14 @@ class HarborJobService:
         if not job_dir.is_dir():
             return []
         skip = {"_inputs", "_generated"}
-        return sorted(
+        names = sorted(
             [
                 d.name
                 for d in job_dir.iterdir()
                 if d.is_dir() and d.name not in skip and not d.name.startswith(".")
             ]
         )
+        return names
 
     def _trial_has_result(self, job_name: str, trial_name: str) -> bool:
         return (self.jobs_dir / job_name / trial_name / "result.json").is_file()
@@ -947,6 +991,15 @@ class HarborJobService:
         # also drives the reporting scheduler). Embedding aggregation here made
         # every job-detail poll rebuild and ship the full report payload.
         task_meta = self._job_task_meta(job_name, job_dir)
+        launch_view = _launch_view(launch) if launch else None
+        launch_meta = self._read_json(self._launch_meta_path(job_name))
+        if isinstance(launch_view, dict) and isinstance(launch_meta, dict):
+            launch_view["effectiveLanguage"] = (
+                launch_meta.get("effective_language") or launch_view["effectiveLanguage"]
+            )
+            launch_view["languageSource"] = (
+                launch_meta.get("language_source") or launch_view["languageSource"]
+            )
         return {
             "jobName": job_name,
             "jobsDir": _rel_path(self.jobs_dir, self.repo_root),
@@ -963,7 +1016,7 @@ class HarborJobService:
             "config": self._read_json(job_dir / "config.json"),
             "result": self._read_json(job_dir / "result.json"),
             "trials": trials,
-            "launch": _launch_view(launch) if launch else None,
+            "launch": launch_view,
             "aggregation": None,
         }
 
@@ -1001,6 +1054,8 @@ class HarborJobService:
         os_app_backend: str | None = None,
         cua_backend: str | None = None,
         execution_plane: str | None = None,
+        language: str | None = None,
+        language_source: str | None = None,
     ) -> str:
         from backend.service.execution_plane import (
             ExecutionPlaneError,
@@ -1019,6 +1074,10 @@ class HarborJobService:
             raise ValueError(
                 "execution plane 'remote' requires REMOTE_RUNNER_API_URL"
             )
+        effective_language, effective_language_source = resolve_harbor_persona_language(
+            language,
+            language_source,
+        )
         if os_app_backend is None and cua_backend is not None:
             os_app_backend = cua_backend
         if persona_ids is not None and len(persona_ids) == 0:
@@ -1183,6 +1242,16 @@ class HarborJobService:
                         kwargs.setdefault("max_steps", 100)
         job_meta = job_config.pop("_job_meta", None)
 
+        # Always inject the resolved tuple, including the English/default
+        # case. Local, remote, and retry dispatches therefore consume the
+        # same immutable job config instead of re-reading host environment.
+        for agent_config in job_config.get("agents", []):
+            if isinstance(agent_config, dict):
+                kwargs = agent_config.setdefault("kwargs", {})
+                if isinstance(kwargs, dict):
+                    kwargs["persona_language"] = effective_language
+                    kwargs["persona_language_source"] = effective_language_source
+
         self.generated_configs_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.generated_configs_dir / "{}.yaml".format(resolved_job_name)
         header = (
@@ -1197,6 +1266,8 @@ class HarborJobService:
             "# Persona sources: {}\n"
             "# Persona filters: {}\n"
             "# Personas: {}\n"
+            "# Effective language: {}\n"
+            "# Language source: {}\n"
             "# Jobs output: {}/\n\n".format(
                 task_path,
                 resolved_task_path,
@@ -1212,6 +1283,8 @@ class HarborJobService:
                 )
                 or "(none)",
                 ", ".join(job_meta.get("selected_persona_ids", []) if job_meta else []),
+                effective_language,
+                effective_language_source,
                 _rel_path(self.jobs_dir, self.repo_root),
             )
         )
@@ -1226,6 +1299,8 @@ class HarborJobService:
             config_path=_rel_path(config_path, self.repo_root),
             started_at=_utc_now(),
             execution_plane=resolved_plane,
+            effective_language=effective_language,
+            language_source=effective_language_source,
         )
         with self._guard:
             self._launches[resolved_job_name] = record
@@ -1253,6 +1328,8 @@ class HarborJobService:
                 "chatApplicationId": chat_application_id,
                 "chatApplicationContext": chat_application_context,
                 "chatMaxTurns": chat_max_turns,
+                "effective_language": effective_language,
+                "language_source": effective_language_source,
                 "jobConfig": job_config,
             },
         )
@@ -1894,6 +1971,15 @@ class HarborJobService:
             self._status_states.pop(job_name, None)
 
         plane = str(meta.get("executionPlane") or "harbor")
+        retry_language = normalize_persona_language(meta.get("effective_language"))
+        if retry_language is None:
+            retry_language = DEFAULT_PERSONA_LANGUAGE
+        try:
+            retry_source = normalize_persona_language_source(meta.get("language_source"))
+        except ValueError:
+            retry_source = None
+        if retry_source is None:
+            retry_source = "default"
         with self._guard:
             self._launches[job_name] = HarborLaunchRecord(
                 job_name=job_name,
@@ -1901,6 +1987,8 @@ class HarborJobService:
                 config_path=config_rel or None,
                 started_at=_utc_now(),
                 execution_plane=plane,
+                effective_language=retry_language,
+                language_source=retry_source,
             )
 
         if meta.get("useLocalDistributed"):
@@ -2054,6 +2142,7 @@ class HarborJobService:
                 jobs_dir=self.jobs_dir,
                 job_name=job_name,
                 trial_name=trial_name,
+                launch_meta_path=self._launch_meta_path(job_name),
             )
             # Mapping can materialize missing artifacts, so cache the final
             # on-disk state that produced this payload.
@@ -2202,6 +2291,8 @@ def _launch_view(record: HarborLaunchRecord | None) -> dict[str, Any] | None:
         "exitCode": record.exit_code,
         "executionPlane": record.execution_plane,
         "remoteRunId": record.remote_run_id,
+        "effectiveLanguage": record.effective_language,
+        "languageSource": record.language_source,
     }
 
 

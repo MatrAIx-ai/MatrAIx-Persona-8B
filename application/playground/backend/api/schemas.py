@@ -31,6 +31,11 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.service.config import PERSONA_MODEL_OPTIONS
+from matraix.launch_env import (
+    PERSONA_LANGUAGE_TOKENS,
+    canonicalize_persona_language,
+    normalize_persona_language_source,
+)
 
 __all__ = [
     "HealthResponse",
@@ -95,7 +100,7 @@ DEFAULT_APPLICATION_CONTEXTS = {
 }
 
 SUPPORTED_PERSONA_MODELS = tuple(PERSONA_MODEL_OPTIONS)
-
+SUPPORTED_PERSONA_LANGUAGES = PERSONA_LANGUAGE_TOKENS
 
 def _resolved_chat_context(
     *,
@@ -736,6 +741,47 @@ class HarborJobLaunchRequest(BaseModel):
     chatApplicationId: Optional[str] = None
     chatApplicationContext: Optional[str] = None
     chatMaxTurns: Optional[int] = None
+    # Runtime/persona language. A language without a source is an explicit
+    # API/CLI override; follow_ui is the only UI-derived source. env/default
+    # provenance is resolved internally by the backend and never accepted
+    # from a caller.
+    language: Optional[str] = None
+    languageSource: Optional[str] = None
+
+    @field_validator("language")
+    @classmethod
+    def _validate_language(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        canonical = canonicalize_persona_language(value)
+        if canonical is None:
+            raise ValueError(
+                "language must be one of {} or a supported locale".format(
+                    ", ".join(SUPPORTED_PERSONA_LANGUAGES)
+                )
+            )
+        return canonical
+
+    @field_validator("languageSource")
+    @classmethod
+    def _validate_language_source(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return normalize_persona_language_source(value)
+        except ValueError as exc:
+            raise ValueError(
+                "languageSource must be follow_ui, explicit, or null "
+                "(env/default provenance is derived server-side): {}".format(exc)
+            ) from exc
+
+    @model_validator(mode="after")
+    def _validate_language_source_pair(self) -> "HarborJobLaunchRequest":
+        if self.language is None and self.languageSource is not None:
+            raise ValueError("languageSource requires language")
+        if self.language is not None and self.languageSource is None:
+            self.languageSource = "explicit"
+        return self
 
     @field_validator("mode")
     @classmethod
@@ -804,6 +850,8 @@ class HarborJobLaunchResponse(BaseModel):
     trialProfile: Optional[str] = None
     mode: Optional[str] = None
     plane: Optional[str] = None
+    effectiveLanguage: Optional[str] = None
+    languageSource: Optional[str] = None
 
 
 class HarborJobsListResponse(BaseModel):

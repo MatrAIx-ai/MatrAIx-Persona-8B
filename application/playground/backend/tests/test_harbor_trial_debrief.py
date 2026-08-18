@@ -203,6 +203,180 @@ def test_map_trial_debrief_chatbot_enriches_prompts_from_events(tmp_path: Path) 
     assert debrief["instructionMarkdown"].startswith("# Task instruction")
 
 
+def test_debrief_preserves_recorded_prompt_before_language_reconstruction(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "chat_meal-planning-nutrition"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text('[metadata]\ntype = "chat"\n', encoding="utf-8")
+    (task_dir / "instruction.md").write_text("# Task instruction\nUse the chat API.\n", encoding="utf-8")
+    _write_chat_trial(repo, "job-recorded-prompt", "trial-recorded-prompt")
+    trial_dir = repo / "jobs" / "job-recorded-prompt" / "trial-recorded-prompt"
+    (trial_dir / "config.json").write_text(
+        json.dumps({"task": {"path": "application/tasks/chat_meal-planning-nutrition"}}),
+        encoding="utf-8",
+    )
+    (trial_dir / "persona_meta.json").write_text(
+        json.dumps({"effective_language": "zh-CN", "language_source": "follow_ui"}),
+        encoding="utf-8",
+    )
+    recorded = "EXACT RECORDED ZH-HANS PERSONA PROMPT - do not reconstruct."
+    (trial_dir / "events.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "prompts",
+                "prompts": {
+                    "personaPrompt": recorded,
+                    "harborPrompt": recorded + "\n\nTask remains task-owned.",
+                    "taskPrompt": "Original task prompt remains unchanged.",
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    debrief = map_trial_debrief(
+        repo_root=repo,
+        jobs_dir=repo / "jobs",
+        job_name="job-recorded-prompt",
+        trial_name="trial-recorded-prompt",
+    )
+
+    assert debrief["prompts"]["personaPrompt"] == recorded
+    assert debrief["prompts"]["taskPrompt"] == "Original task prompt remains unchanged."
+    assert debrief["effectiveLanguage"] == "zh-Hans"
+    assert debrief["languageSource"] == "follow_ui"
+
+
+def test_debrief_restores_recorded_prompts_from_artifact_without_events(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "chat_meal-planning-nutrition"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text('[metadata]\ntype = "chat"\n', encoding="utf-8")
+    (task_dir / "instruction.md").write_text("# Task instruction\nUse the chat API.\n", encoding="utf-8")
+    _write_chat_trial(repo, "job-artifact-prompt", "trial-artifact-prompt")
+    trial_dir = repo / "jobs" / "job-artifact-prompt" / "trial-artifact-prompt"
+    (trial_dir / "config.json").write_text(
+        json.dumps({"task": {"path": "application/tasks/chat_meal-planning-nutrition"}}),
+        encoding="utf-8",
+    )
+    (trial_dir / "persona_meta.json").write_text(
+        json.dumps({"effective_language": "ja", "language_source": "explicit"}),
+        encoding="utf-8",
+    )
+    output = trial_dir / "artifacts" / "app" / "output"
+    recorded_prompts = {
+        "personaPrompt": "EXACT ARTIFACT PERSONA PROMPT",
+        "harborPrompt": "EXACT ARTIFACT HARBOR PROMPT",
+        "taskPrompt": "EXACT ARTIFACT TASK PROMPT",
+    }
+    (output / "application_result.json").write_text(
+        json.dumps({"prompts": recorded_prompts}),
+        encoding="utf-8",
+    )
+
+    debrief = map_trial_debrief(
+        repo_root=repo,
+        jobs_dir=repo / "jobs",
+        job_name="job-artifact-prompt",
+        trial_name="trial-artifact-prompt",
+    )
+
+    assert debrief["prompts"] == recorded_prompts
+    assert debrief["effectiveLanguage"] == "ja"
+    assert debrief["languageSource"] == "explicit"
+
+
+def test_debrief_uses_launch_metadata_without_writing_trial_metadata(tmp_path: Path) -> None:
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "chat_meal-planning-nutrition"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text('[metadata]\ntype = "chat"\n', encoding="utf-8")
+    (task_dir / "instruction.md").write_text("# Task instruction\nUse the chat API.\n", encoding="utf-8")
+    _write_chat_trial(repo, "job-launch-fallback", "trial-launch-fallback")
+    trial_dir = repo / "jobs" / "job-launch-fallback" / "trial-launch-fallback"
+    (trial_dir / "config.json").write_text(
+        json.dumps({"task": {"path": "application/tasks/chat_meal-planning-nutrition"}}),
+        encoding="utf-8",
+    )
+    launch_meta_path = repo / "configs" / "jobs" / "job-launch-fallback.launch.json"
+    launch_meta_path.parent.mkdir(parents=True)
+    launch_meta_path.write_text(
+        json.dumps({"effective_language": "zh-Hant", "language_source": "explicit"}),
+        encoding="utf-8",
+    )
+
+    debrief = map_trial_debrief(
+        repo_root=repo,
+        jobs_dir=repo / "jobs",
+        job_name="job-launch-fallback",
+        trial_name="trial-launch-fallback",
+    )
+
+    assert debrief["effectiveLanguage"] == "zh-Hant"
+    assert debrief["languageSource"] == "explicit"
+    assert not (trial_dir / "persona_meta.json").exists()
+
+
+def test_debrief_unknown_recorded_language_source_falls_back_to_english(tmp_path: Path) -> None:
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "chat_meal-planning-nutrition"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text('[metadata]\ntype = "chat"\n', encoding="utf-8")
+    (task_dir / "instruction.md").write_text("# Task instruction\nUse the chat API.\n", encoding="utf-8")
+    _write_chat_trial(repo, "job-unknown-language", "trial-unknown-language")
+    trial_dir = repo / "jobs" / "job-unknown-language" / "trial-unknown-language"
+    (trial_dir / "config.json").write_text(
+        json.dumps({"task": {"path": "application/tasks/chat_meal-planning-nutrition"}}),
+        encoding="utf-8",
+    )
+    (trial_dir / "persona_meta.json").write_text(
+        json.dumps({"effective_language": "pt", "language_source": "cli"}),
+        encoding="utf-8",
+    )
+
+    debrief = map_trial_debrief(
+        repo_root=repo,
+        jobs_dir=repo / "jobs",
+        job_name="job-unknown-language",
+        trial_name="trial-unknown-language",
+    )
+
+    assert debrief["effectiveLanguage"] == "en"
+    assert debrief["languageSource"] == "default"
+    assert "Effective persona language: English (en)" in debrief["prompts"]["personaPrompt"]
+
+
+def test_legacy_debrief_reconstruction_falls_back_to_english(tmp_path: Path) -> None:
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "chat_meal-planning-nutrition"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text('[metadata]\ntype = "chat"\n', encoding="utf-8")
+    (task_dir / "instruction.md").write_text("# Task instruction\nUse the chat API.\n", encoding="utf-8")
+    _write_chat_trial(repo, "job-legacy-prompt", "trial-legacy-prompt")
+    trial_dir = repo / "jobs" / "job-legacy-prompt" / "trial-legacy-prompt"
+    (trial_dir / "config.json").write_text(
+        json.dumps({"task": {"path": "application/tasks/chat_meal-planning-nutrition"}}),
+        encoding="utf-8",
+    )
+
+    debrief = map_trial_debrief(
+        repo_root=repo,
+        jobs_dir=repo / "jobs",
+        job_name="job-legacy-prompt",
+        trial_name="trial-legacy-prompt",
+    )
+
+    assert debrief["effectiveLanguage"] == "en"
+    assert debrief["languageSource"] == "default"
+    assert "Effective persona language: English (en)" in debrief["prompts"]["personaPrompt"]
+
+
 def test_map_trial_debrief_survey_from_events_without_output_dir(tmp_path: Path) -> None:
     repo = tmp_path
     task_dir = repo / "application" / "tasks" / "example-survey_product-feedback"
@@ -477,8 +651,9 @@ def test_map_trial_debrief_survey_enriches_persona_dimensions(tmp_path: Path) ->
         trial_name="trial-a",
     )
     persona_prompt = debrief["prompts"]["personaPrompt"]
-    assert "Profile dimensions" in persona_prompt
-    assert "Non-binary" in persona_prompt
+    assert persona_prompt == "Persona:\npersona-0174"
+    assert debrief["persona"]["dimensions"]["age_bracket"] == "65+"
+    assert debrief["persona"]["dimensions"]["gender_identity"] == "Non-binary"
     assert debrief["persona"]["dimensions"]["region"] == "East Asia"
 
 

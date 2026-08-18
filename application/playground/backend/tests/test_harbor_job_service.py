@@ -4,7 +4,26 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from backend.service.harbor_job_service import HarborJobService, HarborLaunchRecord
+
+
+@pytest.mark.parametrize(
+    ("language", "language_source"),
+    [("es", "env"), (None, "follow_ui"), ("xx", None), ("es", "ui"), ("es", "cli")],
+)
+def test_launch_rejects_invalid_or_caller_owned_language_provenance(
+    language, language_source
+):
+    service = object.__new__(HarborJobService)
+
+    with pytest.raises(ValueError, match="language|language_source"):
+        service.launch(
+            task_path="application/tasks/example-survey_product-feedback",
+            language=language,
+            language_source=language_source,
+        )
 
 
 def test_launch_writes_job_config(tmp_path, monkeypatch):
@@ -47,12 +66,23 @@ def test_launch_writes_job_config(tmp_path, monkeypatch):
         persona_pool="persona/datasets/matraix-persona-dev-sample",
         persona_model="anthropic/claude-haiku-4-5",
         job_name="test-harbor-job",
+        language="zh-Hant",
+        language_source="follow_ui",
     )
     assert job_name == "test-harbor-job"
     config_path = repo / "configs" / "jobs" / "application-task-job-recipe" / "test-harbor-job.yaml"
     assert config_path.is_file()
     text = config_path.read_text(encoding="utf-8")
     assert "persona_0001.yaml" in text or "persona_0002.yaml" in text
+    assert "persona_language: zh-Hant" in text
+    assert "persona_language_source: follow_ui" in text
+    launch_meta = json.loads(service._launch_meta_path(job_name).read_text(encoding="utf-8"))
+    assert launch_meta["effective_language"] == "zh-Hant"
+    assert launch_meta["language_source"] == "follow_ui"
+    queued_detail = service.get_job(job_name)
+    assert queued_detail is not None
+    assert queued_detail["launch"]["effectiveLanguage"] == "zh-Hant"
+    assert queued_detail["launch"]["languageSource"] == "follow_ui"
     assert service._executor.calls
     fn, args, kwargs = service._executor.calls[0]
     assert fn.__name__ == "_run_local_distributed"
@@ -66,9 +96,77 @@ def test_launch_writes_job_config(tmp_path, monkeypatch):
     detail = service.get_job("test-harbor-job")
     assert detail is not None
     assert detail["launch"]["status"] == "completed"
+    assert detail["launch"]["effectiveLanguage"] == "zh-Hant"
+    assert detail["launch"]["languageSource"] == "follow_ui"
     assert len(detail["trials"]) == 2
 
+    for trial in detail["trials"]:
+        # Harbor reads runtime metadata but does not synthesize persona_meta.json.
+        assert not (jobs_dir / job_name / trial["trialName"] / "persona_meta.json").exists()
+
     service.shutdown()
+
+
+def test_launch_derives_env_and_default_language_into_job_metadata(tmp_path, monkeypatch):
+    repo = tmp_path
+    jobs_dir = repo / "jobs"
+    jobs_dir.mkdir()
+    pool = repo / "persona" / "datasets" / "matraix-persona-dev-sample"
+    pool.mkdir(parents=True)
+    (pool / "persona_0001.yaml").write_text(
+        "persona_id: '0001'\nversion: '1.0'\nsource: Nemotron\ndimensions: {}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("playground.harbor.playground._repo_root", lambda: repo)
+
+    monkeypatch.setenv("MATRIX_PERSONA_LANGUAGE", "ja-JP")
+    service = HarborJobService(
+        repo_root=repo,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=repo / "configs" / "jobs",
+    )
+    service._executor = _FakeExecutor()
+    job_name = service.launch(
+        task_path="application/tasks/example-survey_product-feedback",
+        persona_ids=["0001"],
+        job_name="env-language-job",
+    )
+    meta = json.loads(service._launch_meta_path(job_name).read_text(encoding="utf-8"))
+    assert meta["effective_language"] == "ja"
+    assert meta["language_source"] == "env"
+    config = (repo / "configs" / "jobs" / "env-language-job.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "persona_language: ja" in config
+    assert "persona_language_source: env" in config
+    service.shutdown()
+
+    monkeypatch.delenv("MATRIX_PERSONA_LANGUAGE", raising=False)
+    service = HarborJobService(
+        repo_root=repo,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=repo / "configs" / "jobs",
+    )
+    service._executor = _FakeExecutor()
+    default_job = service.launch(
+        task_path="application/tasks/example-survey_product-feedback",
+        persona_ids=["0001"],
+        job_name="default-language-job",
+    )
+    meta = json.loads(service._launch_meta_path(default_job).read_text(encoding="utf-8"))
+    assert meta["effective_language"] == "en"
+    assert meta["language_source"] == "default"
+    service.shutdown()
+
+
+def test_list_trial_names_is_read_only_for_persona_metadata(tmp_path):
+    service = object.__new__(HarborJobService)
+    service.jobs_dir = tmp_path / "jobs"
+    trial_dir = service.jobs_dir / "job-read-only" / "trial-0001"
+    trial_dir.mkdir(parents=True)
+
+    assert service._list_trial_names("job-read-only") == ["trial-0001"]
+    assert not (trial_dir / "persona_meta.json").exists()
 
 
 def test_launch_with_frozen_cohort(tmp_path, monkeypatch):
@@ -201,10 +299,15 @@ def test_retry_failed_reruns_only_failed_trials(tmp_path, monkeypatch):
         persona_ids=["0001"],
         persona_model="anthropic/claude-haiku-4-5",
         job_name="retry-job",
+        language="zh",
     )
     # Launch metadata is persisted so a retry can replay the identical dispatch.
     meta_path = service._launch_meta_path(job_name)
     assert meta_path.is_file()
+    launch_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert launch_meta["effective_language"] == "zh-Hans"
+    assert launch_meta["language_source"] == "explicit"
+    original_config = launch_meta["configPath"]
     assert len(service._executor.calls) == 1
 
     # Mark the launch record finished so retry is allowed.
@@ -238,6 +341,12 @@ def test_retry_failed_reruns_only_failed_trials(tmp_path, monkeypatch):
     # A fresh dispatch was submitted and the record is active again.
     assert len(service._executor.calls) == 2
     assert service._launches[job_name].status == "queued"
+    retried_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert retried_meta["configPath"] == original_config
+    assert retried_meta["effective_language"] == "zh-Hans"
+    assert retried_meta["language_source"] == "explicit"
+    assert service._launches[job_name].effective_language == "zh-Hans"
+    assert service._launches[job_name].language_source == "explicit"
 
     service.shutdown()
 

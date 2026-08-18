@@ -741,6 +741,11 @@ def test_harbor_runner_writes_run_inputs_invokes_harbor_and_maps_artifacts(
         assert config["environment"]["force_build"] is False
         assert config["environment"]["delete"] is False
         assert config["agents"][0]["kwargs"]["persona_path"].endswith("persona.yaml")
+        assert config["agents"][0]["kwargs"]["persona_language"] == "zh-Hant"
+        assert (
+            config["agents"][0]["kwargs"]["persona_language_source"]
+            == "follow_ui"
+        )
         assert config["tasks"][0]["path"].endswith(
             "application/tasks/chat_meal-planning-nutrition"
         )
@@ -781,6 +786,11 @@ def test_harbor_runner_writes_run_inputs_invokes_harbor_and_maps_artifacts(
             for index, value in enumerate(command)
             if value == "--agent-env"
         }
+        verifier_env = {
+            command[index + 1].split("=", 1)[0]: command[index + 1].split("=", 1)[1]
+            for index, value in enumerate(command)
+            if value == "--verifier-env"
+        }
         assert agent_env["MATRIX_CHATBOT_APPLICATION_ID"] == "meal_planning_nutrition"
         assert agent_env["MATRIX_CHATBOT_APPLICATION_CONTEXT"] == "meal_planning"
         assert agent_env["MATRIX_CHATBOT_TASK_PATH"] == "application/tasks/chat_meal-planning-nutrition"
@@ -788,7 +798,13 @@ def test_harbor_runner_writes_run_inputs_invokes_harbor_and_maps_artifacts(
         assert agent_env["MATRIX_CHATBOT_MIN_TURNS"] == "3"
         assert agent_env["MATRIX_CHATBOT_TASK_PROMPT_PATH"] == "/app/input/task_prompt.md"
         assert agent_env["MATRIX_CHATBOT_PERSONA_MODEL"] == "anthropic/claude-haiku-4-5"
-        assert "MATRIX_SCORER_MODULE" not in " ".join(command)
+        assert agent_env["MATRIX_PERSONA_LANGUAGE"] == "zh-Hant"
+        assert agent_env["MATRIX_PERSONA_LANGUAGE_SOURCE"] == "follow_ui"
+        assert verifier_env["MATRIX_PERSONA_LANGUAGE"] == "zh-Hant"
+        assert verifier_env["MATRIX_PERSONA_LANGUAGE_SOURCE"] == "follow_ui"
+        scorer_config = json.loads(verifier_env["MATRIX_SCORER_CONFIG_JSON"])
+        assert scorer_config["effectiveLanguage"] == "zh-Hant"
+        assert scorer_config["languageSource"] == "follow_ui"
 
         output_dir = (
             tmp_path
@@ -869,6 +885,8 @@ def test_harbor_runner_writes_run_inputs_invokes_harbor_and_maps_artifacts(
             application_context="meal_planning",
             engine="gpt-4o",
             max_turns=5,
+            persona_language="zh-Hant",
+            persona_language_source="follow_ui",
         ),
         object(),
         created_at="2026-06-23T00:00:00Z",
@@ -877,20 +895,26 @@ def test_harbor_runner_writes_run_inputs_invokes_harbor_and_maps_artifacts(
 
     assert calls
     assert "--agent-env" in calls[0][0]
-    assert "--verifier-env" not in calls[0][0]
+    assert "--verifier-env" in calls[0][0]
     assert "--env-file" in calls[0][0]
     assert session.turns[0]["structuredExposure"][0]["value"][0]["itemId"] == "42"
     payload = result.to_dict()
     assert payload["questionnaire"]["overallRating"] == 9
-    assert payload["prompts"]["harborPrompt"] == "A careful viewer."
+    assert payload["prompts"]["harborPrompt"].startswith("A careful viewer.")
+    assert "Effective persona language: Traditional Chinese (zh-Hant)." in payload[
+        "prompts"
+    ]["harborPrompt"]
     assert (
         "You are a user of a meal planning nutrition assistant"
         in payload["prompts"]["taskPrompt"]
     )
+    assert "Runtime persona language contract" not in payload["prompts"]["taskPrompt"]
     assert {"type": "phase", "phase": "harbor_starting"} in events
     assert any(
         event.get("type") == "prompts"
-        and event["prompts"]["harborPrompt"] == "A careful viewer."
+        and event["prompts"]["harborPrompt"].startswith("A careful viewer.")
+        and "Effective persona language: Traditional Chinese (zh-Hant)."
+        in event["prompts"]["harborPrompt"]
         and "You are a user of a meal planning nutrition assistant"
         in event["prompts"]["taskPrompt"]
         for event in events

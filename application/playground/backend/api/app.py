@@ -705,6 +705,8 @@ def create_app(catalog_path: Optional[str] = None) -> FastAPI:
                 persona_filters=body.personaFilters,
                 cohort_id=body.cohortId,
                 use_entire_pool=body.useEntirePool,
+                language=body.language,
+                language_source=body.languageSource,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -720,6 +722,12 @@ def create_app(catalog_path: Optional[str] = None) -> FastAPI:
             "trialProfile": trial_profile,
             "mode": body.mode,
             "plane": resolved_plane,
+            "effectiveLanguage": launch.get("effectiveLanguage")
+            if isinstance(launch, dict)
+            else None,
+            "languageSource": launch.get("languageSource")
+            if isinstance(launch, dict)
+            else None,
         }
 
     @app.get(
