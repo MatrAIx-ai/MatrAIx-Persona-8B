@@ -20,8 +20,9 @@ The two algorithms do **not** depend on each other's *output*:
 Both emit :class:`Attribute` records (same field shape as the extraction note).
 After both run, :meth:`Treiver.match` **merges** them: by default the judge wins
 a dimension both produced (it disambiguates), and the losing record is preserved
-under ``Attribute.also`` so nothing is silently dropped. The RAG "R" is the
-union retriever; the "G" is the judge.
+under ``Attribute.also``. A judge ``value: null`` ruling declines that dimension
+and **vetoes** any matching regex attribute so unsupported claims do not survive.
+The RAG "R" is the union retriever; the "G" is the judge.
 """
 
 from __future__ import annotations
@@ -175,14 +176,15 @@ class Treiver:
           ``result.llm_attributes``.
 
         ``result.attributes`` is the two merged (see ``prefer``); when the judge
-        is off it's just the regex attributes.
+        is off it's just the regex attributes. Judge ``null`` declines remove that
+        dimension from the merged view (including regex hits).
 
         Parameters
         ----------
         prefer:
-            On a dimension both algorithms produced, which method wins the merged
-            view — ``"llm"`` (default) or ``"regex"``. The loser is kept on the
-            winner's ``Attribute.also``.
+            On a dimension both algorithms produced a non-null value, which method
+            wins the merged view — ``"llm"`` (default) or ``"regex"``. The loser
+            is kept on the winner's ``Attribute.also``. A judge null still vetoes.
         """
         regex_attrs = self._run_regex(prompt)
 
@@ -200,9 +202,14 @@ class Treiver:
         candidate_ids = self._retrieve_candidates(
             prompt, include_topic_only=include_topic_only, use_embed=use_embed
         )
-        llm_attrs = self._run_llm(prompt, candidate_ids)
+        llm_attrs, declined_ids = self._run_llm(prompt, candidate_ids)
 
-        merged = _merge(regex_attrs, llm_attrs, prefer=prefer)
+        merged = _merge(
+            regex_attrs,
+            llm_attrs,
+            prefer=prefer,
+            declined_ids=declined_ids,
+        )
         return MatchResult(
             prompt=prompt,
             attributes=_ordered_by_candidates(merged, candidate_ids),
@@ -230,12 +237,22 @@ class Treiver:
             )
         return attrs
 
-    def _run_llm(self, prompt: str, candidate_ids: list[str]) -> dict[str, Attribute]:
-        """Algorithm B: the judge, over the retrieved candidate set."""
+    def _run_llm(
+        self, prompt: str, candidate_ids: list[str]
+    ) -> tuple[dict[str, Attribute], set[str]]:
+        """Algorithm B: the judge, over the retrieved candidate set.
+
+        Returns ``(positive_attrs, declined_ids)``. A ``value is None`` ruling
+        means the text does not support that dimension — those ids are returned
+        separately so :func:`_merge` can veto matching regex attributes.
+        """
         attrs: dict[str, Attribute] = {}
+        declined: set[str] = set()
         for r in self._get_judge().judge(prompt, candidate_ids):
             if r.value is None:
-                continue  # judge declined — respect the null (no over-claim)
+                # Judge declined — carry the veto to merge (no over-claim).
+                declined.add(r.dimension_id)
+                continue
             attrs[r.dimension_id] = Attribute(
                 dimension_id=r.dimension_id,
                 value=r.value,
@@ -244,7 +261,7 @@ class Treiver:
                 confidence=r.confidence,
                 reason=r.reason,
             )
-        return attrs
+        return attrs, declined
 
     def _retrieve_candidates(
         self, prompt: str, include_topic_only: bool, use_embed: bool
@@ -281,15 +298,24 @@ def _merge(
     regex_attrs: dict[str, Attribute],
     llm_attrs: dict[str, Attribute],
     prefer: str = "llm",
+    declined_ids: set[str] | None = None,
 ) -> list[Attribute]:
     """Merge the two algorithms' attributes into one per dimension.
 
-    Union of dimensions. For a dimension both produced, ``prefer`` picks the
-    winner; the loser is attached to ``winner.also`` so nothing is dropped.
+    Union of dimensions, except ids in ``declined_ids`` (judge ``value: null``)
+    are omitted so a decline can veto a regex over-claim. For a dimension both
+    produced with values, ``prefer`` picks the winner; the loser is attached to
+    ``winner.also`` so competing non-null answers are not silently dropped.
+
+    Under ``prefer="regex"``, a judge decline still vetoes: null means "not
+    supported by the text", not an alternate value preference.
     """
+    declined = declined_ids or set()
     out: list[Attribute] = []
     all_ids = list(regex_attrs) + [d for d in llm_attrs if d not in regex_attrs]
     for dim_id in all_ids:
+        if dim_id in declined:
+            continue
         r = regex_attrs.get(dim_id)
         m = llm_attrs.get(dim_id)
         if r and m:

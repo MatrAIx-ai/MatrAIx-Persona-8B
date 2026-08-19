@@ -120,8 +120,13 @@ class LLMJudgeTests(unittest.TestCase):
               "evidence": None, "confidence": 0.0, "reason": "no support"}]
         )
         treiver = Treiver(judge=LLMJudge(schema, client=client, backend="anthropic"))
-        r = treiver.match("a person who works", use_llm=True, use_embed=False)
+        # Prompt that regex WOULD match Woman — null must veto it out of merge.
+        r = treiver.match("a woman who works", use_llm=True, use_embed=False)
+        self.assertIn("gender_identity", {a.dimension_id for a in r.regex_attributes})
         self.assertIsNone(r.value_of("gender_identity"))
+        self.assertNotIn(
+            "gender_identity", {a.dimension_id for a in r.attributes}
+        )
 
     def test_invalid_value_is_dropped(self):
         schema = default_schema()
@@ -252,6 +257,42 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(r.as_persona()["gender_identity"], "Woman")
         self.assertEqual(r.as_persona("regex")["gender_identity"], "Woman")
         self.assertEqual(r.as_persona("llm")["gender_identity"], "Woman")
+
+    def test_null_ruling_vetoes_regex_overclaim(self):
+        """Issue #87: judge null must remove regex attributes from the merge."""
+        from persona.extraction.llm_judge import JudgeAssignment
+
+        prompt = (
+            "early adopter who tries free tiers of everything and rarely converts"
+        )
+
+        class NullJudge:
+            def judge(self, prompt, candidate_dimension_ids):
+                return [
+                    JudgeAssignment(
+                        dimension_id=d,
+                        value=None,
+                        evidence=None,
+                        confidence=0.0,
+                        reason="not supported by the text",
+                    )
+                    for d in candidate_dimension_ids
+                ]
+
+        regex_only = Treiver().match(prompt, use_llm=False)
+        self.assertGreater(len(regex_only.attributes), 0)
+
+        r = Treiver(judge=NullJudge()).match(
+            prompt, use_llm=True, use_embed=False
+        )
+        self.assertEqual(
+            r.attributes,
+            [],
+            f"declined regex attrs survived merge: {r.attributes}",
+        )
+        # Independent regex stage output is still available for inspection.
+        self.assertGreater(len(r.regex_attributes), 0)
+        self.assertEqual(r.llm_attributes, [])
 
 
 class EmbedRetrieverTests(unittest.TestCase):
