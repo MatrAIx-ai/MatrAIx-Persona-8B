@@ -1,5 +1,6 @@
 import asyncio
 import json
+import traceback
 from collections.abc import Callable
 
 import httpx
@@ -122,11 +123,45 @@ def test_blank_password_is_not_sent() -> None:
         asyncio.run(client.close())
         asyncio.run(borrowed.aclose())
 
+@pytest.mark.parametrize(
+    ("explicit", "env_password", "expected_header"),
+    [
+        ("explicit-password", "environment-password", "explicit-password"),
+        (None, "environment-password", "environment-password"),
+        ("", "environment-password", None),
+    ],
+)
+def test_app_password_precedence_and_blank_suppression(
+    monkeypatch: pytest.MonkeyPatch,
+    explicit: str | None,
+    env_password: str,
+    expected_header: str | None,
+) -> None:
+    monkeypatch.setenv("APP_PASSWORD", env_password)
+    seen_headers: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_headers.append(request.headers.get("x-app-password"))
+        return _json_response({"active": {"sessionId": "session-123"}})
+
+    transport = httpx.MockTransport(handler)
+    borrowed = httpx.AsyncClient(transport=transport)
+    kwargs = {"app_password": explicit} if explicit is not None else {}
+    client = VoiceLabPersonaClient(http_client=borrowed, **kwargs)
+    try:
+        asyncio.run(client.create_session(_session_request()))
+    finally:
+        asyncio.run(client.close())
+        asyncio.run(borrowed.aclose())
+
+    assert seen_headers == [expected_header]
+
 
 @pytest.mark.parametrize(
     ("explicit", "env_url", "expected"),
     [
         ("http://explicit.test/", "http://environment.test", "http://explicit.test"),
+        ("", "http://environment.test/", "http://environment.test"),
         (None, "http://environment.test/", "http://environment.test"),
         (None, None, "http://localhost:3001"),
     ],
@@ -160,6 +195,30 @@ def test_base_url_precedence_and_trailing_slash(
 
     assert requested == [f"{expected}{SESSION_PATH}"]
 
+def test_connect_error_is_redacted_and_not_retried() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ConnectError(PAYLOAD_SECRET, request=request)
+
+    client, borrowed = _client_for(handler)
+    try:
+        with pytest.raises(VoiceLabContractError) as raised:
+            asyncio.run(client.create_session(_session_request()))
+    finally:
+        asyncio.run(client.close())
+        asyncio.run(borrowed.aclose())
+
+    rendered = "".join(traceback.format_exception(raised.value))
+    assert calls == 1
+    assert raised.value.__cause__ is None
+    assert PAYLOAD_SECRET not in str(raised.value)
+    assert PASSWORD_SECRET not in str(raised.value)
+    assert PAYLOAD_SECRET not in rendered
+    assert PASSWORD_SECRET not in rendered
+
 
 @pytest.mark.parametrize("status_code", [400, 500])
 def test_http_status_errors_are_typed_and_redacted(status_code: int) -> None:
@@ -179,6 +238,8 @@ def test_http_status_errors_are_typed_and_redacted(status_code: int) -> None:
     assert SESSION_PATH in message
     assert PASSWORD_SECRET not in message
     assert PAYLOAD_SECRET not in message
+    assert raised.value.__cause__ is None
+    assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
 
 
 def test_timeout_error_is_typed_and_redacted() -> None:
@@ -195,6 +256,8 @@ def test_timeout_error_is_typed_and_redacted() -> None:
 
     assert "create_session" in str(raised.value)
     assert SESSION_PATH in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
     assert PAYLOAD_SECRET not in str(raised.value)
     assert PASSWORD_SECRET not in str(raised.value)
 
@@ -238,6 +301,19 @@ def test_wrong_active_session_is_typed_and_redacted() -> None:
     assert SESSION_PATH in str(raised.value)
     assert PAYLOAD_SECRET not in str(raised.value)
 
+@pytest.mark.parametrize("payload", [{}, {"active": []}, {"active": "not-an-object"}])
+def test_missing_or_non_object_active_session_is_typed(payload: object) -> None:
+    client, borrowed = _client_for(lambda request: _json_response(payload))
+    try:
+        with pytest.raises(VoiceLabContractError) as raised:
+            asyncio.run(client.create_session(_session_request()))
+    finally:
+        asyncio.run(client.close())
+        asyncio.run(borrowed.aclose())
+
+    assert "create_session" in str(raised.value)
+    assert SESSION_PATH in str(raised.value)
+
 
 @pytest.mark.parametrize(
     "payload",
@@ -260,6 +336,8 @@ def test_malformed_agent_responses_are_typed_and_redacted(payload: object) -> No
     assert CHAT_PATH in str(raised.value)
     assert PAYLOAD_SECRET not in str(raised.value)
     assert PASSWORD_SECRET not in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
 
 
 def test_borrowed_client_remains_open_after_close() -> None:
