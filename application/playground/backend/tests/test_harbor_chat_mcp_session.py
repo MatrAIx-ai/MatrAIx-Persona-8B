@@ -13,9 +13,18 @@ from playground.chatbot_task_config import ChatbotTaskConfig
 from playground.harbor.chat_eval import create_harbor_chat_session
 from playground.harbor.chat_mcp_session import (
     HarborMcpChatSession,
+    _MCP_CALL_SCRIPT,
     harbor_chat_mcp_url_from_task_path,
 )
 from playground.types import PlaygroundConfig
+
+
+def test_mcp_call_script_uses_current_streamable_http_client_name() -> None:
+    assert "streamable_http_client" in _MCP_CALL_SCRIPT
+    assert "streamablehttp_client" not in _MCP_CALL_SCRIPT
+    assert "as (read, write):" in _MCP_CALL_SCRIPT
+    assert "as (read, write, _):" not in _MCP_CALL_SCRIPT
+    assert 'getattr(result, "is_error"' in _MCP_CALL_SCRIPT
 
 
 def test_harbor_chat_mcp_url_from_task_path_reads_task_toml(tmp_path: Path) -> None:

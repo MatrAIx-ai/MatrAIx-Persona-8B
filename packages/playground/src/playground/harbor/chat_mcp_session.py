@@ -27,12 +27,12 @@ _MCP_CALL_SCRIPT = textwrap.dedent(
 
     async def main() -> None:
         from mcp.client.session import ClientSession
-        from mcp.client.streamable_http import streamablehttp_client
+        from mcp.client.streamable_http import streamable_http_client
 
         mcp_url = sys.argv[1]
         tool_name = sys.argv[2]
         arguments = json.loads(sys.argv[3])
-        async with streamablehttp_client(mcp_url) as (read, write, _):
+        async with streamable_http_client(mcp_url) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)
@@ -43,7 +43,9 @@ _MCP_CALL_SCRIPT = textwrap.dedent(
                         chunks.append(text)
                 payload = {
                     "text": "".join(chunks),
-                    "isError": bool(getattr(result, "isError", False)),
+                    "isError": bool(
+                        getattr(result, "is_error", getattr(result, "isError", False))
+                    ),
                 }
                 print(json.dumps(payload))
 
