@@ -111,7 +111,12 @@ def post_message():
         messages.append({"role": "support", "content": reply})
         snapshot = list(messages)
 
-    return jsonify({"sessionId": session_id, "reply": reply, "turn": len(snapshot) // 2})
+    turn = {
+        "index": len(snapshot) // 2,
+        "userMessage": customer_message,
+        "assistantReply": reply,
+    }
+    return jsonify({"sessionId": session_id, "reply": reply, "turn": turn})
 
 
 @app.get("/v1/conversation")

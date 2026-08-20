@@ -174,7 +174,11 @@ def _normalize_turn_view(
     runtime: ChatbotTaskConfig,
 ) -> Dict[str, Any]:
     protocol = runtime.protocol
-    turn = dict(response.get(protocol.response_turn_field) or {})
+    raw_turn = response.get(protocol.response_turn_field)
+    # Some chat APIs expose a scalar turn counter rather than a structured
+    # turn object. Keep using the top-level reply instead of failing while
+    # normalizing an otherwise valid response.
+    turn = dict(raw_turn) if isinstance(raw_turn, dict) else {}
     assistant = str(
         turn.get("assistantMessage")
         or turn.get("assistantReply")
