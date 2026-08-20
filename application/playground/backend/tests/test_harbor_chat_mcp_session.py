@@ -33,16 +33,16 @@ def test_payload_from_result_joins_text_blocks() -> None:
     assert payload_from_result(result) == {"text": "Hello there", "isError": False}
 
 
-def test_payload_from_result_reads_current_is_error_attribute() -> None:
+def test_payload_from_result_reports_tool_errors() -> None:
     result = SimpleNamespace(content=[SimpleNamespace(text="boom")], is_error=True)
 
     assert payload_from_result(result)["isError"] is True
 
 
-def test_payload_from_result_falls_back_to_legacy_is_error_spelling() -> None:
-    result = SimpleNamespace(content=[SimpleNamespace(text="boom")], isError=True)
+def test_payload_from_result_defaults_to_success_without_an_error_flag() -> None:
+    result = SimpleNamespace(content=[SimpleNamespace(text="ok")])
 
-    assert payload_from_result(result)["isError"] is True
+    assert payload_from_result(result) == {"text": "ok", "isError": False}
 
 
 def test_payload_from_result_handles_empty_content() -> None:

@@ -20,10 +20,8 @@ def payload_from_result(result: Any) -> Dict[str, Any]:
         text = getattr(block, "text", None)
         if text:
             chunks.append(str(text))
-    is_error = getattr(result, "is_error", None)
-    if is_error is None:
-        is_error = getattr(result, "isError", False)
-    return {"text": "".join(chunks), "isError": bool(is_error)}
+    # Result types other than CallToolResult carry no error flag.
+    return {"text": "".join(chunks), "isError": bool(getattr(result, "is_error", False))}
 
 
 async def call_tool(
