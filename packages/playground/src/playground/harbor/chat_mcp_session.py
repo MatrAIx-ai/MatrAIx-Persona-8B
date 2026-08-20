@@ -18,9 +18,8 @@ from playground.types import PlaygroundConfig
 if TYPE_CHECKING:
     from harbor.environments.base import BaseEnvironment
 
-# Pinned so a trial's MCP behavior is reproducible: the client API is part of
-# the evaluation contract, not something to inherit from whatever PyPI serves
-# today. Bump deliberately, with the client tests as the gate.
+# The client API is part of the evaluation contract: an unpinned resolve lets
+# identical trials behave differently across machines and dates.
 MCP_CLIENT_REQUIREMENT = "mcp==2.0.0"
 
 _LOCAL_CLIENT_PATH = Path(__file__).with_name("mcp_call_client.py")

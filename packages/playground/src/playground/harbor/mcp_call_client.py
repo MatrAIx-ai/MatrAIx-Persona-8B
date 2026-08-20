@@ -1,8 +1,8 @@
 """Single MCP tool call, executed inside the Harbor environment.
 
-This module is uploaded into the environment and run against a pinned ``mcp``
-release (see ``MCP_CLIENT_REQUIREMENT``). ``mcp`` is imported lazily so the host
-test suite can exercise the payload helpers without installing the SDK.
+Uploaded into the environment and run against the ``mcp`` release pinned in
+``chat_mcp_session.MCP_CLIENT_REQUIREMENT``. ``mcp`` is imported lazily because
+this module must also import on hosts that do not have the SDK installed.
 """
 
 from __future__ import annotations
