@@ -42,7 +42,12 @@ class VoiceLabAgentChatRequest(BaseModel):
 
 
 class VoiceLabAgentChatResponse(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow",
+        validate_by_alias=True,
+        validate_by_name=True,
+        serialize_by_alias=True,
+    )
 
     reply: str
     decision: str | None = None
@@ -62,6 +67,8 @@ class VoiceLabAgentChatResponse(BaseModel):
 
 
 class UXMemory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     kind: Literal["observation", "reflection", "wonder", "plan", "action"]
     content: str
     importance: float = Field(ge=0.0, le=1.0)
@@ -70,6 +77,8 @@ class UXMemory(BaseModel):
 
 
 class UXObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     task_intent: str
     turn_index: int = Field(ge=0)
     assistant_reply: str = ""
