@@ -57,6 +57,7 @@ class VoiceLabPersonaClient:
     async def _post(
         self, operation: str, path: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
+        contract_error: VoiceLabContractError | None = None
         try:
             response = await self._http_client.post(
                 f"{self._base_url}{path}",
@@ -66,14 +67,14 @@ class VoiceLabPersonaClient:
             response.raise_for_status()
             body = response.json()
         except httpx.HTTPError:
-            raise VoiceLabContractError(
-                f"{operation} POST {path} failed"
-            ) from None
+            contract_error = VoiceLabContractError(f"{operation} POST {path} failed")
         except ValueError:
-            raise VoiceLabContractError(
+            contract_error = VoiceLabContractError(
                 f"{operation} POST {path} returned invalid JSON"
-            ) from None
+            )
 
+        if contract_error is not None:
+            raise contract_error
         if not isinstance(body, dict):
             raise VoiceLabContractError(
                 f"{operation} POST {path} returned a non-object JSON body"
@@ -97,12 +98,17 @@ class VoiceLabPersonaClient:
         self, request: VoiceLabAgentChatRequest
     ) -> VoiceLabAgentChatResponse:
         body = await self._post("agent_chat", _CHAT_PATH, request.model_dump())
+        validation_error: VoiceLabContractError | None = None
         try:
-            return VoiceLabAgentChatResponse.model_validate(body)
+            response = VoiceLabAgentChatResponse.model_validate(body)
         except ValidationError:
-            raise VoiceLabContractError(
+            validation_error = VoiceLabContractError(
                 f"agent_chat POST {_CHAT_PATH} returned an invalid response"
-            ) from None
+            )
+
+        if validation_error is not None:
+            raise validation_error
+        return response
 
     async def close(self) -> None:
         if self._owns_http_client:

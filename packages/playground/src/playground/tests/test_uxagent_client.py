@@ -214,6 +214,7 @@ def test_connect_error_is_redacted_and_not_retried() -> None:
     rendered = "".join(traceback.format_exception(raised.value))
     assert calls == 1
     assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
     assert PAYLOAD_SECRET not in str(raised.value)
     assert PASSWORD_SECRET not in str(raised.value)
     assert PAYLOAD_SECRET not in rendered
@@ -337,6 +338,7 @@ def test_malformed_agent_responses_are_typed_and_redacted(payload: object) -> No
     assert PAYLOAD_SECRET not in str(raised.value)
     assert PASSWORD_SECRET not in str(raised.value)
     assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
     assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
 
 
