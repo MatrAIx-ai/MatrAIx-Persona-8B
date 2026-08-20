@@ -71,6 +71,21 @@ _install_openhands_stubs()
 from harbor.agents.installed import openhands_sdk_runner as oh  # noqa: E402
 
 
+def test_browser_use_allow_lists_mounted_task_inputs(tmp_path):
+    input_dir = tmp_path / "input"
+    nested_dir = input_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    (input_dir / "context.md").write_text("Task context", encoding="utf-8")
+    (nested_dir / "options.json").write_text("{}", encoding="utf-8")
+
+    assert bu.available_task_input_paths(input_dir) == [
+        "input/context.md",
+        (input_dir / "context.md").as_posix(),
+        "input/nested/options.json",
+        (nested_dir / "options.json").as_posix(),
+    ]
+
+
 def test_browser_use_flush_writes_atomic_trajectory(tmp_path):
     history = SimpleNamespace(
         history=[],

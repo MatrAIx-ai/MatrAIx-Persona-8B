@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 OUTPUT_DIR = Path("/app/output")
+TASK_INPUT_DIR = Path("/app/input")
 
 _IMAGE_MEDIA_TYPES = {
     ".png": "image/png",
@@ -52,6 +53,31 @@ def _create_llm(model: str):
         return ChatOpenAI(model=bare, api_key=api_key, base_url=base_url)
 
     return ChatOpenAI(model=bare)
+
+
+def available_task_input_paths(input_dir: Path = TASK_INPUT_DIR) -> list[str]:
+    """Return mounted task inputs that browser-use may safely read.
+
+    Harbor mounts task-owned inputs under ``/app/input`` while browser-use
+    limits file reads to explicitly allowed paths outside its output sandbox.
+    Include both the canonical mount path and the task-facing ``input/...``
+    spelling used by task instructions.
+    """
+    if not input_dir.is_dir():
+        return []
+
+    available: list[str] = []
+    for path in sorted(
+        candidate for candidate in input_dir.rglob("*") if candidate.is_file()
+    ):
+        relative = path.relative_to(input_dir)
+        available.extend(
+            [
+                (Path("input") / relative).as_posix(),
+                path.as_posix(),
+            ]
+        )
+    return available
 
 
 def promote_browser_use_outputs(agent: Any) -> list[str]:
@@ -344,6 +370,9 @@ async def _run(args: argparse.Namespace) -> int:
         "browser": browser,
         "file_system_path": str(OUTPUT_DIR),
     }
+    task_input_paths = available_task_input_paths()
+    if task_input_paths:
+        agent_kwargs["available_file_paths"] = task_input_paths
     if extend:
         agent_kwargs["extend_system_message"] = extend
 
