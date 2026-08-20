@@ -1,9 +1,16 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
+from playground.chatbot_task_config import (
+    ChatbotProtocolConfig,
+    ChatbotRuntimeDefaults,
+    ChatbotTaskConfig,
+)
+from playground.uxagent.mapping import build_chat_request, build_persona_session_request
 from playground.uxagent.models import (
     SendMessageAction,
     UXMemory,
@@ -11,6 +18,35 @@ from playground.uxagent.models import (
     VoiceLabAgentChatRequest,
     VoiceLabAgentChatResponse,
 )
+
+
+def _persona() -> SimpleNamespace:
+    return SimpleNamespace(
+        display_name="Anh Hải",
+        summary="Bận rộn, thích câu trả lời ngắn.",
+        system_prompt=None,
+        communication={"style": "ngắn, tự nhiên"},
+        psychology={"traits": ["thích sự riêng tư"]},
+        preferences={"temperature": 22, "music": "nhạc nhẹ"},
+        behavior={},
+        data={"context": {"mood": "mệt", "fatigueLevel": "high"}},
+    )
+
+
+def _runtime() -> ChatbotTaskConfig:
+    return ChatbotTaskConfig(
+        runtime_defaults=ChatbotRuntimeDefaults(max_turns=4),
+        protocol=ChatbotProtocolConfig(
+            static_body={
+                "scenarioId": "climate-temperature",
+                "runtimeContext": {
+                    "vehicleMotion": "driving",
+                    "language": "vi",
+                    "roadSituation": "đường đông",
+                },
+            }
+        ),
+    )
 
 
 def test_send_message_action_rejects_blank_message() -> None:
@@ -66,6 +102,108 @@ def test_agent_chat_response_preserves_extra_provider_fields() -> None:
     assert response.model_extra == {"providerTraceId": "trace-123"}
     assert response.model_dump()["providerTraceId"] == "trace-123"
 
+def test_maps_available_persona_and_runtime_fields() -> None:
+    payload = build_persona_session_request(
+        persona=_persona(), runtime=_runtime(), session_id="trial-001"
+    ).model_dump(exclude_none=True)
+
+    assert payload["sessionId"] == "trial-001"
+    assert payload["source"] == "matraix-uxagent"
+    assert payload["driver"] == {
+        "name": "Anh Hải",
+        "persona": "Bận rộn, thích câu trả lời ngắn.",
+        "communicationStyle": "ngắn, tự nhiên",
+        "traits": ["thích sự riêng tư"],
+        "preferences": {"temperature": 22, "music": "nhạc nhẹ"},
+    }
+    assert payload["context"] == {
+        "mood": "mệt",
+        "fatigueLevel": "high",
+        "roadSituation": "đường đông",
+    }
+    assert "stressLevel" not in payload["context"]
+    assert payload["notes"] == []
+
+
+def test_chat_request_uses_vita_runtime_and_scenario() -> None:
+    payload = build_chat_request(
+        message="Cho anh 22 độ.", runtime=_runtime(), session_id="trial-001"
+    )
+
+    assert payload.model_dump() == {
+        "message": "Cho anh 22 độ.",
+        "drivingContext": "driving",
+        "intent": "climate-temperature",
+        "personaSessionId": "trial-001",
+    }
+
+
+def test_mapping_omits_missing_optional_values() -> None:
+    persona = SimpleNamespace(
+        display_name="",
+        summary=None,
+        system_prompt="",
+        communication={},
+        psychology={},
+        preferences={},
+        data={"context": {}},
+    )
+    runtime = ChatbotTaskConfig(
+        runtime_defaults=ChatbotRuntimeDefaults(),
+        protocol=ChatbotProtocolConfig(static_body={}),
+    )
+
+    session = build_persona_session_request(
+        persona=persona, runtime=runtime, session_id="trial-002"
+    ).model_dump()
+    assert session["driver"] == {}
+    assert session["context"] == {}
+
+def test_mapping_prefers_persona_road_situation() -> None:
+    persona = _persona()
+    persona.data["context"]["roadSituation"] = "bãi đỗ xe"
+
+    session = build_persona_session_request(
+        persona=persona, runtime=_runtime(), session_id="trial-004"
+    ).model_dump()
+
+    assert session["context"]["roadSituation"] == "bãi đỗ xe"
+
+
+def test_chat_request_does_not_fabricate_missing_intent() -> None:
+    runtime = ChatbotTaskConfig(
+        runtime_defaults=ChatbotRuntimeDefaults(),
+        protocol=ChatbotProtocolConfig(static_body={}),
+    )
+
+    assert build_chat_request(
+        message="Xin chào", runtime=runtime, session_id="trial-005"
+    ).model_dump() == {
+        "message": "Xin chào",
+        "drivingContext": "unknown",
+        "intent": "",
+        "personaSessionId": "trial-005",
+    }
+
+
+
+def test_chat_request_uses_unknown_without_vehicle_motion() -> None:
+    runtime = ChatbotTaskConfig(
+        runtime_defaults=ChatbotRuntimeDefaults(
+            application_context="fallback-context",
+            application_id="fallback-id",
+        ),
+        protocol=ChatbotProtocolConfig(static_body={}),
+    )
+
+    assert build_chat_request(
+        message="Xin chào", runtime=runtime, session_id="trial-003"
+    ).model_dump() == {
+        "message": "Xin chào",
+        "drivingContext": "unknown",
+        "intent": "fallback-context",
+        "personaSessionId": "trial-003",
+    }
 
 def test_agent_chat_request_constructs_with_wire_fields() -> None:
     request = VoiceLabAgentChatRequest(
