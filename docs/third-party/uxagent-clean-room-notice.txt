@@ -1,0 +1,9 @@
+UXAgent clean-room architecture notice
+
+Concept source: https://github.com/neuhai/UXAgent
+Revision inspected: 4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd
+
+The inspected repository README displays an MIT badge, but that revision has no
+LICENSE file and GitHub reports no detected license. No source code or prompt text was copied
+into MatrAIx. The MatrAIx conversational policy independently implements the
+published fast-loop and slow-loop concepts using original code and prompts.
