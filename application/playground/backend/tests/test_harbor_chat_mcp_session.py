@@ -12,19 +12,44 @@ import playground.harbor.chat_eval as chat_eval_module
 from playground.chatbot_task_config import ChatbotTaskConfig
 from playground.harbor.chat_eval import create_harbor_chat_session
 from playground.harbor.chat_mcp_session import (
+    MCP_CLIENT_REQUIREMENT,
     HarborMcpChatSession,
-    _MCP_CALL_SCRIPT,
     harbor_chat_mcp_url_from_task_path,
 )
+from playground.harbor.mcp_call_client import payload_from_result
 from playground.types import PlaygroundConfig
 
 
-def test_mcp_call_script_uses_current_streamable_http_client_name() -> None:
-    assert "streamable_http_client" in _MCP_CALL_SCRIPT
-    assert "streamablehttp_client" not in _MCP_CALL_SCRIPT
-    assert "as (read, write):" in _MCP_CALL_SCRIPT
-    assert "as (read, write, _):" not in _MCP_CALL_SCRIPT
-    assert 'getattr(result, "is_error"' in _MCP_CALL_SCRIPT
+def test_payload_from_result_joins_text_blocks() -> None:
+    result = SimpleNamespace(
+        content=[
+            SimpleNamespace(text="Hello "),
+            SimpleNamespace(text="there"),
+            SimpleNamespace(data=b"ignored"),
+        ],
+        is_error=False,
+    )
+
+    assert payload_from_result(result) == {"text": "Hello there", "isError": False}
+
+
+def test_payload_from_result_reads_current_is_error_attribute() -> None:
+    result = SimpleNamespace(content=[SimpleNamespace(text="boom")], is_error=True)
+
+    assert payload_from_result(result)["isError"] is True
+
+
+def test_payload_from_result_falls_back_to_legacy_is_error_spelling() -> None:
+    result = SimpleNamespace(content=[SimpleNamespace(text="boom")], isError=True)
+
+    assert payload_from_result(result)["isError"] is True
+
+
+def test_payload_from_result_handles_empty_content() -> None:
+    assert payload_from_result(SimpleNamespace(content=None)) == {
+        "text": "",
+        "isError": False,
+    }
 
 
 def test_harbor_chat_mcp_url_from_task_path_reads_task_toml(tmp_path: Path) -> None:
@@ -157,11 +182,17 @@ async def test_harbor_mcp_chat_session_calls_tools_via_environment_exec(
     tmp_path: Path,
 ) -> None:
     calls: list[tuple[str, dict[str, str]]] = []
+    uploads: list[tuple[str, str]] = []
 
     class FakeEnvironment:
+        async def upload_file(self, source_path, target_path: str) -> None:
+            uploads.append((Path(source_path).name, target_path))
+
         async def exec(self, command: str, timeout_sec: int = 200):
             del timeout_sec
-            assert "uvx --with mcp python3 -c" in command
+            assert "uvx --with {}".format(MCP_CLIENT_REQUIREMENT) in command
+            assert "/tmp/matraix_mcp_call_client.py" in command
+            assert "python3 -c" not in command
             if "send_message" in command:
                 calls.append(("send_message", {"message": "Hello there"}))
                 payload = {"text": "Hi, how can I help?", "isError": False}
@@ -194,6 +225,7 @@ async def test_harbor_mcp_chat_session_calls_tools_via_environment_exec(
     assert transcript["turns"][0]["assistantMessage"] == "Hi, how can I help?"
     assert calls[0][0] == "send_message"
     assert calls[1][0] == "get_conversation_history"
+    assert uploads == [("mcp_call_client.py", "/tmp/matraix_mcp_call_client.py")]
 
 
 @pytest.mark.anyio

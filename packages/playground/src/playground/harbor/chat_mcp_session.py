@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import shlex
-import textwrap
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List
@@ -19,39 +18,13 @@ from playground.types import PlaygroundConfig
 if TYPE_CHECKING:
     from harbor.environments.base import BaseEnvironment
 
-_MCP_CALL_SCRIPT = textwrap.dedent(
-    """
-    import asyncio
-    import json
-    import sys
+# Pinned so a trial's MCP behavior is reproducible: the client API is part of
+# the evaluation contract, not something to inherit from whatever PyPI serves
+# today. Bump deliberately, with the client tests as the gate.
+MCP_CLIENT_REQUIREMENT = "mcp==2.0.0"
 
-    async def main() -> None:
-        from mcp.client.session import ClientSession
-        from mcp.client.streamable_http import streamable_http_client
-
-        mcp_url = sys.argv[1]
-        tool_name = sys.argv[2]
-        arguments = json.loads(sys.argv[3])
-        async with streamable_http_client(mcp_url) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
-                chunks = []
-                for block in result.content or []:
-                    text = getattr(block, "text", None)
-                    if text:
-                        chunks.append(text)
-                payload = {
-                    "text": "".join(chunks),
-                    "isError": bool(
-                        getattr(result, "is_error", getattr(result, "isError", False))
-                    ),
-                }
-                print(json.dumps(payload))
-
-    asyncio.run(main())
-    """
-).strip()
+_LOCAL_CLIENT_PATH = Path(__file__).with_name("mcp_call_client.py")
+_REMOTE_CLIENT_PATH = "/tmp/matraix_mcp_call_client.py"
 
 
 def harbor_chat_mcp_url_from_task_path(task_path: str, *, repo_root: Path) -> str | None:
@@ -73,7 +46,7 @@ def harbor_chat_mcp_url_from_task_path(task_path: str, *, repo_root: Path) -> st
 
 
 class HarborMcpChatSession:
-    """Drive an MCP chat sidecar via ``environment.exec`` + ``uvx --with mcp``."""
+    """Drive an MCP chat sidecar via ``environment.exec`` + a pinned ``mcp`` client."""
 
     def __init__(
         self,
@@ -92,7 +65,14 @@ class HarborMcpChatSession:
         self._send_message_tool = send_message_tool
         self._history_tool = history_tool
         self._session_id = "mcp-{}".format(uuid.uuid4().hex[:12])
+        self._client_uploaded = False
         self.turns: List[Dict[str, Any]] = []
+
+    async def _ensure_client_uploaded(self) -> None:
+        if self._client_uploaded:
+            return
+        await self._environment.upload_file(_LOCAL_CLIENT_PATH, _REMOTE_CLIENT_PATH)
+        self._client_uploaded = True
 
     async def _call_tool(
         self,
@@ -101,8 +81,10 @@ class HarborMcpChatSession:
         *,
         timeout_sec: int = 200,
     ) -> Dict[str, Any]:
-        command = "uvx --with mcp python3 -c {} {} {} {}".format(
-            shlex.quote(_MCP_CALL_SCRIPT),
+        await self._ensure_client_uploaded()
+        command = "uvx --with {} python3 {} {} {} {}".format(
+            shlex.quote(MCP_CLIENT_REQUIREMENT),
+            shlex.quote(_REMOTE_CLIENT_PATH),
             shlex.quote(self._mcp_url),
             shlex.quote(tool_name),
             shlex.quote(json.dumps(arguments, ensure_ascii=False)),
