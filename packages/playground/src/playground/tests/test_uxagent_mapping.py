@@ -124,6 +124,19 @@ def test_maps_available_persona_and_runtime_fields() -> None:
     assert "stressLevel" not in payload["context"]
     assert payload["notes"] == []
 
+def test_mapping_does_not_alias_persona_containers() -> None:
+    persona = _persona()
+    persona.preferences["audio"] = {"volume": 5}
+
+    request = build_persona_session_request(
+        persona=persona, runtime=_runtime(), session_id="trial-006"
+    )
+    request.driver["traits"].append("new trait")
+    request.driver["preferences"]["audio"]["volume"] = 10
+
+    assert persona.psychology["traits"] == ["thích sự riêng tư"]
+    assert persona.preferences["audio"] == {"volume": 5}
+
 
 def test_chat_request_uses_vita_runtime_and_scenario() -> None:
     payload = build_chat_request(

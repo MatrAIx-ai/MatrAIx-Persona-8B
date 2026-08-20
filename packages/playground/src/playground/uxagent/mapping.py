@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from typing import Any, Mapping
 
 from playground.chatbot_task_config import ChatbotTaskConfig
@@ -34,8 +36,8 @@ def build_persona_session_request(
             "persona": _text(getattr(persona, "summary", None))
             or _text(getattr(persona, "system_prompt", None)),
             "communicationStyle": _text(communication.get("style")),
-            "traits": psychology.get("traits"),
-            "preferences": preferences,
+            "traits": deepcopy(psychology.get("traits")),
+            "preferences": deepcopy(preferences),
         }
     )
     context = _without_empty(
