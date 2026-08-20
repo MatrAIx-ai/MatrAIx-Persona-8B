@@ -310,3 +310,6 @@ environment/runtime/harbor/viewer/static/assets/*.map
 **/.playground_sidecar/
 site/
 .cache/
+
+# Isolated feature worktrees
+/.worktrees/
