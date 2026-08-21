@@ -44,6 +44,7 @@ class AgentName(str, Enum):
     PERSONA_CODEX = "persona-codex"
     PERSONA_JSON_SURVEY = "persona-json-survey"
     PERSONA_USER_SIM = "persona-user-sim"
+    PERSONA_UXAGENT = "persona-uxagent"
 
     @classmethod
     def values(cls) -> set[str]:

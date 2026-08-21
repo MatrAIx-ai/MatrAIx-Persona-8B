@@ -2,7 +2,7 @@
 
 Types (see ``DEFAULT_AGENT_BY_TYPE``):
   survey  → persona-json-survey
-  chatbot → persona-user-sim
+  chatbot → persona-user-sim (generic chat); Vita chat selects persona-uxagent
   web     → persona-openhands-sdk (and other web agents)
   os-app  → persona-computer-1
 

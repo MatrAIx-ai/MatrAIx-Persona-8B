@@ -56,6 +56,7 @@ def test_harbor_factory_registers_matraix_persona_agents() -> None:
         "matraix.agents.persona.cocoa:PersonaCocoa",
         "matraix.agents.persona.gemini_cli:PersonaGeminiCli",
         "matraix.agents.persona.codex:PersonaCodex",
+        "matraix.agents.persona.uxagent:PersonaUXAgent",
     ]
 
     for import_path in expected_imports:
@@ -372,3 +373,209 @@ def test_persona_computer_1_docker_uses_identity_channel(monkeypatch, tmp_path) 
     assert "schema" not in identity.lower()
     assert "Open Settings and enable Do Not Disturb." not in identity
 
+
+
+def test_persona_uxagent_is_registered_and_lazy_exported() -> None:
+    from harbor.agents.factory import AgentFactory
+    from harbor.models.agent.name import AgentName
+    from matraix.agents.persona import PersonaUXAgent
+
+    assert AgentName.PERSONA_UXAGENT.value == "persona-uxagent"
+    assert (
+        AgentFactory._AGENT_MAP[AgentName.PERSONA_UXAGENT]
+        == "matraix.agents.persona.uxagent:PersonaUXAgent"
+    )
+    assert AgentFactory.get_agent_class(AgentName.PERSONA_UXAGENT) is PersonaUXAgent
+
+
+def test_persona_uxagent_adapter_metadata_and_missing_task_config(
+    monkeypatch, tmp_path
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from matraix.agents.persona.uxagent import PersonaUXAgent
+
+    agent = PersonaUXAgent(
+        logs_dir=tmp_path / "agent",
+        model_name="openai/gpt-4o-mini",
+        persona_path=str(
+            ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0042.yaml"
+        ),
+    )
+    assert agent.name() == "persona-uxagent"
+    assert agent.version() == "1.0.0"
+    assert agent.SUPPORTS_WINDOWS is True
+    asyncio.run(agent.setup(SimpleNamespace()))
+
+    monkeypatch.setattr(agent, "_prepare_persona_trial", _async_noop)
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.harbor_chat_task_path_from_env",
+        lambda: None,
+    )
+
+    async def _run():
+        await agent.run("ignored", SimpleNamespace(), SimpleNamespace())
+
+    try:
+        asyncio.run(_run())
+    except RuntimeError as exc:
+        assert "MATRIX_CHATBOT_TASK_PATH is required" in str(exc)
+    else:
+        raise AssertionError("missing task path must fail explicitly")
+
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.harbor_chat_task_path_from_env",
+        lambda: "application/tasks/example-chat",
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.load_chatbot_task_config_for_task_path",
+        lambda *args, **kwargs: None,
+    )
+
+    try:
+        asyncio.run(_run())
+    except RuntimeError as exc:
+        assert "Missing chatbot config" in str(exc)
+    else:
+        raise AssertionError("missing chatbot config must fail explicitly")
+
+
+def test_persona_uxagent_delegates_task_intent_and_events(monkeypatch, tmp_path) -> None:
+    import asyncio
+    import os
+    from types import SimpleNamespace
+
+    from playground.chatbot_task_config import ChatbotTaskConfig
+    from playground.task_content_bundle import TaskContentBundle
+    from matraix.agents.persona.uxagent import PersonaUXAgent
+
+    captured: dict[str, object] = {}
+
+    class FakePolicy:
+        def __init__(self, **kwargs):
+            captured["policy"] = kwargs
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["voice_client"] = kwargs
+
+    class FakeRunner:
+        def __init__(self, **kwargs):
+            captured["runner"] = kwargs
+
+        async def run(self, **kwargs):
+            captured["run"] = kwargs
+            kwargs["on_event"]({"type": "phase", "phase": "fake"})
+
+    class FakeWriter:
+        def append(self, event):
+            captured["event"] = event
+
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.harbor_chat_task_path_from_env",
+        lambda: "application/tasks/chat_vita-demo",
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent._repo_root",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.load_chatbot_task_config_for_task_path",
+        lambda *args, **kwargs: ChatbotTaskConfig(),
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.load_task_content_bundle_for_task_path",
+        lambda *args, **kwargs: TaskContentBundle(
+            instruction_markdown="Choose a checking account.",
+            context_markdown="The user needs low monthly fees.",
+        ),
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.build_json_client",
+        lambda model: captured.setdefault("models", []).append(model) or object(),
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.ConversationalUXPolicy",
+        FakePolicy,
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.VoiceLabPersonaClient",
+        FakeClient,
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.UXAgentTrialRunner",
+        FakeRunner,
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.TrialEventWriter.for_trial_dir",
+        lambda path: FakeWriter(),
+    )
+    report_capture: dict[str, object] = {}
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.load_self_report_schema_for_task_path",
+        lambda *args, **kwargs: "task-schema",
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.assemble_report_system_prompt",
+        lambda *args, **kwargs: report_capture.setdefault("prompt", kwargs) or "report",
+    )
+    monkeypatch.setattr(
+        "matraix.agents.persona.uxagent.final_self_report",
+        lambda client, **kwargs: report_capture.update(
+            client=client, report=kwargs
+        )
+        or "questionnaire",
+    )
+    monkeypatch.setenv("APP_PASSWORD", "must-not-enter-prompts")
+
+    agent = PersonaUXAgent(
+        logs_dir=tmp_path / "agent",
+        model_name="openai/gpt-4o-mini",
+        persona_path=str(
+            ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0042.yaml"
+        ),
+    )
+    monkeypatch.setattr(agent, "_prepare_persona_trial", _async_noop)
+
+    class Env:
+        trial_paths = SimpleNamespace(trial_dir=tmp_path / "trial")
+
+    async def _run():
+        await agent.run("ignored", Env(), SimpleNamespace())
+
+    asyncio.run(_run())
+
+    policy = captured["policy"]
+    assert policy["task_intent"] == (
+        "Choose a checking account.\n\nThe user needs low monthly fees."
+    )
+    assert "must-not-enter-prompts" not in repr(policy)
+    runner = captured["runner"]
+    assert runner["questionnaire_builder"]
+    run_kwargs = captured["run"]
+    assert run_kwargs["environment"] is not None
+    assert run_kwargs["persona"] is agent._persona
+    assert run_kwargs["runtime"].__class__ is ChatbotTaskConfig
+    assert run_kwargs["task_intent"] == policy["task_intent"]
+    assert captured["event"] == {"type": "phase", "phase": "fake"}
+    assert captured["models"] == ["openai/gpt-4o-mini", "openai/gpt-4o-mini"]
+    assert "must-not-enter-prompts" not in repr(run_kwargs["task_intent"])
+    assert os.environ["APP_PASSWORD"] == "must-not-enter-prompts"
+    runner["questionnaire_builder"](
+        persona=SimpleNamespace(),
+        transcript=[],
+        config=None,
+        task_intent=policy["task_intent"],
+    )
+    assert report_capture["prompt"]["task_bundle"].instruction_markdown == (
+        "Choose a checking account."
+    )
+    assert report_capture["prompt"]["task_bundle"].context_markdown == (
+        "The user needs low monthly fees."
+    )
+    assert "must-not-enter-prompts" not in repr(report_capture)
+
+
+async def _async_noop(*args, **kwargs):
+    return None

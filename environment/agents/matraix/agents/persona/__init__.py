@@ -13,6 +13,7 @@ __all__ = [
     "PersonaComputer1",
     "PersonaGeminiCli",
     "PersonaOpenHandsSDK",
+    "PersonaUXAgent",
     "load_persona",
     "resolve_persona_path",
 ]
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
         resolve_persona_path,
     )
     from matraix.agents.persona.openhands_sdk import PersonaOpenHandsSDK
+    from matraix.agents.persona.uxagent import PersonaUXAgent
 
 _LAZY_IMPORTS = {
     "Persona": ("matraix.agents.persona.loader", "Persona"),
@@ -54,6 +56,10 @@ _LAZY_IMPORTS = {
     "PersonaOpenHandsSDK": (
         "matraix.agents.persona.openhands_sdk",
         "PersonaOpenHandsSDK",
+    ),
+    "PersonaUXAgent": (
+        "matraix.agents.persona.uxagent",
+        "PersonaUXAgent",
     ),
     "load_persona": ("matraix.agents.persona.loader", "load_persona"),
     "resolve_persona_path": (

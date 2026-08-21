@@ -83,6 +83,9 @@ class AgentFactory:
         AgentName.PERSONA_USER_SIM: (
             "matraix.agents.persona.user_sim:PersonaUserSim"
         ),
+        AgentName.PERSONA_UXAGENT: (
+            "matraix.agents.persona.uxagent:PersonaUXAgent"
+        ),
     }
 
     @classmethod
