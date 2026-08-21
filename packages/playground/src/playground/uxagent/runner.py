@@ -71,7 +71,19 @@ def _is_sensitive_key(key: object) -> bool:
     if not isinstance(key, str):
         return False
     normalized = re.sub(r"[^a-z0-9]", "", key.lower())
-    return normalized in _SENSITIVE_KEYS
+    return any(
+        marker in normalized
+        for marker in (
+            "apppassword",
+            "apikey",
+            "authorization",
+            "bearer",
+            "credential",
+            "password",
+            "secret",
+            "token",
+        )
+    )
 
 
 def _redact_value(value: Any) -> Any:
