@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Any
 
 import pytest
@@ -19,6 +20,18 @@ class FakeJsonClient:
         self.calls.append((system, user))
         return self.responses.pop(0)
 
+
+
+class BlockingFailingJsonClient:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def complete_json(self, system: str, user: str) -> dict[str, Any]:
+        self.entered.set()
+        if not self.release.wait(timeout=2):
+            raise RuntimeError("test release timeout")
+        raise RuntimeError("controlled slow failure")
 
 def _observation(turn_index: int = 3) -> UXObservation:
     return UXObservation(
@@ -216,6 +229,41 @@ def test_slow_failure_rejects_racing_enqueue_and_close_does_not_hang() -> None:
 
     asyncio.run(scenario())
     assert policy.slow_task is None
+
+
+
+
+def test_slow_failure_coordinates_concurrent_enqueue_without_hanging() -> None:
+    client = BlockingFailingJsonClient()
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    async def scenario() -> None:
+        policy.start_slow_loop()
+        first_enqueue = asyncio.create_task(
+            policy.enqueue_slow_observation(_observation(10))
+        )
+        await asyncio.wait_for(asyncio.to_thread(client.entered.wait, 1), timeout=1)
+
+        second_enqueue = asyncio.create_task(
+            policy.enqueue_slow_observation(_observation(11))
+        )
+        await asyncio.sleep(0)
+        client.release.set()
+
+        await asyncio.wait_for(first_enqueue, timeout=1)
+        second_error: UXAgentPolicyError | None = None
+        try:
+            await asyncio.wait_for(second_enqueue, timeout=1)
+        except UXAgentPolicyError as error:
+            second_error = error
+        assert second_error is None or "unavailable" in str(second_error)
+
+        with pytest.raises(UXAgentPolicyError, match="slow"):
+            await asyncio.wait_for(policy.wait_until_slow_idle(), timeout=1)
+        await asyncio.wait_for(policy.close(), timeout=1)
+
+    asyncio.run(scenario())
+    assert policy._slow_queue._unfinished_tasks == 0
 
 
 def test_memory_retains_exactly_newest_100() -> None:
