@@ -247,16 +247,10 @@ def test_slow_failure_coordinates_concurrent_enqueue_without_hanging() -> None:
         second_enqueue = asyncio.create_task(
             policy.enqueue_slow_observation(_observation(11))
         )
-        await asyncio.sleep(0)
+        await asyncio.wait_for(second_enqueue, timeout=1)
         client.release.set()
 
         await asyncio.wait_for(first_enqueue, timeout=1)
-        second_error: UXAgentPolicyError | None = None
-        try:
-            await asyncio.wait_for(second_enqueue, timeout=1)
-        except UXAgentPolicyError as error:
-            second_error = error
-        assert second_error is None or "unavailable" in str(second_error)
 
         with pytest.raises(UXAgentPolicyError, match="slow"):
             await asyncio.wait_for(policy.wait_until_slow_idle(), timeout=1)
