@@ -242,7 +242,8 @@ def test_slow_failure_coordinates_concurrent_enqueue_without_hanging() -> None:
         first_enqueue = asyncio.create_task(
             policy.enqueue_slow_observation(_observation(10))
         )
-        await asyncio.wait_for(asyncio.to_thread(client.entered.wait, 1), timeout=1)
+        entered = await asyncio.wait_for(asyncio.to_thread(client.entered.wait, 1), timeout=1)
+        assert entered
 
         second_enqueue = asyncio.create_task(
             policy.enqueue_slow_observation(_observation(11))
