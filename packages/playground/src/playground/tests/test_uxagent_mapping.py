@@ -138,17 +138,97 @@ def test_mapping_does_not_alias_persona_containers() -> None:
     assert persona.preferences["audio"] == {"volume": 5}
 
 
-def test_chat_request_uses_vita_runtime_and_scenario() -> None:
+def test_chat_request_uses_session_id_and_message_only() -> None:
     payload = build_chat_request(
         message="Cho anh 22 độ.", runtime=_runtime(), session_id="trial-001"
     )
 
     assert payload.model_dump() == {
+        "sessionId": "trial-001",
         "message": "Cho anh 22 độ.",
-        "drivingContext": "driving",
-        "intent": "climate-temperature",
-        "personaSessionId": "trial-001",
     }
+
+    assert "drivingContext" not in payload.model_dump()
+    assert "intent" not in payload.model_dump()
+    assert "personaSessionId" not in payload.model_dump()
+
+
+def test_agent_chat_request_rejects_legacy_fields() -> None:
+    with pytest.raises(ValidationError):
+        VoiceLabAgentChatRequest(
+            sessionId="session-123",
+            message="Set the temperature to 22 degrees.",
+            drivingContext="driving",
+        )
+
+
+def test_chat_request_ignores_runtime_context() -> None:
+    runtime = ChatbotTaskConfig(
+        runtime_defaults=ChatbotRuntimeDefaults(),
+        protocol=ChatbotProtocolConfig(
+            static_body={
+                "scenarioId": "legacy-intent",
+                "runtimeContext": {"vehicleMotion": "driving"},
+            }
+        ),
+    )
+
+    assert build_chat_request(
+        message="Xin chào", runtime=runtime, session_id="trial-005"
+    ).model_dump() == {
+        "sessionId": "trial-005",
+        "message": "Xin chào",
+    }
+
+
+def test_chat_request_uses_only_explicit_session() -> None:
+    runtime = ChatbotTaskConfig(
+        runtime_defaults=ChatbotRuntimeDefaults(
+            application_context="fallback-context",
+            application_id="fallback-id",
+        ),
+        protocol=ChatbotProtocolConfig(static_body={}),
+    )
+
+    assert build_chat_request(
+        message="Xin chào", runtime=runtime, session_id="trial-003"
+    ).model_dump() == {
+        "sessionId": "trial-003",
+        "message": "Xin chào",
+    }
+
+
+def test_agent_chat_request_constructs_with_wire_fields() -> None:
+    request = VoiceLabAgentChatRequest(
+        sessionId="session-123",
+        message="Set the temperature to 22 degrees.",
+    )
+
+    assert request.model_dump() == {
+        "sessionId": "session-123",
+        "message": "Set the temperature to 22 degrees.",
+    }
+
+
+def test_memory_and_observation_models_reject_extra_fields() -> None:
+    with pytest.raises(ValidationError):
+        UXMemory(
+            kind="observation",
+            content="The driver sounds rushed.",
+            importance=0.5,
+            turn_index=1,
+            unexpected=True,
+        )
+    with pytest.raises(ValidationError):
+        UXObservation(task_intent="climate", turn_index=1, unexpected=True)
+
+
+def test_clean_room_notice_records_unlicensed_upstream_revision() -> None:
+    root = Path(__file__).resolve().parents[5]
+    notice = (root / "docs/third-party/uxagent-clean-room-notice.txt").read_text()
+    assert "https://github.com/neuhai/UXAgent" in notice
+    assert "4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd" in notice
+    assert "No source code or prompt text was copied" in notice
 
 
 def test_mapping_omits_missing_optional_values() -> None:
@@ -181,75 +261,3 @@ def test_mapping_prefers_persona_road_situation() -> None:
     ).model_dump()
 
     assert session["context"]["roadSituation"] == "bãi đỗ xe"
-
-
-def test_chat_request_does_not_fabricate_missing_intent() -> None:
-    runtime = ChatbotTaskConfig(
-        runtime_defaults=ChatbotRuntimeDefaults(),
-        protocol=ChatbotProtocolConfig(static_body={}),
-    )
-
-    assert build_chat_request(
-        message="Xin chào", runtime=runtime, session_id="trial-005"
-    ).model_dump() == {
-        "message": "Xin chào",
-        "drivingContext": "unknown",
-        "intent": "",
-        "personaSessionId": "trial-005",
-    }
-
-
-
-def test_chat_request_uses_unknown_without_vehicle_motion() -> None:
-    runtime = ChatbotTaskConfig(
-        runtime_defaults=ChatbotRuntimeDefaults(
-            application_context="fallback-context",
-            application_id="fallback-id",
-        ),
-        protocol=ChatbotProtocolConfig(static_body={}),
-    )
-
-    assert build_chat_request(
-        message="Xin chào", runtime=runtime, session_id="trial-003"
-    ).model_dump() == {
-        "message": "Xin chào",
-        "drivingContext": "unknown",
-        "intent": "fallback-context",
-        "personaSessionId": "trial-003",
-    }
-
-def test_agent_chat_request_constructs_with_wire_fields() -> None:
-    request = VoiceLabAgentChatRequest(
-        message="Set the temperature to 22 degrees.",
-        drivingContext="driving",
-        intent="climate",
-        personaSessionId="session-123",
-    )
-
-    assert request.model_dump() == {
-        "message": "Set the temperature to 22 degrees.",
-        "drivingContext": "driving",
-        "intent": "climate",
-        "personaSessionId": "session-123",
-    }
-
-
-def test_memory_and_observation_models_reject_extra_fields() -> None:
-    with pytest.raises(ValidationError):
-        UXMemory(
-            kind="observation",
-            content="The driver sounds rushed.",
-            importance=0.5,
-            turn_index=1,
-            unexpected=True,
-        )
-    with pytest.raises(ValidationError):
-        UXObservation(task_intent="climate", turn_index=1, unexpected=True)
-
-
-def test_clean_room_notice_records_unlicensed_upstream_revision() -> None:
-    root = Path(__file__).resolve().parents[5]
-    notice = (root / "docs/third-party/uxagent-clean-room-notice.txt").read_text()
-    assert "https://github.com/neuhai/UXAgent" in notice
-    assert "4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd" in notice
-    assert "No source code or prompt text was copied" in notice

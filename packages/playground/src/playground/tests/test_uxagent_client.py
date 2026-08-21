@@ -15,8 +15,8 @@ from playground.uxagent.models import (
 
 
 SESSION_PATH = "/api/persona/session"
-CHAT_PATH = "/api/agent/chat"
-PASSWORD_SECRET = "password-secret"
+CHAT_PATH = "/v1/agent/chat"
+TOKEN_SECRET = "bearer-token-secret"
 PAYLOAD_SECRET = "payload-secret"
 
 
@@ -31,10 +31,8 @@ def _session_request(session_id: str = "session-123") -> VoiceLabPersonaSessionR
 
 def _chat_request(session_id: str = "session-123") -> VoiceLabAgentChatRequest:
     return VoiceLabAgentChatRequest(
+        sessionId=session_id,
         message="Set the cabin to 22 degrees",
-        drivingContext="driving",
-        intent="climate",
-        personaSessionId=session_id,
     )
 
 
@@ -50,7 +48,7 @@ def _client_for(
     return (
         VoiceLabPersonaClient(
             base_url=base_url,
-            app_password=PASSWORD_SECRET,
+            bearer_token=TOKEN_SECRET,
             http_client=borrowed,
         ),
         borrowed,
@@ -63,7 +61,8 @@ def test_create_session_and_agent_chat_use_ordered_paths_wire_bodies_and_auth() 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         assert request.headers["content-type"] == "application/json"
-        assert request.headers["x-app-password"] == PASSWORD_SECRET
+        assert request.headers["authorization"] == f"Bearer {TOKEN_SECRET}"
+        assert "x-app-password" not in request.headers
         seen.append((request.method, request.url.path, body))
         if request.url.path == SESSION_PATH:
             return _json_response({"active": {"sessionId": "session-123"}})
@@ -96,86 +95,42 @@ def test_create_session_and_agent_chat_use_ordered_paths_wire_bodies_and_auth() 
             "POST",
             CHAT_PATH,
             {
+                "sessionId": "session-123",
                 "message": "Set the cabin to 22 degrees",
-                "drivingContext": "driving",
-                "intent": "climate",
-                "personaSessionId": "session-123",
             },
         ),
     ]
 
 
-def test_blank_password_is_not_sent() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert "x-app-password" not in request.headers
-        return _json_response({"active": {"sessionId": "session-123"}})
+def test_missing_bearer_token_raises_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VITA_AGENT_BEARER_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="VITA_AGENT_BEARER_TOKEN"):
+        VoiceLabPersonaClient(base_url="http://voicelab.test")
 
-    transport = httpx.MockTransport(handler)
-    borrowed = httpx.AsyncClient(transport=transport)
-    client = VoiceLabPersonaClient(
-        base_url="http://voicelab.test/",
-        app_password="",
-        http_client=borrowed,
-    )
-    try:
-        assert asyncio.run(client.create_session(_session_request())) == "session-123"
-    finally:
-        asyncio.run(client.close())
-        asyncio.run(borrowed.aclose())
 
-@pytest.mark.parametrize(
-    ("explicit", "env_password", "expected_header"),
-    [
-        ("explicit-password", "environment-password", "explicit-password"),
-        (None, "environment-password", "environment-password"),
-        ("", "environment-password", None),
-    ],
-)
-def test_app_password_precedence_and_blank_suppression(
-    monkeypatch: pytest.MonkeyPatch,
-    explicit: str | None,
-    env_password: str,
-    expected_header: str | None,
-) -> None:
-    monkeypatch.setenv("APP_PASSWORD", env_password)
-    seen_headers: list[str | None] = []
+def test_missing_api_url_raises_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VITA_AGENT_API_URL", raising=False)
+    monkeypatch.setenv("VITA_AGENT_BEARER_TOKEN", TOKEN_SECRET)
+    with pytest.raises(ValueError, match="VITA_AGENT_API_URL"):
+        VoiceLabPersonaClient()
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen_headers.append(request.headers.get("x-app-password"))
-        return _json_response({"active": {"sessionId": "session-123"}})
-
-    transport = httpx.MockTransport(handler)
-    borrowed = httpx.AsyncClient(transport=transport)
-    kwargs = {"app_password": explicit} if explicit is not None else {}
-    client = VoiceLabPersonaClient(http_client=borrowed, **kwargs)
-    try:
-        asyncio.run(client.create_session(_session_request()))
-    finally:
-        asyncio.run(client.close())
-        asyncio.run(borrowed.aclose())
-
-    assert seen_headers == [expected_header]
 
 
 @pytest.mark.parametrize(
     ("explicit", "env_url", "expected"),
     [
         ("http://explicit.test/", "http://environment.test", "http://explicit.test"),
-        ("", "http://environment.test/", "http://environment.test"),
         (None, "http://environment.test/", "http://environment.test"),
-        (None, None, "http://localhost:3001"),
     ],
 )
 def test_base_url_precedence_and_trailing_slash(
     monkeypatch: pytest.MonkeyPatch,
     explicit: str | None,
-    env_url: str | None,
+    env_url: str,
     expected: str,
 ) -> None:
-    if env_url is None:
-        monkeypatch.delenv("VOICELAB_API_URL", raising=False)
-    else:
-        monkeypatch.setenv("VOICELAB_API_URL", env_url)
+    monkeypatch.setenv("VITA_AGENT_API_URL", env_url)
+    monkeypatch.setenv("VITA_AGENT_BEARER_TOKEN", TOKEN_SECRET)
 
     requested: list[str] = []
 
@@ -216,9 +171,23 @@ def test_connect_error_is_redacted_and_not_retried() -> None:
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
     assert PAYLOAD_SECRET not in str(raised.value)
-    assert PASSWORD_SECRET not in str(raised.value)
+    assert TOKEN_SECRET not in str(raised.value)
     assert PAYLOAD_SECRET not in rendered
-    assert PASSWORD_SECRET not in rendered
+    assert TOKEN_SECRET not in rendered
+def test_bearer_token_is_redacted_from_transport_errors() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(TOKEN_SECRET, request=request)
+
+    client, borrowed = _client_for(handler)
+    try:
+        with pytest.raises(VoiceLabContractError) as raised:
+            asyncio.run(client.create_session(_session_request()))
+    finally:
+        asyncio.run(client.close())
+        asyncio.run(borrowed.aclose())
+
+    assert TOKEN_SECRET not in str(raised.value)
+    assert TOKEN_SECRET not in "".join(traceback.format_exception(raised.value))
 
 
 @pytest.mark.parametrize("status_code", [400, 500])
@@ -237,7 +206,7 @@ def test_http_status_errors_are_typed_and_redacted(status_code: int) -> None:
     message = str(raised.value)
     assert "create_session" in message
     assert SESSION_PATH in message
-    assert PASSWORD_SECRET not in message
+    assert TOKEN_SECRET not in message
     assert PAYLOAD_SECRET not in message
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
@@ -262,7 +231,7 @@ def test_timeout_error_is_typed_and_redacted() -> None:
     assert raised.value.__cause__ is None
     assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
     assert PAYLOAD_SECRET not in str(raised.value)
-    assert PASSWORD_SECRET not in str(raised.value)
+    assert TOKEN_SECRET not in str(raised.value)
 
 
 @pytest.mark.parametrize(
@@ -285,7 +254,7 @@ def test_non_object_or_non_json_session_responses_are_typed(response_factory) ->
     assert "create_session" in str(raised.value)
     assert SESSION_PATH in str(raised.value)
     assert PAYLOAD_SECRET not in str(raised.value)
-    assert PASSWORD_SECRET not in str(raised.value)
+    assert TOKEN_SECRET not in str(raised.value)
 
 
 def test_wrong_active_session_is_typed_and_redacted() -> None:
@@ -340,7 +309,7 @@ def test_malformed_agent_responses_are_typed_and_redacted(payload: object) -> No
     assert "agent_chat" in str(raised.value)
     assert CHAT_PATH in str(raised.value)
     assert PAYLOAD_SECRET not in str(raised.value)
-    assert PASSWORD_SECRET not in str(raised.value)
+    assert TOKEN_SECRET not in str(raised.value)
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
     assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
@@ -348,7 +317,11 @@ def test_malformed_agent_responses_are_typed_and_redacted(payload: object) -> No
 
 def test_borrowed_client_remains_open_after_close() -> None:
     borrowed = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: _json_response({})))
-    client = VoiceLabPersonaClient(http_client=borrowed)
+    client = VoiceLabPersonaClient(
+        base_url="http://voicelab.test",
+        bearer_token=TOKEN_SECRET,
+        http_client=borrowed,
+    )
 
     asyncio.run(client.close())
 
@@ -370,6 +343,8 @@ def test_owned_client_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda **kwargs: owned,
     )
 
+    monkeypatch.setenv("VITA_AGENT_API_URL", "http://voicelab.test")
+    monkeypatch.setenv("VITA_AGENT_BEARER_TOKEN", TOKEN_SECRET)
     client = VoiceLabPersonaClient()
     asyncio.run(client.close())
 

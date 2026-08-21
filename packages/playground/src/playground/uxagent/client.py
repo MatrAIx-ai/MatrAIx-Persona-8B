@@ -13,9 +13,8 @@ from playground.uxagent.models import (
 )
 
 
-_DEFAULT_BASE_URL = "http://localhost:3001"
 _SESSION_PATH = "/api/persona/session"
-_CHAT_PATH = "/api/agent/chat"
+_CHAT_PATH = "/v1/agent/chat"
 
 
 class VoiceLabContractError(RuntimeError):
@@ -29,19 +28,18 @@ class VoiceLabPersonaClient:
         self,
         *,
         base_url: str | None = None,
-        app_password: str | None = None,
+        bearer_token: str | None = None,
         timeout_seconds: float = 30.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        configured_base_url = (
-            base_url or os.getenv("VOICELAB_API_URL") or _DEFAULT_BASE_URL
-        )
+        configured_base_url = base_url or os.getenv("VITA_AGENT_API_URL")
+        if not configured_base_url:
+            raise ValueError("VITA_AGENT_API_URL is required")
+        configured_bearer_token = bearer_token or os.getenv("VITA_AGENT_BEARER_TOKEN")
+        if not configured_bearer_token:
+            raise ValueError("VITA_AGENT_BEARER_TOKEN is required")
         self._base_url = configured_base_url.rstrip("/")
-        self._app_password = (
-            app_password
-            if app_password is not None
-            else os.getenv("APP_PASSWORD", "")
-        )
+        self._bearer_token = configured_bearer_token
         self._http_client = http_client or httpx.AsyncClient(
             base_url=f"{self._base_url}/",
             timeout=timeout_seconds,
@@ -49,10 +47,10 @@ class VoiceLabPersonaClient:
         self._owns_http_client = http_client is None
 
     def _headers(self) -> dict[str, str]:
-        headers = {"content-type": "application/json"}
-        if self._app_password:
-            headers["x-app-password"] = self._app_password
-        return headers
+        return {
+            "content-type": "application/json",
+            "Authorization": f"Bearer {self._bearer_token}",
+        }
 
     async def _post(
         self, operation: str, path: str, payload: dict[str, Any]

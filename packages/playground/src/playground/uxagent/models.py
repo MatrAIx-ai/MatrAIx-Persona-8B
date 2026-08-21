@@ -35,11 +35,8 @@ class VoiceLabPersonaSessionRequest(BaseModel):
 class VoiceLabAgentChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    sessionId: str
     message: str
-    drivingContext: str
-    intent: str
-    personaSessionId: str
-
 
 class VoiceLabAgentChatResponse(BaseModel):
     model_config = ConfigDict(

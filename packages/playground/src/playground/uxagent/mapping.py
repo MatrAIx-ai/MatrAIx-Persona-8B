@@ -61,17 +61,5 @@ def build_persona_session_request(
 def build_chat_request(
     *, message: str, runtime: ChatbotTaskConfig, session_id: str
 ) -> VoiceLabAgentChatRequest:
-    static_body = runtime.protocol.static_body
-    runtime_context = _mapping(static_body.get("runtimeContext"))
-    intent = (
-        _text(static_body.get("scenarioId"))
-        or _text(runtime.runtime_defaults.application_context)
-        or _text(runtime.runtime_defaults.application_id)
-        or ""
-    )
-    return VoiceLabAgentChatRequest(
-        message=message,
-        drivingContext=_text(runtime_context.get("vehicleMotion")) or "unknown",
-        intent=intent,
-        personaSessionId=session_id,
-    )
+    del runtime
+    return VoiceLabAgentChatRequest(sessionId=session_id, message=message)

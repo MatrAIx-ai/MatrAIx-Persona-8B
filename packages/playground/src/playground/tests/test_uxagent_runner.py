@@ -41,7 +41,8 @@ class FakeVoiceLabClient:
         return request.sessionId
 
     async def agent_chat(self, request):
-        self.calls.append(("agent_chat", request.personaSessionId))
+        assert set(request.model_dump()) == {"sessionId", "message"}
+        self.calls.append(("agent_chat", request.sessionId))
         error = self.chat_errors.pop(0) if self.chat_errors else None
         if error is not None:
             raise error
@@ -121,7 +122,7 @@ class FakeEnvironment:
 
 
 def test_create_failure_is_redacted_and_closes_policy_then_client(tmp_path: Path) -> None:
-    secret_error = VoiceLabContractError("create_session APP_PASSWORD=top-secret")
+    secret_error = VoiceLabContractError("create_session token=top-secret")
     client = FakeVoiceLabClient([], create_error=secret_error)
     policy = FakePolicy([])
     events: list[dict] = []
@@ -142,13 +143,13 @@ def test_create_failure_is_redacted_and_closes_policy_then_client(tmp_path: Path
     assert events[-1]["operation"] == "create_session"
     assert events[-1]["error"]["type"] == "VoiceLabContractError"
     assert "top-secret" not in json.dumps(events)
-    assert "APP_PASSWORD=top-secret" not in json.dumps(events)
+    assert "token=top-secret" not in json.dumps(events)
 
 
 def test_chat_failure_uploads_completed_turn_and_memory_without_questionnaire(
     tmp_path: Path,
 ) -> None:
-    secret_error = VoiceLabContractError("agent_chat APP_PASSWORD=top-secret")
+    secret_error = VoiceLabContractError("agent_chat token=top-secret")
     client = FakeVoiceLabClient(
         [_response(vehicleState={"speed": 10})],
         chat_errors=[None, secret_error],
@@ -159,7 +160,7 @@ def test_chat_failure_uploads_completed_turn_and_memory_without_questionnaire(
     policy._memories = (
         UXMemory(
             kind="action",
-            content="APP_PASSWORD=top-secret",
+            content="token=top-secret",
             importance=0.5,
             turn_index=1,
         ),
@@ -283,7 +284,7 @@ def test_nested_sensitive_mapping_values_are_redacted_in_events_artifacts_and_me
     tmp_path: Path,
 ) -> None:
     nested = {
-        "APP_PASSWORD": "app-password-secret",
+        "bearer": "bearer-secret",
         "api_key": "api-key-secret",
         "authorization": "Bearer authorization-secret",
         "token": "token-secret",
@@ -311,7 +312,7 @@ def test_nested_sensitive_mapping_values_are_redacted_in_events_artifacts_and_me
 
     serialized_events = json.dumps(events)
     serialized_artifacts = json.dumps(environment.uploads)
-    assert "app-password-secret" not in serialized_events + serialized_artifacts
+    assert "bearer-secret" not in serialized_events + serialized_artifacts
     assert "api-key-secret" not in serialized_events + serialized_artifacts
     assert "authorization-secret" not in serialized_events + serialized_artifacts
     assert "token-secret" not in serialized_events + serialized_artifacts
@@ -322,9 +323,9 @@ def test_nested_sensitive_mapping_values_are_redacted_in_events_artifacts_and_me
     redacted_nested = memory["memories"][0]["nested"]
     assert {
         key: redacted_nested[key]
-        for key in ("APP_PASSWORD", "api_key", "authorization", "token", "password", "secret")
+        for key in ("bearer", "api_key", "authorization", "token", "password", "secret")
     } == {
-        "APP_PASSWORD": "[REDACTED]",
+        "bearer": "[REDACTED]",
         "api_key": "[REDACTED]",
         "authorization": "[REDACTED]",
         "token": "[REDACTED]",
@@ -360,7 +361,7 @@ def test_upload_dump_failure_removes_created_temp_file(
 
 def test_success_does_not_emit_done_when_both_close_operations_fail(tmp_path: Path) -> None:
     policy_error = RuntimeError("policy close Authorization: Bearer policy-secret")
-    client_error = RuntimeError("client close APP_PASSWORD=client-secret")
+    client_error = RuntimeError("client close token=client-secret")
     client = FakeVoiceLabClient(
         [_response(decision="executed")],
         close_error=client_error,
@@ -395,7 +396,7 @@ def test_success_does_not_emit_done_when_both_close_operations_fail(tmp_path: Pa
 def test_primary_error_precedes_both_close_errors_and_never_emits_done(
     tmp_path: Path,
 ) -> None:
-    primary = VoiceLabContractError("agent_chat APP_PASSWORD=primary-secret")
+    primary = VoiceLabContractError("agent_chat token=primary-secret")
     policy_error = RuntimeError("policy close token=policy-secret")
     client_error = RuntimeError("client close Authorization: Bearer client-secret")
     client = FakeVoiceLabClient([], chat_errors=[primary], close_error=client_error)
@@ -617,7 +618,7 @@ def test_terminal_decisions_and_action_end_reason_stop_after_one_turn(tmp_path: 
 
 
 def test_policy_failure_is_redacted_and_closes_resources(tmp_path: Path) -> None:
-    primary = RuntimeError("invalid policy response APP_PASSWORD=top-secret")
+    primary = RuntimeError("invalid policy response token=top-secret")
     client = FakeVoiceLabClient([])
     policy = FakePolicy(
         [SendMessageAction(message="one")],
@@ -643,7 +644,7 @@ def test_policy_failure_is_redacted_and_closes_resources(tmp_path: Path) -> None
 
 def test_malformed_chat_response_has_safe_schema_error(tmp_path: Path) -> None:
     policy = FakePolicy([SendMessageAction(message="one")])
-    client = FakeVoiceLabClient([{"vehicleState": {"APP_PASSWORD": "top-secret"}}])
+    client = FakeVoiceLabClient([{"vehicleState": {"token": "top-secret"}}])
     events: list[dict] = []
     with pytest.raises(Exception):
         asyncio.run(
