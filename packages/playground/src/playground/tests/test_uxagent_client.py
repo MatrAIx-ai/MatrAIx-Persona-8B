@@ -240,6 +240,7 @@ def test_http_status_errors_are_typed_and_redacted(status_code: int) -> None:
     assert PASSWORD_SECRET not in message
     assert PAYLOAD_SECRET not in message
     assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
     assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
 
 
@@ -257,6 +258,7 @@ def test_timeout_error_is_typed_and_redacted() -> None:
 
     assert "create_session" in str(raised.value)
     assert SESSION_PATH in str(raised.value)
+    assert raised.value.__context__ is None
     assert raised.value.__cause__ is None
     assert PAYLOAD_SECRET not in "".join(traceback.format_exception(raised.value))
     assert PAYLOAD_SECRET not in str(raised.value)
@@ -299,6 +301,8 @@ def test_wrong_active_session_is_typed_and_redacted() -> None:
         asyncio.run(borrowed.aclose())
 
     assert "create_session" in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
     assert SESSION_PATH in str(raised.value)
     assert PAYLOAD_SECRET not in str(raised.value)
 
