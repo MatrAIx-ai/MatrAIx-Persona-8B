@@ -14,6 +14,7 @@ from playground.chatbot_task_config import (
 from playground.types import Questionnaire
 from playground.uxagent.client import VoiceLabContractError
 from playground.uxagent.models import SendMessageAction, UXMemory, VoiceLabAgentChatResponse
+from playground.uxagent import runner as runner_module
 from playground.uxagent.runner import UXAgentTrialRunner
 
 
@@ -276,6 +277,155 @@ def test_cleanup_errors_do_not_replace_active_primary_error(tmp_path: Path) -> N
         "policy_close",
         "client_close",
     }
+
+
+def test_nested_sensitive_mapping_values_are_redacted_in_events_artifacts_and_memory(
+    tmp_path: Path,
+) -> None:
+    nested = {
+        "APP_PASSWORD": "app-password-secret",
+        "api_key": "api-key-secret",
+        "authorization": "Bearer authorization-secret",
+        "token": "token-secret",
+        "password": "password-secret",
+        "secret": {"deep": "secret-secret"},
+        "message": "Authorization: Bearer scheme-secret",
+    }
+    client = FakeVoiceLabClient(
+        [_response(decision="executed", toolResult={"nested": nested})]
+    )
+    policy = FakePolicy([SendMessageAction(message="one")])
+    policy._memories = ({"nested": nested},)
+    environment = FakeEnvironment(tmp_path, "trial-redaction")
+    events: list[dict] = []
+
+    asyncio.run(
+        _runner(client, policy).run(
+            environment=environment,
+            persona=_persona(),
+            runtime=_runtime(max_turns=1),
+            task_intent="intent",
+            on_event=events.append,
+        )
+    )
+
+    serialized_events = json.dumps(events)
+    serialized_artifacts = json.dumps(environment.uploads)
+    assert "app-password-secret" not in serialized_events + serialized_artifacts
+    assert "api-key-secret" not in serialized_events + serialized_artifacts
+    assert "authorization-secret" not in serialized_events + serialized_artifacts
+    assert "token-secret" not in serialized_events + serialized_artifacts
+    assert "password-secret" not in serialized_events + serialized_artifacts
+    assert "secret-secret" not in serialized_events + serialized_artifacts
+    assert "scheme-secret" not in serialized_events + serialized_artifacts
+    memory = json.loads(environment.uploads["/app/output/uxagent_memory.json"])
+    redacted_nested = memory["memories"][0]["nested"]
+    assert {
+        key: redacted_nested[key]
+        for key in ("APP_PASSWORD", "api_key", "authorization", "token", "password", "secret")
+    } == {
+        "APP_PASSWORD": "[REDACTED]",
+        "api_key": "[REDACTED]",
+        "authorization": "[REDACTED]",
+        "token": "[REDACTED]",
+        "password": "[REDACTED]",
+        "secret": "[REDACTED]",
+    }
+
+
+def test_upload_dump_failure_removes_created_temp_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    created_path: Path | None = None
+
+    def fail_dump(payload, handle, **kwargs) -> None:
+        nonlocal created_path
+        created_path = Path(handle.name)
+        assert created_path.exists()
+        raise RuntimeError("serialization failed")
+
+    monkeypatch.setattr(runner_module.json, "dump", fail_dump)
+    runner = _runner(FakeVoiceLabClient([]), FakePolicy([]))
+    with pytest.raises(RuntimeError, match="serialization failed"):
+        asyncio.run(
+            runner._upload_artifacts(
+                FakeEnvironment(tmp_path, "trial-dump-fail"),
+                {"artifact.json": {"value": "payload"}},
+            )
+        )
+    assert created_path is not None
+    assert not created_path.exists()
+
+
+def test_success_does_not_emit_done_when_both_close_operations_fail(tmp_path: Path) -> None:
+    policy_error = RuntimeError("policy close Authorization: Bearer policy-secret")
+    client_error = RuntimeError("client close APP_PASSWORD=client-secret")
+    client = FakeVoiceLabClient(
+        [_response(decision="executed")],
+        close_error=client_error,
+    )
+    policy = FakePolicy(
+        [SendMessageAction(message="one")],
+        close_error=policy_error,
+    )
+    events: list[dict] = []
+
+    with pytest.raises(RuntimeError) as raised:
+        asyncio.run(
+            _runner(client, policy).run(
+                environment=FakeEnvironment(tmp_path, "trial-close-only"),
+                persona=_persona(),
+                runtime=_runtime(max_turns=1),
+                task_intent="intent",
+                on_event=events.append,
+            )
+        )
+
+    assert raised.value is policy_error
+    assert [event["operation"] for event in events if event["type"] == "error"][-2:] == [
+        "policy_close",
+        "client_close",
+    ]
+    assert not any(event["type"] == "done" for event in events)
+    assert "policy-secret" not in json.dumps(events)
+    assert "client-secret" not in json.dumps(events)
+
+
+def test_primary_error_precedes_both_close_errors_and_never_emits_done(
+    tmp_path: Path,
+) -> None:
+    primary = VoiceLabContractError("agent_chat APP_PASSWORD=primary-secret")
+    policy_error = RuntimeError("policy close token=policy-secret")
+    client_error = RuntimeError("client close Authorization: Bearer client-secret")
+    client = FakeVoiceLabClient([], chat_errors=[primary], close_error=client_error)
+    policy = FakePolicy(
+        [SendMessageAction(message="one")],
+        close_error=policy_error,
+    )
+    events: list[dict] = []
+
+    with pytest.raises(VoiceLabContractError) as raised:
+        asyncio.run(
+            _runner(client, policy).run(
+                environment=FakeEnvironment(tmp_path, "trial-primary-close"),
+                persona=_persona(),
+                runtime=_runtime(max_turns=1),
+                task_intent="intent",
+                on_event=events.append,
+            )
+        )
+
+    assert raised.value is primary
+    assert [event["operation"] for event in events if event["type"] == "error"] == [
+        "voicelab_agent_chat",
+        "policy_close",
+        "client_close",
+    ]
+    assert not any(event["type"] == "done" for event in events)
+    assert "primary-secret" not in json.dumps(events)
+    assert "policy-secret" not in json.dumps(events)
+    assert "client-secret" not in json.dumps(events)
 
 
 def _persona():

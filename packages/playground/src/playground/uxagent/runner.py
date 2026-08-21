@@ -25,10 +25,22 @@ from playground.uxagent.mapping import build_chat_request, build_persona_session
 from playground.uxagent.models import VoiceLabAgentChatResponse, UXObservation
 
 _TERMINAL_DECISIONS = {"cancelled", "denied", "executed", "failed", "unsupported"}
+_SENSITIVE_KEYS = {
+    "apppassword",
+    "xapppassword",
+    "apikey",
+    "authorization",
+    "bearer",
+    "token",
+    "password",
+    "secret",
+}
 _SECRET_ASSIGNMENT = re.compile(
-    r"(?i)(app[_ -]?password|x-app-password|api[_ -]?key|authorization|bearer|token|secret|password)"
-    r"\s*[:=]\s*([^\s,;]+)"
+    r"(?i)\b(app[_ -]?password|x-app-password|api[_ -]?key|authorization|bearer|token|secret|password)"
+    r"(?:\s*[:=]\s*|\s+(?=(?:bearer|basic|token)\s+))"
+    r"(?:(?:bearer|basic|token)\s+)?[^\s,;]+"
 )
+_SECRET_SCHEME = re.compile(r"(?i)\b(bearer|basic|token)\s+[^\s,;]+")
 
 
 QuestionnaireBuilder = Callable[
@@ -48,7 +60,18 @@ def _utc_now() -> str:
 
 def _redact_text(value: object) -> str:
     text = str(value)
-    return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}=[REDACTED]", text)
+    text = _SECRET_ASSIGNMENT.sub(
+        lambda match: f"{match.group(1)}=[REDACTED]",
+        text,
+    )
+    return _SECRET_SCHEME.sub(lambda match: f"{match.group(1)} [REDACTED]", text)
+
+
+def _is_sensitive_key(key: object) -> bool:
+    if not isinstance(key, str):
+        return False
+    normalized = re.sub(r"[^a-z0-9]", "", key.lower())
+    return normalized in _SENSITIVE_KEYS
 
 
 def _redact_value(value: Any) -> Any:
@@ -56,8 +79,11 @@ def _redact_value(value: Any) -> Any:
         return _redact_text(value)
     if isinstance(value, list):
         return [_redact_value(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _redact_value(item) for key, item in value.items()}
+    if isinstance(value, Mapping):
+        return {
+            key: "[REDACTED]" if _is_sensitive_key(key) else _redact_value(item)
+            for key, item in value.items()
+        }
     return value
 
 
@@ -137,6 +163,8 @@ class UXAgentTrialRunner:
         turns: list[PlaygroundTurn] = []
         operation = "create_session"
         primary_error: BaseException | None = None
+        result: PlaygroundResult | None = None
+        close_errors: list[tuple[str, BaseException]] = []
 
         def emit(event: dict[str, Any]) -> None:
             if on_event is not None:
@@ -243,9 +271,9 @@ class UXAgentTrialRunner:
             operation = "uxagent_policy_slow_loop"
             wait_idle = getattr(self.policy, "wait_until_slow_idle", None)
             if callable(wait_idle):
-                result = wait_idle()
-                if inspect.isawaitable(result):
-                    await result
+                idle_result = wait_idle()
+                if inspect.isawaitable(idle_result):
+                    await idle_result
 
             operation = "questionnaire_builder"
             questionnaire = self.questionnaire_builder(
@@ -284,8 +312,6 @@ class UXAgentTrialRunner:
             artifacts["uxagent_memory.json"] = self._memory_payload(session_id)
             operation = "artifact_upload"
             await self._upload_artifacts(environment, artifacts)
-            emit({"type": "done", "result": _redact_value(result.to_dict())})
-            return result
         except BaseException as error:
             primary_error = error
             emit_error(operation, error)
@@ -294,9 +320,7 @@ class UXAgentTrialRunner:
                     await self._upload_partial(environment, session_id, config, turns)
                 except BaseException as cleanup_error:
                     emit_error("partial_artifact_upload", cleanup_error)
-            raise
         finally:
-            close_errors: list[tuple[str, BaseException]] = []
             try:
                 await self.policy.close()
             except BaseException as error:
@@ -305,12 +329,17 @@ class UXAgentTrialRunner:
                 await self.client.close()
             except BaseException as error:
                 close_errors.append(("client_close", error))
-            for close_operation, close_error in close_errors:
-                if primary_error is not None:
-                    emit_error(close_operation, close_error)
-                else:
-                    emit_error(close_operation, close_error)
-                    raise close_error
+
+        for close_operation, close_error in close_errors:
+            emit_error(close_operation, close_error)
+        if primary_error is not None:
+            raise primary_error
+        if close_errors:
+            raise close_errors[0][1]
+        if result is None:
+            raise RuntimeError("UXAgent trial completed without a result")
+        emit({"type": "done", "result": _redact_value(result.to_dict())})
+        return result
 
     def _memory_payload(self, session_id: str) -> dict[str, Any]:
         memories = []
@@ -355,14 +384,16 @@ class UXAgentTrialRunner:
         artifacts: Mapping[str, Mapping[str, Any]],
     ) -> None:
         for filename, payload in artifacts.items():
-            with tempfile.NamedTemporaryFile(
-                "w", encoding="utf-8", suffix=".json", delete=False
-            ) as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
-                temp_path = Path(handle.name)
+            temp_path: Path | None = None
             try:
+                with tempfile.NamedTemporaryFile(
+                    "w", encoding="utf-8", suffix=".json", delete=False
+                ) as handle:
+                    temp_path = Path(handle.name)
+                    json.dump(_redact_value(payload), handle, ensure_ascii=False, indent=2)
                 uploaded = environment.upload_file(temp_path, f"/app/output/{filename}")
                 if inspect.isawaitable(uploaded):
                     await uploaded
             finally:
-                temp_path.unlink(missing_ok=True)
+                if temp_path is not None:
+                    temp_path.unlink(missing_ok=True)
