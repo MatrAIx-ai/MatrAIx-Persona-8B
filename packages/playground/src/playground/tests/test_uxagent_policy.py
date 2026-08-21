@@ -37,6 +37,7 @@ def test_fast_loop_perceives_plans_and_acts_in_order() -> None:
             {
                 "action": "send_message",
                 "message": "Bạn muốn đến khu vực nào trước?",
+                "end_reason": None,
             },
         ]
     )
@@ -67,12 +68,66 @@ def test_fast_loop_perceives_plans_and_acts_in_order() -> None:
         json.loads(payload)
 
 
+def test_fast_loop_rejects_empty_perception() -> None:
+    client = FakeJsonClient([{"observations": [], "importance": 0.5}])
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    with pytest.raises(UXAgentPolicyError):
+        asyncio.run(policy.next_action(_observation()))
+
+
+def test_fast_loop_requires_plan_importance() -> None:
+    client = FakeJsonClient(
+        [
+            {"observations": ["Cần làm rõ"], "importance": 0.5},
+            {"plan": "Hỏi lại"},
+        ]
+    )
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    with pytest.raises(UXAgentPolicyError):
+        asyncio.run(policy.next_action(_observation()))
+
+
+def test_fast_loop_requires_explicit_nullable_end_reason() -> None:
+    client = FakeJsonClient(
+        [
+            {"observations": ["Cần làm rõ"], "importance": 0.5},
+            {"plan": "Hỏi lại", "importance": 0.5},
+            {"action": "send_message", "message": "Thiếu lý do kết thúc"},
+        ]
+    )
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    with pytest.raises(UXAgentPolicyError):
+        asyncio.run(policy.next_action(_observation()))
+
+
+def test_fast_loop_preserves_non_null_end_reason() -> None:
+    client = FakeJsonClient(
+        [
+            {"observations": ["Cần làm rõ"], "importance": 0.5},
+            {"plan": "Hỏi lại", "importance": 0.5},
+            {
+                "action": "send_message",
+                "message": "Đã hoàn tất trao đổi",
+                "end_reason": "driver_finished",
+            },
+        ]
+    )
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    action = asyncio.run(policy.next_action(_observation()))
+
+    assert action.end_reason == "driver_finished"
+
+
 def test_fast_loop_rejects_invalid_action_without_reinterpretation() -> None:
     client = FakeJsonClient(
         [
             {"observations": ["Cần làm rõ"], "importance": 0.5},
             {"plan": "Hỏi lại", "importance": 0.5},
-            {"action": "open_browser", "message": "ignored"},
+            {"action": "open_browser", "message": "ignored", "end_reason": None},
         ]
     )
     policy = ConversationalUXPolicy("Persona", "Task", client)
@@ -88,14 +143,13 @@ def test_fast_loop_rejects_blank_action_message() -> None:
         [
             {"observations": ["Cần làm rõ"], "importance": 0.5},
             {"plan": "Hỏi lại", "importance": 0.5},
-            {"action": "send_message", "message": "   "},
+            {"action": "send_message", "message": "   ", "end_reason": None},
         ]
     )
     policy = ConversationalUXPolicy("Persona", "Task", client)
 
     with pytest.raises((UXAgentPolicyError, ValueError)):
         asyncio.run(policy.next_action(_observation()))
-
 
 def test_slow_loop_processes_observation_once_and_closes_cleanly() -> None:
     client = FakeJsonClient(
@@ -137,6 +191,25 @@ def test_slow_failure_is_raised_after_queue_becomes_idle() -> None:
     async def scenario() -> None:
         policy.start_slow_loop()
         await policy.enqueue_slow_observation(_observation())
+        with pytest.raises(UXAgentPolicyError, match="slow"):
+            await policy.wait_until_slow_idle()
+        await policy.close()
+
+    asyncio.run(scenario())
+    assert policy.slow_task is None
+
+
+def test_slow_failure_rejects_racing_enqueue_and_close_does_not_hang() -> None:
+    client = FakeJsonClient([{"reflections": "not a list", "wonders": []}])
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    async def scenario() -> None:
+        policy.start_slow_loop()
+        await policy.enqueue_slow_observation(_observation())
+        with pytest.raises(UXAgentPolicyError, match="slow"):
+            await policy.wait_until_slow_idle()
+        with pytest.raises(UXAgentPolicyError, match="unavailable"):
+            await policy.enqueue_slow_observation(_observation(9))
         with pytest.raises(UXAgentPolicyError, match="slow"):
             await policy.wait_until_slow_idle()
         await policy.close()

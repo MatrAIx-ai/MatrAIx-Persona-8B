@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import suppress
-from typing import Any, Mapping, Protocol
+from typing import Any, Literal, Mapping, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -28,7 +28,7 @@ class _StrictResponse(BaseModel):
 
 
 class _PerceptionResponse(_StrictResponse):
-    observations: list[str]
+    observations: list[str] = Field(min_length=1)
     importance: float = Field(ge=0.0, le=1.0)
 
     @field_validator("observations")
@@ -41,7 +41,7 @@ class _PerceptionResponse(_StrictResponse):
 
 class _PlanResponse(_StrictResponse):
     plan: str
-    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    importance: float = Field(..., ge=0.0, le=1.0)
 
     @field_validator("plan")
     @classmethod
@@ -49,6 +49,20 @@ class _PlanResponse(_StrictResponse):
         if not value.strip():
             raise ValueError("plan must not be blank")
         return value
+
+
+class _ActionResponse(_StrictResponse):
+    action: Literal["send_message"]
+    message: str
+    end_reason: str | None
+
+    @field_validator("message")
+    @classmethod
+    def message_is_nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("message must not be blank")
+        return value
+
 
 
 class _SlowResponse(_StrictResponse):
@@ -86,8 +100,9 @@ class ConversationalUXPolicy:
         self._slow_queue: asyncio.Queue[UXObservation] = asyncio.Queue()
         self._slow_task: asyncio.Task[None] | None = None
         self._slow_started = False
+        self._slow_failed = False
+        self._slow_lock = asyncio.Lock()
         self._slow_error: UXAgentPolicyError | None = None
-
     @property
     def memories(self) -> tuple[UXMemory, ...]:
         """Read-only memories, ordered oldest to newest."""
@@ -133,12 +148,14 @@ class ConversationalUXPolicy:
             )
         )
         return action
-
     def start_slow_loop(self) -> None:
         """Start the slow worker once; repeated starts are idempotent."""
-        self._slow_started = True
         if self._slow_task is not None and not self._slow_task.done():
+            if not self._slow_failed:
+                self._slow_started = True
             return
+        self._slow_failed = False
+        self._slow_started = True
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -147,11 +164,16 @@ class ConversationalUXPolicy:
         self._slow_task = asyncio.create_task(self._slow_worker())
 
     async def enqueue_slow_observation(self, observation: UXObservation) -> None:
-        if not self._slow_started or self._slow_task is None or self._slow_task.done():
-            self.start_slow_loop()
-        if self._slow_task is None:
-            self.start_slow_loop()
-        await self._slow_queue.put(observation)
+        async with self._slow_lock:
+            if self._slow_failed:
+                raise UXAgentPolicyError("slow loop unavailable")
+            if not self._slow_started or self._slow_task is None or self._slow_task.done():
+                self.start_slow_loop()
+            if self._slow_task is None:
+                self.start_slow_loop()
+            if self._slow_task is None:
+                raise UXAgentPolicyError("slow loop unavailable")
+            await self._slow_queue.put(observation)
 
     async def wait_until_slow_idle(self) -> None:
         await self._slow_queue.join()
@@ -164,6 +186,7 @@ class ConversationalUXPolicy:
         if task is None:
             self._drain_slow_queue()
             self._slow_started = False
+            self._slow_failed = False
             return
         await self._slow_queue.join()
         task.cancel()
@@ -171,6 +194,7 @@ class ConversationalUXPolicy:
             await task
         self._slow_task = None
         self._slow_started = False
+        self._slow_failed = False
 
     async def _slow_worker(self) -> None:
         while True:
@@ -185,9 +209,15 @@ class ConversationalUXPolicy:
                 self._slow_error = UXAgentPolicyError("slow-loop model call failed")
                 should_stop = True
             finally:
-                self._slow_queue.task_done()
+                if should_stop:
+                    self._slow_queue.task_done()
+                    async with self._slow_lock:
+                        self._slow_failed = True
+                        self._slow_started = False
+                        self._drain_slow_queue()
+                else:
+                    self._slow_queue.task_done()
             if should_stop:
-                self._drain_slow_queue()
                 return
 
     async def _process_slow_observation(self, observation: UXObservation) -> None:
@@ -242,7 +272,8 @@ class ConversationalUXPolicy:
     @staticmethod
     def _validate_action(raw: Mapping[str, Any]) -> SendMessageAction:
         try:
-            return SendMessageAction.model_validate(raw, strict=True)
+            envelope = _ActionResponse.model_validate(raw, strict=True)
+            return SendMessageAction.model_validate(envelope.model_dump(), strict=True)
         except (ValidationError, TypeError, ValueError):
             raise UXAgentPolicyError("invalid action response") from None
 
