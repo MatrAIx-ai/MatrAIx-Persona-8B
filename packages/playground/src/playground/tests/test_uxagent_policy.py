@@ -33,6 +33,38 @@ class BlockingFailingJsonClient:
             raise RuntimeError("test release timeout")
         raise RuntimeError("controlled slow failure")
 
+
+class BlockingSlowJsonClient:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def complete_json(self, system: str, user: str) -> dict[str, Any]:
+        self.entered.set()
+        self.release.wait(timeout=2)
+        return {"reflections": [], "wonders": []}
+
+
+class BlockingActionJsonClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def complete_json(self, system: str, user: str) -> dict[str, Any]:
+        self.calls.append((system, user))
+        if len(self.calls) == 3:
+            self.entered.set()
+            self.release.wait(timeout=2)
+            return {
+                "action": "send_message",
+                "message": "Bạn muốn đi đâu?",
+                "end_reason": None,
+            }
+        if len(self.calls) == 1:
+            return {"observations": ["Tín hiệu"], "importance": 0.5}
+        return {"plan": "Hỏi điểm đến", "importance": 0.5}
+
 def _observation(turn_index: int = 3) -> UXObservation:
     return UXObservation(
         task_intent="Tìm đường an toàn đến trường",
@@ -164,6 +196,23 @@ def test_fast_loop_rejects_blank_action_message() -> None:
     with pytest.raises((UXAgentPolicyError, ValueError)):
         asyncio.run(policy.next_action(_observation()))
 
+def test_fast_loop_cancellation_does_not_commit_partial_memories() -> None:
+    client = BlockingActionJsonClient()
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    async def scenario() -> None:
+        action_task = asyncio.create_task(policy.next_action(_observation()))
+        entered = await asyncio.wait_for(asyncio.to_thread(client.entered.wait, 1), timeout=1)
+        assert entered
+        action_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await action_task
+        assert policy.memories == ()
+        client.release.set()
+
+    asyncio.run(scenario())
+
+
 def test_slow_loop_processes_observation_once_and_closes_cleanly() -> None:
     client = FakeJsonClient(
         [
@@ -188,6 +237,23 @@ def test_slow_loop_processes_observation_once_and_closes_cleanly() -> None:
     assert [memory.turn_index for memory in policy.memories] == [8, 8]
 
     asyncio.run(policy.close())
+    assert policy.slow_task is None
+
+
+def test_close_cancels_hung_slow_thread_without_waiting_for_model() -> None:
+    client = BlockingSlowJsonClient()
+    policy = ConversationalUXPolicy("Persona", "Task", client)
+
+    async def scenario() -> None:
+        policy.start_slow_loop()
+        await policy.enqueue_slow_observation(_observation(12))
+        entered = await asyncio.wait_for(asyncio.to_thread(client.entered.wait, 1), timeout=1)
+        assert entered
+        await asyncio.wait_for(policy.close(), timeout=1)
+        client.release.set()
+
+    asyncio.run(scenario())
+    assert policy._slow_queue._unfinished_tasks == 0
     assert policy.slow_task is None
 
 

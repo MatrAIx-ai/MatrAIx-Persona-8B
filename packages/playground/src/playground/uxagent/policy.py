@@ -114,21 +114,22 @@ class ConversationalUXPolicy:
 
     async def next_action(self, observation: UXObservation) -> SendMessageAction:
         """Run exactly one perceive-plan-act cycle and return one message action."""
+        new_memories: list[UXMemory] = []
         perceived = await self._complete(self.PERCEIVE_SYSTEM, observation, phase="perception")
         perception = self._validate(_PerceptionResponse, perceived, "perception")
-        for content in perception.observations:
-            self._append_memory(
-                UXMemory(
-                    kind="observation",
-                    content=content,
-                    importance=perception.importance,
-                    turn_index=observation.turn_index,
-                )
+        new_memories.extend(
+            UXMemory(
+                kind="observation",
+                content=content,
+                importance=perception.importance,
+                turn_index=observation.turn_index,
             )
+            for content in perception.observations
+        )
 
         planned = await self._complete(self.PLAN_SYSTEM, observation, phase="plan")
         plan = self._validate(_PlanResponse, planned, "plan")
-        self._append_memory(
+        new_memories.append(
             UXMemory(
                 kind="plan",
                 content=plan.plan,
@@ -139,7 +140,7 @@ class ConversationalUXPolicy:
 
         acted = await self._complete(self.ACT_SYSTEM, observation, phase="action")
         action = self._validate_action(acted)
-        self._append_memory(
+        new_memories.append(
             UXMemory(
                 kind="action",
                 content=action.message,
@@ -147,6 +148,8 @@ class ConversationalUXPolicy:
                 turn_index=observation.turn_index,
             )
         )
+        for memory in new_memories:
+            self._append_memory(memory)
         return action
     def start_slow_loop(self) -> None:
         """Start the slow worker once; repeated starts are idempotent."""
@@ -181,17 +184,14 @@ class ConversationalUXPolicy:
             raise self._slow_error
 
     async def close(self) -> None:
-        """Drain queued slow work, cancel the idle worker, and release its task."""
+        """Cancel the worker, drain queue bookkeeping, and release its task."""
         task = self._slow_task
-        if task is None:
-            self._drain_slow_queue()
-            self._slow_started = False
-            self._slow_failed = False
-            return
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        self._drain_slow_queue()
         await self._slow_queue.join()
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
         self._slow_task = None
         self._slow_started = False
         self._slow_failed = False
@@ -266,7 +266,7 @@ class ConversationalUXPolicy:
     def _validate(model: type[BaseModel], raw: Mapping[str, Any], phase: str) -> BaseModel:
         try:
             return model.model_validate(raw, strict=True)
-        except (ValidationError, TypeError, ValueError):
+        except ValidationError:
             raise UXAgentPolicyError(f"invalid {phase} response") from None
 
     @staticmethod
@@ -274,7 +274,7 @@ class ConversationalUXPolicy:
         try:
             envelope = _ActionResponse.model_validate(raw, strict=True)
             return SendMessageAction.model_validate(envelope.model_dump(), strict=True)
-        except (ValidationError, TypeError, ValueError):
+        except ValidationError:
             raise UXAgentPolicyError("invalid action response") from None
 
     def _append_memory(self, memory: UXMemory) -> None:
