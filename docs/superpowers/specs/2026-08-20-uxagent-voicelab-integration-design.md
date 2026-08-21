@@ -8,7 +8,7 @@ MatrAIx currently evaluates the ten `application/tasks/chat_vita-*` automotive s
 2. call VoiceLab chat with that persona session;
 3. preserve vehicle decisions, tool execution, state, and safety evidence for the existing verifier.
 
-UXAgent provides the desired dual-system persona behavior, but its upstream runtime is tied to Playwright, DOM observations, and browser actions. Pointing upstream UXAgent directly at `/api/chat` or `/api/agent/chat` is therefore not viable.
+UXAgent provides the desired dual-system persona behavior, but its upstream runtime is tied to Playwright, DOM observations, and browser actions. Reusing its browser action loop for the Vita agent API is therefore not viable.
 
 ## Decision
 
@@ -19,7 +19,7 @@ The integration will:
 - implement the published fast-loop concepts (`perceive → plan → act`) and slow-loop concepts (`reflect → wonder → memory update`) with original MatrAIx code and prompts;
 - expose one executable policy action: `send_message`;
 - create one VoiceLab persona session per Harbor trial;
-- use `/api/agent/chat` for automotive turns because the current Vita verifiers require decision, tool, vehicle-state, and safety evidence;
+- use `/v1/agent/chat` for automotive turns because the current Vita verifiers require decision, tool, vehicle-state, and safety evidence;
 - migrate all ten current `chat_vita-*` tasks to use this agent through the job/default-agent selection path;
 - keep existing task oracle and verifier contracts unchanged;
 - fail explicitly rather than silently falling back to `persona-user-sim`.
@@ -56,15 +56,16 @@ A narrow asynchronous client for the provider contract.
 
 Configuration:
 
-- base URL from a dedicated environment variable, with the contract's local URL as the documented development value;
-- optional `APP_PASSWORD` value sent only as `x-app-password`;
+- base URL from required environment variable `VITA_AGENT_API_URL`;
+- Bearer token from required environment variable `VITA_AGENT_BEARER_TOKEN`, sent only as `Authorization: Bearer <token>`;
+- no `APP_PASSWORD` or `x-app-password` compatibility path;
 - bounded request timeout;
 - no secret values in prompts, logs, trajectories, or output artifacts.
 
 Operations:
 
 - `create_session(payload)` → `POST /api/persona/session`;
-- `agent_chat(payload)` → `POST /api/agent/chat`.
+- `agent_chat(payload)` → `POST /v1/agent/chat`.
 
 The client validates required response fields and raises typed errors for transport, HTTP, and schema failures. It does not implement a fallback transport.
 
@@ -102,7 +103,7 @@ Owns the per-trial lifecycle:
 8. write transcript, application result, memory trace, and ATIF-compatible trajectory evidence;
 9. cancel and await the slow-loop task during cleanup.
 
-The runner does not delete the VoiceLab active persona at trial end. `DELETE /api/persona/active` is global and can race when trials run concurrently. Every chat request explicitly carries `personaSessionId`, which provides trial isolation.
+The runner does not delete the active persona at trial end. `DELETE /api/persona/active` is global and can race when trials run concurrently. The persona-session and agent-chat requests both carry the Harbor trial identity as `sessionId`, which provides trial isolation in the shared Tailnet backend.
 
 ## Data Contract
 
@@ -140,10 +141,8 @@ Each turn sends:
 
 ```json
 {
-  "message": "<one persona-conditioned Vietnamese utterance>",
-  "drivingContext": "<task vehicle-motion context>",
-  "intent": "<task scenario intent>",
-  "personaSessionId": "<harbor-trial-identity>"
+  "sessionId": "<harbor-trial-identity>",
+  "message": "<one persona-conditioned Vietnamese utterance>"
 }
 ```
 
@@ -206,8 +205,8 @@ Playwright, Flask, Hydra, Selenium, and other browser/UI-only UXAgent dependenci
 ### Unit tests
 
 - persona YAML and task context map to the provider-session payload without fabricated optional values;
-- `APP_PASSWORD` maps to `x-app-password` and is absent from recorded artifacts;
-- chat requests always include the per-trial `personaSessionId`;
+- `VITA_AGENT_BEARER_TOKEN` maps to the full `Authorization: Bearer <token>` header and is absent from errors and recorded artifacts;
+- chat requests always include the per-trial `sessionId`;
 - the policy accepts only `send_message` and produces one utterance per turn;
 - slow-loop cleanup cancels and awaits background work;
 - new agent name resolves through Harbor's factory and persona-agent context.
@@ -217,7 +216,7 @@ Playwright, Flask, Hydra, Selenium, and other browser/UI-only UXAgent dependenci
 With a deterministic mock HTTP server:
 
 - assert the exact `POST /api/persona/session` request;
-- assert ordered `POST /api/agent/chat` requests;
+- assert ordered `POST /v1/agent/chat` requests;
 - return decision/tool/vehicle-state evidence and assert it reaches transcript, application result, trajectory, and verifier inputs unchanged;
 - assert transport, HTTP, malformed JSON, and missing-field failures are explicit and contain no secret values.
 
@@ -226,7 +225,7 @@ With a deterministic mock HTTP server:
 Run one representative Vita task end to end with `persona-uxagent` against a configured VoiceLab instance. The proof must show:
 
 1. one persona session created for the trial;
-2. at least one `/api/agent/chat` turn carrying that session ID;
+2. at least one `/v1/agent/chat` turn carrying that session ID;
 3. VoiceLab decision/tool/vehicle-state evidence in task artifacts;
 4. the existing verifier completing against those artifacts.
 
@@ -236,7 +235,7 @@ After that smoke passes, run the focused Vita and agent-registration test suites
 
 - `persona-uxagent` is selectable as a Harbor persona agent.
 - Each Vita trial creates exactly one isolated VoiceLab persona session.
-- Every turn calls `/api/agent/chat` with the trial's `personaSessionId`.
+- Every turn calls `/v1/agent/chat` with the trial's `sessionId`.
 - Driver utterances are generated by the clean-room UXAgent-inspired dual-system policy, not the old user simulator.
 - Existing Vita verifier-required response evidence is preserved.
 - All ten current Vita tasks use the new integration through a single generator/default mapping.

@@ -6,6 +6,18 @@
 
 **Architecture:** `persona-uxagent` remains a thin Harbor adapter. A new `playground.uxagent` package owns original prompts, memory/policy state, VoiceLab HTTP contracts, and the trial loop. Vita auto-selection changes only for `application/tasks/chat_vita-*`; other chat tasks keep `persona-user-sim`.
 
+
+## Approved API Contract Override
+
+This section supersedes every older endpoint, request, and authentication example later in this plan:
+
+- `POST /api/persona/session` and `POST /v1/agent/chat` use the same base URL from required env `VITA_AGENT_API_URL`.
+- Both requests use `Authorization: Bearer <VITA_AGENT_BEARER_TOKEN>`.
+- `APP_PASSWORD` and `x-app-password` are removed; there is no compatibility fallback.
+- Chat request body is exactly `{"sessionId": "<harbor-trial-identity>", "message": "<utterance>"}`.
+- The user-provided token is compromised by transcript exposure and must not be used, stored, tested, or committed. Verification requires a rotated token supplied through the operator environment.
+- All implementation and verification steps must follow this override even where older snippets below show `/api/agent/chat`, `personaSessionId`, or `APP_PASSWORD`.
+
 **Tech Stack:** Python 3.12, asyncio, httpx, Pydantic v2, existing Playground model clients and artifact types, Harbor `BaseAgent`, pytest.
 
 ---
