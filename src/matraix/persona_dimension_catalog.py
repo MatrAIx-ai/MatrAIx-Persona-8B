@@ -151,6 +151,19 @@ _STATE_IDS = frozenset(
     }
 )
 
+PRIMARY_LANGUAGE_OUTPUT_INSTRUCTION = (
+    "Default written language: use your primary language for outputs."
+)
+
+
+def _primary_language_output_instruction(
+    dimensions: dict[str, Any],
+) -> str | None:
+    primary_language = _dim_value(dimensions, "primary_language")
+    if primary_language is None:
+        return None
+    return PRIMARY_LANGUAGE_OUTPUT_INSTRUCTION
+
 
 @lru_cache(maxsize=4)
 def load_dimension_catalog(catalog_path: str) -> dict[str, Any]:
@@ -364,6 +377,13 @@ def build_dimension_narrative(
             block = _format_section(
                 heading, [(label, value) for _dim_id, label, value in items]
             )
+            required_instruction = (
+                _primary_language_output_instruction(dimensions)
+                if heading == "Language & communication"
+                else None
+            )
+            if required_instruction and required_instruction not in block:
+                block = f"{block}\n{required_instruction}"
 
         rendered.append(block)
         used_chars += len(block) + 2  # blank line between sections

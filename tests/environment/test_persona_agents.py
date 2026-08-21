@@ -232,7 +232,7 @@ def test_persona_system_template_is_identity_only() -> None:
     )
 
     persona = load_persona(
-        ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0042.yaml"
+        ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0004.yaml"
     )
     system = render_persona_template(
         resolve_persona_template(persona, None, PERSONA_SYSTEM_TEMPLATE),
@@ -244,7 +244,11 @@ def test_persona_system_template_is_identity_only() -> None:
         instruction="Pick a book on the site.",
     )
 
-    assert "You are Casey Brooks." in system
+    assert "You are Sienna Carter." in system
+    assert (
+        "Default written language: use your primary language for outputs."
+        in system
+    )
     assert "## Who you are" in system
     assert "## Task instruction" not in system
     assert "Pick a book on the site." not in system
@@ -253,11 +257,15 @@ def test_persona_system_template_is_identity_only() -> None:
     assert "stay in character" not in system.lower()
     assert "embody" not in system.lower()
 
-    assert "You are Casey Brooks." in instruction
+    assert "You are Sienna Carter." in instruction
+    assert (
+        "Default written language: use your primary language for outputs."
+        in instruction
+    )
     assert "## Task instruction" in instruction
     assert "Pick a book on the site." in instruction
     assert "Simulated person" not in instruction
-    assert instruction.index("You are Casey Brooks.") < instruction.index(
+    assert instruction.index("You are Sienna Carter.") < instruction.index(
         "## Task instruction"
     )
 
@@ -302,9 +310,23 @@ def test_persona_computer_1_docker_uses_identity_channel(monkeypatch, tmp_path) 
     import asyncio
     from types import SimpleNamespace
 
+    from matraix.agents.persona.loader import load_persona
     from matraix.agents.persona.computer_1 import PersonaComputer1
+    from matraix.agents.persona.templating import (
+        PERSONA_SYSTEM_TEMPLATE,
+        render_persona_template,
+        resolve_persona_template,
+    )
 
     captured: dict[str, object] = {}
+    persona_path = (
+        ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0004.yaml"
+    )
+    persona = load_persona(persona_path)
+    expected_identity = render_persona_template(
+        resolve_persona_template(persona, None, PERSONA_SYSTEM_TEMPLATE),
+        persona,
+    )
 
     class _FakeComputer1:
         def __init__(self, **kwargs):
@@ -340,9 +362,7 @@ def test_persona_computer_1_docker_uses_identity_channel(monkeypatch, tmp_path) 
     agent = PersonaComputer1(
         logs_dir=logs_dir,
         model_name="openai/gpt-4o",
-        persona_path=str(
-            ROOT / "persona/datasets/matraix-persona-dev-sample/persona_0042.yaml"
-        ),
+        persona_path=str(persona_path),
         cua_backend="docker",
     )
     agent.logger = SimpleNamespace(
@@ -367,8 +387,12 @@ def test_persona_computer_1_docker_uses_identity_channel(monkeypatch, tmp_path) 
     assert captured["instruction"] == "Open Settings and enable Do Not Disturb."
     identity = captured["identity_prompt"]
     assert isinstance(identity, str)
-    assert "You are Casey Brooks." in identity
+    assert identity == expected_identity
+    assert "You are Sienna Carter." in identity
+    assert (
+        "Default written language: use your primary language for outputs."
+        in identity
+    )
     assert "Simulated person" not in identity
     assert "schema" not in identity.lower()
     assert "Open Settings and enable Do Not Disturb." not in identity
-

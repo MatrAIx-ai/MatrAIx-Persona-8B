@@ -26,6 +26,30 @@ def test_communication_style_uses_label_value_pairs():
     assert "visual vs verbal thinking: mixed" in joined
 
 
+def test_primary_language_adds_output_instruction_to_language_section():
+    paragraphs = build_dimension_narrative({"primary_language": "Mandarin"})
+    text = "\n\n".join(paragraphs)
+
+    assert "### Language & communication" in text
+    assert (
+        "Default written language: use your primary language for outputs."
+        in text
+    )
+    assert text.index("### Language & communication") < text.index(
+        "Default written language: use your primary language for outputs."
+    )
+
+
+def test_missing_primary_language_does_not_add_output_instruction():
+    paragraphs = build_dimension_narrative({"primary_language": None})
+    text = "\n\n".join(paragraphs)
+
+    assert (
+        "Default written language: use your primary language for outputs."
+        not in text
+    )
+
+
 def test_full_schema_render_skips_null_and_default_without_truncation():
     persona = load_persona(
         "persona/datasets/matraix-persona-dev-sample/persona_0182.yaml"
