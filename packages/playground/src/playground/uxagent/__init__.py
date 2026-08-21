@@ -5,9 +5,12 @@ from playground.uxagent.models import (
     VoiceLabPersonaSessionRequest,
 )
 
+from playground.uxagent.runner import UXAgentTrialRunner
+
 __all__ = [
     "SendMessageAction",
     "VoiceLabAgentChatRequest",
     "VoiceLabAgentChatResponse",
     "VoiceLabPersonaSessionRequest",
+    "UXAgentTrialRunner",
 ]
