@@ -125,6 +125,7 @@ Not sent over the remote plane. Per-agent names:
 |--------|----------------|
 | `persona-claude-code`, `persona-json-survey`, browser/CUA personas | `ANTHROPIC_API_KEY` |
 | User-sim / OpenAI backends | `OPENAI_API_KEY` |
+| `persona-uxagent` | `VITA_AGENT_API_URL` and `VITA_AGENT_BEARER_TOKEN` (required); host-native and auto-selected for `chat_vita-*`; uses the existing persona model credential |
 | `persona-browser-use`, OpenHands SDK | `LLM_API_KEY` or provider-specific |
 | `persona-computer-1` on use.computer | `USE_COMPUTER_API_KEY` |
 

@@ -48,6 +48,7 @@ DEFAULT_AGENT_BY_TYPE: dict[str, str] = {
     # task metadata aliases before these lookup tables are consulted.
     "survey": "persona-json-survey",
     "chatbot": "persona-user-sim",
+    "agent": "persona-user-sim",
     "web": "persona-openhands-sdk",
     "os-app": "persona-computer-1",
 }
@@ -55,6 +56,7 @@ DEFAULT_AGENT_BY_TYPE: dict[str, str] = {
 AUTO_TRIAL_PROFILE_BY_TYPE: dict[str, str] = {
     "survey": "json_survey",
     "chatbot": "user_sim_chat",
+    "agent": "user_sim_chat",
     "web": "docker_agent",
     "os-app": "docker_agent",
 }
@@ -145,12 +147,15 @@ def resolve_agent_name(
     )
     if profile == "json_survey":
         return "persona-json-survey"
+    normalized = task_path.replace("\\", "/").lower()
+    if normalized.startswith("application/tasks/chat_vita-") and profile == "user_sim_chat":
+        return "persona-uxagent"
     if profile == "user_sim_chat":
         return "persona-user-sim"
     normalized_mode = (mode or "auto").strip().lower()
     if normalized_mode == "smoke":
         return DEFAULT_AGENT_BY_TYPE.get("survey", "persona-claude-code")
-    normalized = task_path.replace("\\", "/").lower()
+
     if "browser-use" in normalized:
         return "persona-browser-use"
     if "cocoa" in normalized:
@@ -169,7 +174,7 @@ def _map_task_metadata_type(task_type: str | None) -> str:
     if not task_type:
         return "unknown"
     mapped = normalize_metadata_type(task_type)
-    if mapped in {"web", "survey", "chatbot", "os-app"}:
+    if mapped in {"web", "survey", "chatbot", "agent", "os-app"}:
         return mapped
     return "unknown"
 

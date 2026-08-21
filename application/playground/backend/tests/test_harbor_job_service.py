@@ -363,6 +363,26 @@ def test_resolve_agent_name_for_chat_task(tmp_path):
     )
 
 
+def test_resolve_agent_name_for_vita_chat_task(tmp_path):
+    repo = tmp_path
+    task_dir = repo / "application" / "tasks" / "chat_vita-climate-temperature"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text(
+        "metadata:\n  type: agent\n",
+        encoding="utf-8",
+    )
+    from backend.service.harbor_job_service import resolve_agent_name
+
+    assert (
+        resolve_agent_name(
+            "application/tasks/chat_vita-climate-temperature",
+            repo_root=repo,
+            mode="auto",
+        )
+        == "persona-uxagent"
+    )
+
+
 def test_launch_auto_chat_uses_local_distributed_executor(tmp_path, monkeypatch):
     repo = tmp_path
     jobs_dir = repo / "jobs"

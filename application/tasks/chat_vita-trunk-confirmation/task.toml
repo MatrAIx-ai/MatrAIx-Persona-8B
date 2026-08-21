@@ -2,7 +2,7 @@ version = "1.0"
 artifacts = ["/app/output"]
 
 [task]
-name = "application/agent-vita-climate-temperature"
+name = "application/agent-vita-trunk-confirmation"
 
 [metadata]
 difficulty = "medium"
