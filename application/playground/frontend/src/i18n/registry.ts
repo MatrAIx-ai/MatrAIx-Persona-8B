@@ -12,6 +12,9 @@ export interface LocaleDefinition<Code extends string = string> {
   load: () => Promise<MessageCatalog>;
 }
 
+/**
+ * Locale popover order: English, Chinese scripts, then ko/ja, then Romance.
+ */
 export const LOCALE_REGISTRY = [
   {
     code: SOURCE_LOCALE,
@@ -40,6 +43,42 @@ export const LOCALE_REGISTRY = [
     fallback: SOURCE_LOCALE,
     load: async () => (await import("./messages/zh-Hant.json")).default,
   },
+  {
+    code: "ko",
+    nativeName: "한국어",
+    englishName: "Korean",
+    translationStatus: "machine-assisted",
+    dir: "ltr",
+    fallback: SOURCE_LOCALE,
+    load: async () => (await import("./messages/ko.json")).default,
+  },
+  {
+    code: "ja",
+    nativeName: "日本語",
+    englishName: "Japanese",
+    translationStatus: "machine-assisted",
+    dir: "ltr",
+    fallback: SOURCE_LOCALE,
+    load: async () => (await import("./messages/ja.json")).default,
+  },
+  {
+    code: "es",
+    nativeName: "Español",
+    englishName: "Spanish",
+    translationStatus: "machine-assisted",
+    dir: "ltr",
+    fallback: SOURCE_LOCALE,
+    load: async () => (await import("./messages/es.json")).default,
+  },
+  {
+    code: "pt-BR",
+    nativeName: "Português (Brasil)",
+    englishName: "Portuguese (Brazil)",
+    translationStatus: "machine-assisted",
+    dir: "ltr",
+    fallback: SOURCE_LOCALE,
+    load: async () => (await import("./messages/pt-BR.json")).default,
+  },
 ] as const satisfies readonly LocaleDefinition[];
 
 /** Adding a registry entry extends the UI-locale union automatically. */
@@ -48,8 +87,6 @@ export type UiLocale = (typeof LOCALE_REGISTRY)[number]["code"];
 export function isUiLocale(value: unknown): value is UiLocale {
   return typeof value === "string" && LOCALE_REGISTRY.some((entry) => entry.code === value);
 }
-
-
 
 export function getLocaleDefinition(locale: UiLocale): LocaleDefinition<UiLocale> {
   const definition = LOCALE_REGISTRY.find((candidate) => candidate.code === locale);
