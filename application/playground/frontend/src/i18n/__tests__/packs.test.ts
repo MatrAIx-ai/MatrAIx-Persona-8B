@@ -5,7 +5,7 @@ import { LOCALE_REGISTRY } from "../registry";
 import { SOURCE_LOCALE, SOURCE_MESSAGES } from "../source";
 
 const SOURCE_KEYS = Object.keys(SOURCE_MESSAGES).sort();
-const EXPECTED_OPTIONAL = ["zh-Hans", "zh-Hant", "ko", "ja"];
+const EXPECTED_OPTIONAL = ["zh-Hans", "zh-Hant", "ko", "ja", "es"];
 
 describe("optional UI locale packs", () => {
   it("registers lazy-loaded optional locales in popover order", () => {

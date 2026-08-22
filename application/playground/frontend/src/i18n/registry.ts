@@ -58,6 +58,15 @@ export const LOCALE_REGISTRY = [
     fallback: SOURCE_LOCALE,
     load: async () => (await import("./messages/ja.json")).default,
   },
+  {
+    code: "es",
+    nativeName: "Español",
+    englishName: "Spanish",
+    translationStatus: "machine-assisted",
+    dir: "ltr",
+    fallback: SOURCE_LOCALE,
+    load: async () => (await import("./messages/es.json")).default,
+  },
 ] as const satisfies readonly LocaleDefinition[];
 
 /** Adding a registry entry extends the UI-locale union automatically. */
