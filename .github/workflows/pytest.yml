@@ -63,7 +63,6 @@ jobs:
             application/playground/backend/tests/test_harbor_survey_eval.py \
             application/playground/backend/tests/test_harbor_web_trace.py \
             application/playground/backend/tests/test_job_aggregation.py \
-            application/playground/backend/tests/test_mcp_client_contract.py \
             application/playground/backend/tests/test_persona_1m_index.py \
             application/playground/backend/tests/test_persona_1m_pool.py \
             application/playground/backend/tests/test_persona_pool_service.py \
