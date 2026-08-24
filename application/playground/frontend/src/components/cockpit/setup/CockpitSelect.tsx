@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { FOCUS_RING, Sym } from "../cockpitShared";
 
 export interface CockpitSelectOption {
@@ -91,6 +92,7 @@ export function CockpitSelect({
   wideMenu = false,
   showSelectedMeta = true,
 }: CockpitSelectProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [coords, setCoords] = useState<MenuCoords | null>(null);
@@ -302,7 +304,7 @@ export function CockpitSelect({
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? menuId : undefined}
-            aria-label={`${label}: ${selected?.label ?? value}`}
+            aria-label={t("cockpit.knob.selectedValue", { label, value: selected?.label ?? value })}
             className={`glass-tile glass-tile--hover flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left backdrop-blur transition ease-out active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 disabled:active:scale-100 ${FOCUS_RING}`}
           >
             <span className="min-w-0 flex-1">

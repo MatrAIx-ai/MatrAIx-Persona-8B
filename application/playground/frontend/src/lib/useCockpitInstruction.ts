@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "./api";
 import {
   hasMeaningfulTaskContext,
@@ -27,6 +28,7 @@ export function useCockpitInstruction({
   harborTrialName,
   enabled = true,
 }: UseCockpitInstructionInput) {
+  const { t } = useI18n();
   const normalizedPath = taskPath?.trim() ?? "";
   const hasTrial = Boolean(harborJobName && harborTrialName);
 
@@ -116,15 +118,15 @@ export function useCockpitInstruction({
     if (trialQuery.isError) {
       return trialQuery.error instanceof ApiError
         ? trialQuery.error.message
-        : "Could not load trial instruction.";
+        : t("cockpit.instruction.trialLoadFailed");
     }
     if (taskQuery.isError) {
       return taskQuery.error instanceof ApiError
         ? taskQuery.error.message
-        : "Could not load task instruction.";
+        : t("cockpit.instruction.taskLoadFailed");
     }
     return null;
-  }, [markdown, trialQuery.isError, trialQuery.error, taskQuery.isError, taskQuery.error]);
+  }, [markdown, trialQuery.isError, trialQuery.error, taskQuery.isError, taskQuery.error, t]);
 
   return {
     markdown: markdown || null,
