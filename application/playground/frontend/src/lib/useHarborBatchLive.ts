@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
 import { api, ApiError } from "./api";
 import { applyHarborTrialEvents, type HarborCockpitLiveState } from "./harborCockpitMappers";
 import type { HarborJobDetail, HarborJobLiveResponse } from "./types";
 
 const POLL_MS = 1_000;
-const STALE_BACKEND_HINT =
-  "Live events API is unavailable. Restart the Playground backend (uvicorn) to enable bubble-by-bubble updates.";
 
 function jobDetailToLive(job: HarborJobDetail): HarborJobLiveResponse {
   const trials = job.trials.map((trial) => ({
@@ -38,6 +37,7 @@ async function fetchLiveSnapshot(jobName: string): Promise<HarborJobLiveResponse
 }
 
 export function useHarborBatchLive(jobName: string | null, options?: { enabled?: boolean }) {
+  const { t } = useI18n();
   const enabled = options?.enabled ?? true;
   const [live, setLive] = useState<HarborJobLiveResponse | null>(null);
   const [selectedTrial, setSelectedTrial] = useState<string | null>(null);
@@ -123,7 +123,7 @@ export function useHarborBatchLive(jobName: string | null, options?: { enabled?:
           } catch (exc) {
             if (exc instanceof ApiError && exc.status === 404) {
               eventsApiMissingRef.current = true;
-              setError(STALE_BACKEND_HINT);
+              setError(t("eval.progress.liveEventsUnavailable"));
             }
             // Trial directory may not exist yet.
           }

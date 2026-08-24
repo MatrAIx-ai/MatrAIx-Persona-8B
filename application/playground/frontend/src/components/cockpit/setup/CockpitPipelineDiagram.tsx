@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useI18n } from "@/i18n/I18nProvider";
+import type { MessageKey } from "@/i18n/types";
 import type { PlaygroundTaskType } from "../TaskTypeSwitch";
 import {
   CHAT_ACCESS_PIPELINE_PATHS,
@@ -11,6 +12,17 @@ import {
 } from "@/lib/personaAgentCatalog";
 import { Sym } from "../cockpitShared";
 import type { ChatTransport } from "./TaskSelectionRail";
+
+/**
+ * Chat connection forks reuse the transport keys the task cards already use.
+ * Web-tier / OS-platform forks stay literal: proper nouns and technical terms.
+ */
+const TRANSPORT_PATH_LABEL_KEYS: Record<string, MessageKey> = {
+  api_sidecar: "cockpitSetup.transport.apiSidecar",
+  api_external: "cockpitSetup.transport.apiEndpoint",
+  mcp_sidecar: "cockpitSetup.transport.mcpSidecar",
+  mcp_external: "cockpitSetup.transport.mcpEndpoint",
+};
 
 export interface CockpitPipelineDiagramProps {
   taskType: PlaygroundTaskType;
@@ -129,8 +141,12 @@ function PathForkRow({
   visible: boolean;
   forkSize?: ForkSize;
 }) {
+  const { t } = useI18n();
   const dense = forkSize === "dense";
   const narrow = forkSize === "narrow";
+  const label = TRANSPORT_PATH_LABEL_KEYS[option.id]
+    ? t(TRANSPORT_PATH_LABEL_KEYS[option.id])
+    : option.label;
 
   return (
     <div
@@ -160,7 +176,7 @@ function PathForkRow({
                 : "text-[13px] sm:text-[14px]"
             } ${active ? "text-text-main" : "text-text-variant"}`}
           >
-            {option.label}
+            {label}
           </p>
           {option.hint && (
             <p
