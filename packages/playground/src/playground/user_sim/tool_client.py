@@ -217,6 +217,7 @@ def build_tool_step_client(
         dashscope_openai_client_kwargs,
         deepseek_openai_client_kwargs,
         gemini_openai_client_kwargs,
+        orcarouter_openai_client_kwargs,
         openrouter_openai_client_kwargs,
         xai_openai_client_kwargs,
         zai_openai_client_kwargs,
@@ -271,6 +272,16 @@ def build_tool_step_client(
             temperature=temperature,
             capabilities=capabilities,
             provider="openrouter",
+        )
+    if value.startswith("orcarouter/"):
+        kwargs = orcarouter_openai_client_kwargs(value)
+        return OpenAIToolStepClient(
+            kwargs["model"],
+            api_key=kwargs["api_key"],
+            base_url=kwargs["base_url"],
+            temperature=temperature,
+            capabilities=capabilities,
+            provider="orcarouter",
         )
     if value.startswith("xai/"):
         kwargs = xai_openai_client_kwargs(value)
