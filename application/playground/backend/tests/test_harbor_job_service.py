@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 
-from backend.service.harbor_job_service import HarborJobService, HarborLaunchRecord
+from backend.service.harbor_job_service import (
+    EXTERNAL_RUN_STALE_AFTER_SEC,
+    HarborJobService,
+    HarborLaunchRecord,
+    _job_list_status,
+)
 
 
 def test_launch_writes_job_config(tmp_path, monkeypatch):
@@ -1001,6 +1006,143 @@ def test_list_jobs_reports_success_and_failed_status(tmp_path):
     assert rows["job-running"]["status"] == "running"
     assert rows["job-orphaned"]["status"] == "failed"
     assert rows["job-completed"]["status"] == "success"
+    service.shutdown()
+
+
+def _stale_iso(now_ts: float) -> str:
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(
+        now_ts - EXTERNAL_RUN_STALE_AFTER_SEC - 60, tz=timezone.utc
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _fresh_iso(now_ts: float) -> str:
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(now_ts - 30, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_job_list_status_external_live_stats_are_running():
+    now = 1_700_000_000.0
+    status, failed = _job_list_status(
+        trial_count=2,
+        completed_trials=0,
+        failed_trials_on_disk=0,
+        job_result={
+            "updated_at": _fresh_iso(now),
+            "stats": {"n_running_trials": 1, "n_pending_trials": 1, "n_errored_trials": 0},
+        },
+        launch=None,
+        activity_ts=now - 30,
+        now_ts=now,
+    )
+    assert status == "running"
+    assert failed == 0
+
+
+def test_job_list_status_external_pending_only_is_running():
+    now = 1_700_000_000.0
+    status, _failed = _job_list_status(
+        trial_count=4,
+        completed_trials=0,
+        failed_trials_on_disk=0,
+        job_result={
+            "updated_at": _fresh_iso(now),
+            "stats": {"n_running_trials": 0, "n_pending_trials": 4},
+        },
+        launch=None,
+        activity_ts=now - 5,
+        now_ts=now,
+    )
+    assert status == "running"
+
+
+def test_job_list_status_stale_in_flight_stats_are_failed_not_running():
+    now = 1_700_000_000.0
+    status, failed = _job_list_status(
+        trial_count=2,
+        completed_trials=0,
+        failed_trials_on_disk=0,
+        job_result={
+            "updated_at": _stale_iso(now),
+            "stats": {"n_running_trials": 1, "n_pending_trials": 1, "n_errored_trials": 0},
+        },
+        launch=None,
+        activity_ts=now - EXTERNAL_RUN_STALE_AFTER_SEC - 120,
+        now_ts=now,
+    )
+    assert status == "failed"
+    assert failed == 0
+
+
+def test_job_list_status_in_memory_launch_stays_running_even_if_disk_is_stale():
+    now = 1_700_000_000.0
+    status, failed = _job_list_status(
+        trial_count=2,
+        completed_trials=0,
+        failed_trials_on_disk=0,
+        job_result={
+            "updated_at": _stale_iso(now),
+            "stats": {"n_running_trials": 1, "n_pending_trials": 1},
+        },
+        launch=HarborLaunchRecord(job_name="still-here", status="running"),
+        activity_ts=now - EXTERNAL_RUN_STALE_AFTER_SEC - 120,
+        now_ts=now,
+    )
+    assert status == "running"
+    assert failed == 0
+
+
+def test_list_jobs_external_run_uses_freshness(tmp_path):
+    import os
+    from datetime import datetime, timezone
+
+    jobs_dir = tmp_path / "jobs"
+    jobs_dir.mkdir()
+    now = datetime.now(timezone.utc).timestamp()
+    stale = now - EXTERNAL_RUN_STALE_AFTER_SEC - 120
+
+    live = jobs_dir / "job-external-live"
+    live.mkdir()
+    (live / "trial-a").mkdir()
+    (live / "result.json").write_text(
+        json.dumps(
+            {
+                "updated_at": datetime.fromtimestamp(now - 10, tz=timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "stats": {"n_running_trials": 1, "n_pending_trials": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dead = jobs_dir / "job-external-dead"
+    dead.mkdir()
+    (dead / "trial-a").mkdir()
+    (dead / "result.json").write_text(
+        json.dumps(
+            {
+                "updated_at": datetime.fromtimestamp(stale, tz=timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "stats": {"n_running_trials": 1, "n_pending_trials": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+    for path in (dead, dead / "result.json", dead / "trial-a"):
+        os.utime(path, (stale, stale))
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "configs",
+    )
+    rows = {row["jobName"]: row for row in service.list_jobs()}
+    assert rows["job-external-live"]["status"] == "running"
+    assert rows["job-external-dead"]["status"] == "failed"
     service.shutdown()
 
 

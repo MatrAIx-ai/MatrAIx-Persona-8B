@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import tomllib
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -346,6 +347,66 @@ def _parse_iso_timestamp(value: str | None) -> float | None:
         return None
 
 
+# Harbor lock.json is a reproducibility snapshot and is left on disk after the
+# run ends, so it is not a liveness signal. External CLI jobs (no in-memory
+# launch record) are "running" only while result.json still looks in-flight
+# AND something on disk has moved recently.
+EXTERNAL_RUN_STALE_AFTER_SEC = 10 * 60
+
+
+def _stats_in_flight(stats: dict[str, Any]) -> bool:
+    try:
+        running = int(stats.get("n_running_trials") or 0)
+        pending = int(stats.get("n_pending_trials") or 0)
+    except (TypeError, ValueError):
+        return False
+    return running > 0 or pending > 0
+
+
+def _job_result_activity_ts(job_result: dict[str, Any] | None) -> float | None:
+    if not isinstance(job_result, dict):
+        return None
+    return _parse_iso_timestamp(job_result.get("updated_at")) or _parse_iso_timestamp(
+        job_result.get("started_at")
+    )
+
+
+def _path_mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _external_run_activity_ts(
+    job_dir: Path,
+    *,
+    job_result: dict[str, Any] | None,
+    trial_names: list[str],
+) -> float | None:
+    """Latest evidence that an externally driven job is still writing artifacts."""
+    latest = _job_result_activity_ts(job_result)
+    for path in (job_dir / "result.json", job_dir / "job.log"):
+        mtime = _path_mtime(path)
+        if mtime is not None:
+            latest = mtime if latest is None else max(latest, mtime)
+    for trial_name in trial_names:
+        trial_dir = job_dir / trial_name
+        if (trial_dir / "result.json").is_file():
+            continue
+        for path in (trial_dir, trial_dir / "trial.log"):
+            mtime = _path_mtime(path)
+            if mtime is not None:
+                latest = mtime if latest is None else max(latest, mtime)
+    return latest
+
+
+def _activity_is_live(*, activity_ts: float | None, now_ts: float) -> bool:
+    if activity_ts is None:
+        return False
+    return (now_ts - activity_ts) <= EXTERNAL_RUN_STALE_AFTER_SEC
+
+
 def _job_list_status(
     *,
     trial_count: int,
@@ -353,13 +414,18 @@ def _job_list_status(
     failed_trials_on_disk: int,
     job_result: dict[str, Any] | None,
     launch: HarborLaunchRecord | None,
+    activity_ts: float | None = None,
+    now_ts: float | None = None,
 ) -> tuple[str, int]:
     """Return ``(status, failedTrials)`` for a Harbor job list row."""
     failed_trials = failed_trials_on_disk
     if isinstance(job_result, dict):
         stats = job_result.get("stats")
         if isinstance(stats, dict):
-            failed_trials = int(stats.get("n_errored_trials") or 0)
+            try:
+                failed_trials = int(stats.get("n_errored_trials") or 0)
+            except (TypeError, ValueError):
+                failed_trials = failed_trials_on_disk
         if job_result.get("finished_at"):
             if failed_trials > 0:
                 return "failed", failed_trials
@@ -375,6 +441,19 @@ def _job_list_status(
         return "running", 0
     if launch is not None and launch.status == "failed":
         return "failed", failed_trials
+
+    # Externally driven runs (matraix run / docker exec) have no launch record.
+    # Trust in-flight stats from result.json only while artifacts are still
+    # fresh — a killed process leaves n_running_trials > 0 with no finished_at.
+    if isinstance(job_result, dict):
+        stats = job_result.get("stats")
+        if isinstance(stats, dict) and _stats_in_flight(stats):
+            clock = time.time() if now_ts is None else now_ts
+            observed = activity_ts if activity_ts is not None else _job_result_activity_ts(
+                job_result
+            )
+            if _activity_is_live(activity_ts=observed, now_ts=clock):
+                return "running", failed_trials
 
     # Nothing is actively driving the job: either the launch finished without a
     # job-level result.json, or the backend was restarted / the run was killed
@@ -833,6 +912,7 @@ class HarborJobService:
                 trial_count = finished_total
                 completed_trials = int(stats.get("n_completed_trials") or 0)
                 failed_trials_on_disk = int(stats.get("n_errored_trials") or 0)
+                activity_ts = None
             else:
                 trials = self._list_trial_names(job_name)
                 trial_count = len(trials)
@@ -847,6 +927,11 @@ class HarborJobService:
                     )
                     is not None
                 )
+                activity_ts = _external_run_activity_ts(
+                    job_dir,
+                    job_result=job_result,
+                    trial_names=trials,
+                )
             with self._guard:
                 launch = self._launches.get(job_name)
             status, failed_trials = _job_list_status(
@@ -855,6 +940,7 @@ class HarborJobService:
                 failed_trials_on_disk=failed_trials_on_disk,
                 job_result=job_result,
                 launch=launch,
+                activity_ts=activity_ts,
             )
             task_meta = self._job_task_meta(job_name, job_dir)
             summaries.append(
