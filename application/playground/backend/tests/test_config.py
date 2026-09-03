@@ -69,6 +69,8 @@ def test_options_knob_values_match_allowed(config_manager):
     assert "dashscope/deepseek-v4-pro" in PERSONA_MODEL_OPTIONS
     assert "openrouter/z-ai/glm-4.7" in PERSONA_MODEL_OPTIONS
     assert "openrouter/anthropic/claude-haiku-4.5" in PERSONA_MODEL_OPTIONS
+    assert "orcarouter/auto" in PERSONA_MODEL_OPTIONS
+    assert "orcarouter/anthropic/claude-haiku-4.5" in PERSONA_MODEL_OPTIONS
     assert "openai/gpt-5.4" in PERSONA_MODEL_OPTIONS
     assert "openai/gpt-5.5" in PERSONA_MODEL_OPTIONS
     assert "gemini/gemini-2.5-flash" in PERSONA_MODEL_OPTIONS
@@ -88,6 +90,7 @@ def test_preflight_recognizes_openrouter_credentials(client, monkeypatch):
     monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ORCAROUTER_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
@@ -106,6 +109,33 @@ def test_preflight_recognizes_openrouter_credentials(client, monkeypatch):
     assert "OpenRouter" in model["detail"]
     assert openrouter["ok"] is True
     assert openrouter.get("optional") is True
+
+
+def test_preflight_recognizes_orcarouter_credentials(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ORCAROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("ZAI_API_KEY", raising=False)
+
+    body = client.get("/api/preflight").json()
+    model = next(c for c in body["checks"] if c["name"] == "Model credentials")
+    assert model["ok"] is False
+
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-test")
+    body = client.get("/api/preflight").json()
+    model = next(c for c in body["checks"] if c["name"] == "Model credentials")
+    orcarouter = next(c for c in body["checks"] if c["name"] == "OrcaRouter")
+    assert model["ok"] is True
+    assert "OrcaRouter" in model["detail"]
+    assert orcarouter["ok"] is True
+    assert orcarouter.get("optional") is True
 
 
 def test_options_rebuilds_agent_flag(config_manager):

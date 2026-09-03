@@ -310,6 +310,7 @@ def preflight_checks() -> List[Dict[str, Any]]:
     )
     dashscope_key = bool(os.environ.get("DASHSCOPE_API_KEY"))
     openrouter_key = bool(os.environ.get("OPENROUTER_API_KEY"))
+    orcarouter_key = bool(os.environ.get("ORCAROUTER_API_KEY"))
     gemini_key = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
     xai_key = bool(os.environ.get("XAI_API_KEY"))
     deepseek_key = bool(os.environ.get("DEEPSEEK_API_KEY"))
@@ -321,6 +322,7 @@ def preflight_checks() -> List[Dict[str, Any]]:
             ("Anthropic", anthropic_key),
             ("DashScope", dashscope_key),
             ("OpenRouter", openrouter_key),
+            ("OrcaRouter", orcarouter_key),
             ("Gemini", gemini_key),
             ("xAI", xai_key),
             ("DeepSeek", deepseek_key),
@@ -337,8 +339,8 @@ def preflight_checks() -> List[Dict[str, Any]]:
                 "Configured: {}.".format(", ".join(configured))
                 if configured
                 else "Not configured. Set OpenAI, Anthropic, DashScope, "
-                "OpenRouter, Gemini, xAI, DeepSeek, or Z.ai credentials "
-                "to run application tasks."
+                "OpenRouter, OrcaRouter, Gemini, xAI, DeepSeek, or Z.ai "
+                "credentials to run application tasks."
             ),
         }
     )
@@ -392,6 +394,19 @@ def preflight_checks() -> List[Dict[str, Any]]:
                 "Configured."
                 if openrouter_key
                 else "Not configured. Needed only for OpenRouter persona models."
+            ),
+        }
+    )
+    checks.append(
+        {
+            "group": "Core",
+            "name": "OrcaRouter",
+            "ok": orcarouter_key,
+            "optional": True,
+            "detail": (
+                "Configured."
+                if orcarouter_key
+                else "Not configured. Needed only for OrcaRouter persona models."
             ),
         }
     )

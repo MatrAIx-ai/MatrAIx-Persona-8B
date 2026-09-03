@@ -121,6 +121,7 @@ The **persona LLM** is separate from the chat sidecar backend (e.g., `MATRIX_CHA
 - **Google Gemini:** `google/gemini-2.5-pro` (with `persona-gemini-cli`)
 - **DashScope (Alibaba):** `dashscope/qwen3.7-max`, `dashscope/deepseek-v4-pro`, etc.
 - **OpenRouter:** `openrouter/z-ai/glm-4.7`, `openrouter/anthropic/claude-haiku-4.5`, etc.
+- **OrcaRouter:** `orcarouter/auto`, `orcarouter/anthropic/claude-haiku-4.5`, etc.
 
 #### OpenRouter
 
@@ -139,6 +140,24 @@ diverts the `anthropic/` prefix through that proxy, because a non-empty
 `OPENAI_BASE_URL` switches Anthropic models onto the proxy's OpenAI-compatible
 endpoint. Addressing OpenRouter explicitly keeps the two independent, so one
 process can send some models to OpenRouter and others direct to Anthropic.
+
+#### OrcaRouter
+
+OrcaRouter is an OpenAI-compatible AI gateway built for both models and agents.
+Like OpenRouter it exposes a provider/model namespace across many models, and it
+also combines adaptive routing, automatic failover, zero-markup inference,
+observability, guardrails, and agent-tool governance behind the same endpoint.
+OrcaRouter model ids follow the same `provider/model` shape as OpenRouter
+(`orcarouter/anthropic/claude-haiku-4.5`); the special `orcarouter/auto` id uses
+OrcaRouter's adaptive router to pick a live upstream model per request. Only the
+leading `orcarouter/` is stripped.
+
+Set `ORCAROUTER_API_KEY`. The endpoint defaults to `https://api.orcarouter.ai/v1`
+and can be overridden with `ORCAROUTER_API_BASE`.
+
+The `orcarouter/` prefix also deliberately ignores `OPENAI_BASE_URL`, so one
+process can route some models through OrcaRouter and others direct to their
+native providers.
 
 ### API keys and environment variables
 
@@ -178,6 +197,7 @@ export OPENAI_API_KEY="sk-..."
 export GEMINI_API_KEY="..."
 export DASHSCOPE_API_KEY="..."
 export OPENROUTER_API_KEY="..."
+export ORCAROUTER_API_KEY="sk-orca-..."
 
 # If using persona-openhands-sdk, map to LLM_API_KEY
 export LLM_API_KEY="${ANTHROPIC_API_KEY}"

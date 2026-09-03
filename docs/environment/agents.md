@@ -64,7 +64,9 @@ auto survey/chat and Docker web/CUA agents. OpenRouter models include
 `openrouter/z-ai/glm-4.7` and `openrouter/anthropic/claude-haiku-4.5`. Set
 `OPENROUTER_API_KEY` (and optional `OPENROUTER_API_BASE`) for `openrouter/*`.
 `OPENROUTER_BASE_URL` remains a compatibility alias when
-`OPENROUTER_API_BASE` is unset.
+`OPENROUTER_API_BASE` is unset. OrcaRouter models include `orcarouter/auto`
+(adaptive routing) and `orcarouter/anthropic/claude-haiku-4.5`. Set
+`ORCAROUTER_API_KEY` (and optional `ORCAROUTER_API_BASE`) for `orcarouter/*`.
 CLI harness agents
 (`persona-claude-code`, `persona-gemini-cli`, `persona-codex`) stay
 vendor-locked. Other LiteLLM-compatible ids may work if the matching API key is
@@ -135,6 +137,7 @@ export ANTHROPIC_API_KEY=sk-...
 export GEMINI_API_KEY=...
 export OPENAI_API_KEY=sk-...
 export OPENROUTER_API_KEY=...
+export ORCAROUTER_API_KEY=sk-orca-...
 
 # persona-openhands-sdk (pick one to match -m)
 export LLM_API_KEY="$ANTHROPIC_API_KEY"

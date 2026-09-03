@@ -33,6 +33,7 @@ def test_preflight_shape(client):
         "Anthropic credentials",
         "DashScope (Qwen / DeepSeek)",
         "OpenRouter",
+        "OrcaRouter",
         "Gemini credentials",
         "xAI credentials",
         "DeepSeek credentials",
@@ -67,6 +68,7 @@ def test_preflight_required_vs_optional_contract(client):
         "Anthropic credentials",
         "DashScope (Qwen / DeepSeek)",
         "OpenRouter",
+        "OrcaRouter",
         "Gemini credentials",
         "xAI credentials",
         "DeepSeek credentials",
@@ -90,6 +92,7 @@ def test_preflight_does_not_leak_env_var_names(client):
         "CLAUDE_API_KEY",
         "DASHSCOPE_API_KEY",
         "OPENROUTER_API_KEY",
+        "ORCAROUTER_API_KEY",
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
         "XAI_API_KEY",
@@ -111,6 +114,7 @@ def test_preflight_model_credentials_any_provider(client, monkeypatch):
     monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ORCAROUTER_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
