@@ -859,6 +859,93 @@ def test_get_job_status_incremental(tmp_path):
     assert full["statuses"] == [2, 3, 0]
 
 
+def test_get_job_status_uses_live_overlay_without_trial_trees(tmp_path):
+    from backend.service.harbor_job_service import STATUS_CODE_DONE, STATUS_CODE_RUNNING
+    from backend.service.modal_host_job import apply_live_overlay
+
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "pg-batch"
+    job_dir.mkdir(parents=True)
+    apply_live_overlay(job_dir, {"survey__a": "done", "survey__b": "running"})
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "generated",
+    )
+    snapshot = service.get_job_status("pg-batch", since=0)
+    assert snapshot["trialNames"] == ["survey__a", "survey__b"]
+    assert snapshot["statuses"][0] == STATUS_CODE_DONE
+    assert snapshot["statuses"][1] == STATUS_CODE_RUNNING
+    assert snapshot["counts"]["done"] == 1
+    assert snapshot["counts"]["running"] == 1
+
+
+def test_get_job_live_uses_live_overlay_without_trial_trees(tmp_path):
+    from backend.service.modal_host_job import apply_live_overlay
+
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "pg-batch"
+    job_dir.mkdir(parents=True)
+    apply_live_overlay(job_dir, {"survey__a": "done", "survey__b": "running"})
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "generated",
+    )
+    live = service.get_job_live("pg-batch")
+    by_name = {row["trialName"]: row for row in live["trials"]}
+    assert by_name["survey__a"]["completed"] is True
+    assert by_name["survey__a"]["succeeded"] is True
+    assert by_name["survey__b"]["completed"] is False
+    assert by_name["survey__b"]["stage"] == "agent_running"
+    assert live["completedTrials"] == 1
+
+
+def test_get_trial_events_empty_before_trial_tree(tmp_path):
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "pg-batch"
+    job_dir.mkdir(parents=True)
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "generated",
+    )
+    payload = service.get_trial_events("pg-batch", "survey__a")
+    assert payload == {"events": [], "offset": 0}
+
+
+def test_get_trial_web_trace_empty_before_trial_tree(tmp_path):
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "pg-web"
+    job_dir.mkdir(parents=True)
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "generated",
+    )
+    payload = service.get_trial_web_trace("pg-web", "web__a")
+    assert payload == {"trace": {"events": [], "raw": {}}}
+
+
+def test_trial_live_screenshot_falls_back_to_disk(tmp_path):
+    jobs_dir = tmp_path / "jobs"
+    trial = jobs_dir / "pg-web" / "web__a"
+    images = trial / "agent" / "images"
+    images.mkdir(parents=True)
+    (images / "step_001.png").write_bytes(b"png-bytes")
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "generated",
+    )
+    assert service.trial_live_screenshot("pg-web", "web__a") == b"png-bytes"
+
+
 def test_get_job_status_running_marker(tmp_path):
     jobs_dir = tmp_path / "jobs"
     job_dir = jobs_dir / "pg-batch"
@@ -1143,6 +1230,156 @@ def test_list_jobs_external_run_uses_freshness(tmp_path):
     rows = {row["jobName"]: row for row in service.list_jobs()}
     assert rows["job-external-live"]["status"] == "running"
     assert rows["job-external-dead"]["status"] == "failed"
+    service.shutdown()
+
+
+def test_list_jobs_external_run_uses_live_overlay_freshness(tmp_path):
+    import os
+    from datetime import datetime, timezone
+
+    jobs_dir = tmp_path / "jobs"
+    jobs_dir.mkdir()
+    now = datetime.now(timezone.utc).timestamp()
+    stale = now - EXTERNAL_RUN_STALE_AFTER_SEC - 120
+
+    job_dir = jobs_dir / "job-modal-overlay"
+    generated = job_dir / "_generated"
+    generated.mkdir(parents=True)
+    (job_dir / "trial-a").mkdir()
+    (job_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "updated_at": datetime.fromtimestamp(stale, tz=timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "stats": {"n_running_trials": 1, "n_pending_trials": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (generated / "live_overlay.json").write_text("{}", encoding="utf-8")
+    for path in (job_dir, job_dir / "result.json", job_dir / "trial-a"):
+        os.utime(path, (stale, stale))
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "configs",
+    )
+    rows = {row["jobName"]: row for row in service.list_jobs()}
+    assert rows["job-modal-overlay"]["status"] == "running"
+    service.shutdown()
+
+
+def test_list_jobs_counts_overlay_and_expected_agents(tmp_path):
+    from backend.service.modal_host_job import apply_live_overlay
+
+    jobs_dir = tmp_path / "jobs"
+    job_dir = jobs_dir / "pg-live"
+    job_dir.mkdir(parents=True)
+    (job_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {"kwargs": {"persona_path": "pool/persona_a.yaml"}},
+                    {"kwargs": {"persona_path": "pool/persona_b.yaml"}},
+                    {"kwargs": {"persona_path": "pool/persona_c.yaml"}},
+                    {"kwargs": {"persona_path": "pool/persona_d.yaml"}},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    apply_live_overlay(job_dir, {"survey__a": "done", "survey__b": "running"})
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "configs",
+    )
+    service._launches["pg-live"] = HarborLaunchRecord(
+        job_name="pg-live",
+        status="running",
+    )
+    rows = {row["jobName"]: row for row in service.list_jobs()}
+    assert rows["pg-live"]["trialCount"] == 4
+    assert rows["pg-live"]["completedTrials"] == 1
+    assert rows["pg-live"]["status"] == "running"
+    service.shutdown()
+
+
+def test_list_jobs_discounts_missing_reward_when_artifacts_exist(tmp_path):
+    import json
+
+    jobs_dir = tmp_path / "jobs"
+    jobs_dir.mkdir()
+
+    exp_job = jobs_dir / "exp-survey-onboarding-framing-1e9fd26e-c0"
+    trial = exp_job / "survey-onboarding-framing__persona-a"
+    (trial / "verifier").mkdir(parents=True)
+    (trial / "result.json").write_text(
+        json.dumps(
+            {
+                "exception_info": {
+                    "exception_type": "RewardFileNotFoundError",
+                    "exception_message": "Reward file not found",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (trial / "verifier" / "structured_output.json").write_text("{}", encoding="utf-8")
+    (exp_job / "result.json").write_text(
+        json.dumps(
+            {
+                "finished_at": "2026-08-25T12:00:00Z",
+                "n_total_trials": 1,
+                "stats": {"n_completed_trials": 1, "n_errored_trials": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    pg_job = jobs_dir / "pg-survey-onboarding-framing-aa11bb22"
+    pg_trial = pg_job / "trial-a"
+    pg_trial.mkdir(parents=True)
+    (pg_trial / "result.json").write_text(
+        json.dumps(
+            {
+                "exception_info": {
+                    "exception_type": "RuntimeError",
+                    "exception_message": "auth failed",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pg_job / "result.json").write_text(
+        json.dumps(
+            {
+                "finished_at": "2026-08-25T12:05:00Z",
+                "n_total_trials": 1,
+                "stats": {"n_completed_trials": 1, "n_errored_trials": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    service = HarborJobService(
+        repo_root=tmp_path,
+        jobs_dir=jobs_dir,
+        generated_configs_dir=tmp_path / "configs",
+    )
+    rows = {row["jobName"]: row for row in service.list_jobs()}
+    assert rows[exp_job.name]["source"] == "experiment"
+    assert rows[exp_job.name]["status"] == "success"
+    assert rows[exp_job.name]["failedTrials"] == 0
+    assert rows[pg_job.name]["source"] == "playground"
+    assert rows[pg_job.name]["status"] == "failed"
+    detail = service.get_job(exp_job.name)
+    assert detail is not None
+    assert detail["trials"][0]["succeeded"] is True
+    assert detail["trials"][0]["error"] is None
     service.shutdown()
 
 

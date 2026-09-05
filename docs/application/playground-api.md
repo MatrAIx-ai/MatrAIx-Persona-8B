@@ -27,7 +27,7 @@ Playground launches evaluations through Matraix Playground batch jobs. The Playg
 Execution can stay on the API host or dispatch to a Remote Runner worker:
 
 ```bash
-MATRIX_EXECUTION_PLANE=harbor    # default — local harbor run
+MATRIX_EXECUTION_PLANE=harbor    # default — run the job locally
 MATRIX_EXECUTION_PLANE=remote    # HTTP dispatch to Remote Runner
 REMOTE_RUNNER_API_URL=http://127.0.0.1:9100
 REMOTE_RUNNER_API_KEY=...        # optional bearer token for the worker API
@@ -181,6 +181,14 @@ Request body:
 }
 ```
 
+`computeFamily` is optional (`local`, `modal`, or `gcp`; default
+`MATRIX_COMPUTE_FAMILY` or `local`). The CLI equivalent is
+`generate_application_job.py --compute-family …` then `matraix run -c`. Each job writes
+`jobs/<job_name>/compute.json`. macOS/iOS CUA stays `use-computer`
+(`cuaPinned`) even when the family is `modal`/`gcp`. See
+[large-scale-runs.md](../environment/large-scale-runs.md) and
+[runtime.md](../environment/runtime.md).
+
 Common optional fields:
 
 | Field | Purpose |
@@ -195,6 +203,7 @@ Common optional fields:
 
 `mode` must be one of `auto`, `force_docker`, or `smoke`.
 `plane` must be `harbor` or `remote`.
+`computeFamily` must be `local`, `modal`, or `gcp`.
 Large cohorts should set `useEntirePool` and point `personaPool` at the
 cohort directory. See [large-scale-runs.md](../environment/large-scale-runs.md).
 
@@ -231,7 +240,11 @@ Returns `jobs/{job_name}/aggregation.json`, refreshing it when needed.
 ### `GET /api/harbor/jobs/{job_name}/live`
 
 Returns live progress for the Playground: launch status, trial phases, and basic
-persona labels.
+persona labels. Survey/chat Modal Functions overlay **status** on a few-second tick
+(full trial dirs arrive in artifact flushes). Web/linux Modal Sandboxes publish
+the same overlay while the sandbox is up. If the API host sleeps, already
+spawned Modal/GKE work keeps running; reopen the API on the same `jobs/` to
+reattach. GKE host workers otherwise update when a pod finishes.
 
 ### Trial inspection routes
 

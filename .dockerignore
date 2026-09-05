@@ -1,0 +1,13 @@
+.git
+.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/jobs
+**/.env
+**/.env.*
+docs/in-the-wild
+docs/intake
+application/playground/frontend
+*.pyc

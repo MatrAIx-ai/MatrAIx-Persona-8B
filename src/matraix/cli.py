@@ -1,9 +1,7 @@
 """Product-facing ``matraix`` CLI.
 
-``matraix run -c`` is the only job executor. Local recipes wrap Harbor with
-the same PYTHONPATH and MATRIX_* exports Playground injects. A non-local
-sidecar ``computeFamily`` (or ``--compute-family``) uses HarborJobService —
-the same path as Playground / ``POST /api/harbor/jobs``.
+``matraix run -c`` is the only job executor: local recipes wrap ``harbor run``;
+Modal / GKE recipes go through HarborJobService (same path as Playground).
 Harbor remains available directly as the underlying runtime.
 """
 
@@ -150,7 +148,7 @@ def _cmd_run(args: argparse.Namespace, passthrough: list[str]) -> None:
         if dispatch:
             if passthrough:
                 print(
-                    "matraix run: ignoring extra harbor args on Playground dispatch: {}".format(
+                    "matraix run: ignoring harbor args on Playground dispatch: {}".format(
                         " ".join(passthrough)
                     ),
                     file=sys.stderr,
@@ -291,11 +289,11 @@ def main(argv: list[str] | None = None) -> None:
         "run",
         help="Run a job with the complete MatrAIx launch environment.",
         description=(
-            "Runs a generated job YAML. Local recipes wrap Harbor with the same "
-            "PYTHONPATH and MATRIX_* exports Playground injects. A non-local "
-            "sidecar computeFamily (or --compute-family) uses HarborJobService — "
-            "the same path as Playground / POST /api/harbor/jobs. Ad-hoc "
-            "arguments (e.g. -p/-a) still pass through to Harbor."
+            "Runs a generated job YAML. Local recipes wrap `harbor run` with the "
+            "same PYTHONPATH and MATRIX_* exports Playground injects. Modal / GKE "
+            "recipes (sidecar computeFamily, or --compute-family) use HarborJobService "
+            "— the same path as Playground / POST /api/harbor/jobs. Ad-hoc "
+            "arguments (e.g. -p/-a) still pass through to harbor run."
         ),
     )
     run_parser.add_argument(
@@ -324,12 +322,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     run_parser.add_argument(
         "--compute-family",
+        choices=("local", "modal", "gcp"),
         default=None,
-        metavar="FAMILY",
         help=(
-            "Execution family for this job (same field as Playground computeFamily). "
-            "Default: sidecar computeFamily, else local. local wraps Harbor; "
-            "any other value uses HarborJobService."
+            "Where trials run (same as Playground computeFamily). Default: "
+            "sidecar computeFamily, then MATRIX_COMPUTE_FAMILY, then local. "
+            "modal/gcp dispatch through HarborJobService."
         ),
     )
     run_parser.add_argument(
@@ -337,8 +335,8 @@ def main(argv: list[str] | None = None) -> None:
         choices=("harbor", "remote"),
         default=None,
         help=(
-            "Who starts Harbor on HarborJobService dispatch (same as Playground plane). "
-            "Default: MATRIX_EXECUTION_PLANE or harbor. Ignored for local recipes."
+            "Who starts Harbor on Playground dispatch (same as Playground plane). "
+            "Default: MATRIX_EXECUTION_PLANE or harbor. Ignored for local harbor run."
         ),
     )
 

@@ -653,6 +653,8 @@ export function buildBatchGridCells(
     let status: BatchTrialStatus = "pending";
     if (trial?.completed) {
       status = trial.succeeded === false || trial.error ? "error" : "done";
+    } else if (trial?.stage === "queued") {
+      status = "pending";
     } else if (trial) {
       status = "running";
     }

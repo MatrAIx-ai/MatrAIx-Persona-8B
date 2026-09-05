@@ -7,6 +7,7 @@ from pathlib import Path
 
 from backend.service.harbor_web_trace import (
     attach_harbor_trace_screenshot_urls,
+    latest_trial_screenshot_bytes,
     read_harbor_web_trace,
     resolve_trial_screenshot_path,
     screenshot_file_from_step,
@@ -112,3 +113,32 @@ def test_read_harbor_web_trace_from_cocoa_trial(tmp_path: Path) -> None:
     assert agent_event["screenshotUrl"].endswith("images/step_001.png")
     path = resolve_trial_screenshot_path(logs_dir, "images/step_001.png")
     assert path.is_file()
+
+
+def test_screenshot_file_from_step_normalizes_absolute_images_path() -> None:
+    step = {
+        "source": "agent",
+        "message": [
+            {
+                "type": "image",
+                "source": {"path": "/sandbox/logs/images/step_009.png"},
+            }
+        ],
+    }
+    assert screenshot_file_from_step(step) == "images/step_009.png"
+
+
+def test_latest_trial_screenshot_bytes(tmp_path: Path) -> None:
+    trial = tmp_path / "trial"
+    images = trial / "agent" / "images"
+    images.mkdir(parents=True)
+    older = images / "step_001.png"
+    newer = images / "step_002.png"
+    older.write_bytes(b"old")
+    newer.write_bytes(b"new")
+    older.touch()
+    import time
+
+    time.sleep(0.02)
+    newer.write_bytes(b"new")
+    assert latest_trial_screenshot_bytes(trial) == b"new"

@@ -5803,11 +5803,26 @@ export function HarborJobDetail({ jobName, onBack, onOpenTrial }: HarborJobDetai
     enabled: query.isSuccess && trials.length > 0,
     refetchInterval: (ctx) => {
       const reporting = ctx.state.data?.reporting;
+      const coverage = ctx.state.data?.coverage;
       const pending = trials.some((trial) => !trial.completed);
+      // Modal/GKE merge artifacts a few seconds after Harbor marks trials
+      // complete. Stop only once coverage has artifacts, or the launch has
+      // been finished for two minutes (failed trials never grow artifacts).
+      const artifactsPending =
+        coverage != null &&
+        (coverage.pendingTrials > 0 ||
+          coverage.completedWithoutArtifactTrials > 0 ||
+          coverage.artifactReadyTrials !== coverage.trialCount);
+      const finishedAt = Date.parse(String(launch?.finishedAt ?? ""));
+      const launchRecentlyFinished =
+        launch?.status === "running" ||
+        launch?.status === "queued" ||
+        (Number.isFinite(finishedAt) && Date.now() - finishedAt < 120_000);
       if (
         launch?.status === "running" ||
         launch?.status === "queued" ||
         pending ||
+        (artifactsPending && launchRecentlyFinished) ||
         reporting?.status === "queued" ||
         reporting?.status === "running"
       ) {

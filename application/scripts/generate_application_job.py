@@ -4,6 +4,10 @@
 Retrieval matches Playground Persona World:
   sources, dimension filters, task persona_strategy.json, cohorts,
   and matraix-persona-1m sampling via PersonaPoolService.
+
+Then run the printed ``matraix run -c`` command. Modal / GKE: pass
+``--compute-family modal|gcp`` here so the sidecar records the family;
+``matraix run`` dispatches through HarborJobService automatically.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from matraix.application_job import (
     build_application_job_config,
     collect_run_env_exports,
 )
+from matraix.compute_family import ComputePlan, resolve_compute_plan
 from matraix.persona_job import DEFAULT_DATASET, parse_stratify_field_args
 from matraix.provider_credentials import (
     export_hint_lines,
@@ -41,6 +46,7 @@ from persona_retrieval import (  # noqa: E402
 
 DEFAULT_JOBS_DIR = REPO_ROOT / "configs" / "jobs" / "application-task-job-recipe"
 _EXECUTION_MODES = frozenset({"auto", "force_docker", "smoke"})
+_COMPUTE_FAMILIES = frozenset({"local", "modal", "gcp"})
 _DEFAULT_N_CONCURRENT_TRIALS = 2
 
 
@@ -71,12 +77,37 @@ def _default_job_name(
     return f"{task_slug}{mode_suffix}-n{sample_size}"
 
 
+def format_run_instructions(
+    *,
+    config_display: str,
+    compute_plan: ComputePlan,
+    n_concurrent_trials: int,
+) -> list[str]:
+    """Print the next command so CLI compute matches Playground / the jobs API."""
+    bits = [
+        "family={}".format(compute_plan.family),
+        "environment={}".format(compute_plan.environment),
+    ]
+    if compute_plan.dispatch:
+        bits.append("dispatch={}".format(compute_plan.dispatch))
+    bits.append("n_concurrent_trials={}".format(n_concurrent_trials))
+    lines = ["Compute: {}".format(" ".join(bits)), "Run:"]
+    lines.append("  uv run matraix run -c {}".format(config_display))
+    if compute_plan.needs_playground_dispatch():
+        lines.append(
+            "  # sidecar computeFamily={} — HarborJobService (Playground / Modal / GKE)".format(
+                compute_plan.family
+            )
+        )
+    return lines
+
+
 def _format_run_env_comment(
     exports: list[tuple[str, str]],
     *,
     model_name: str,
     sample_size: int,
-    compute_family: str = "local",
+    compute_plan: ComputePlan,
 ) -> str:
     primary_exports = export_hint_lines(model_name)
     needs_openai_sut = any(name == "MATRIX_CHATBOT_TASK_PATH" for name, _ in exports)
@@ -88,10 +119,10 @@ def _format_run_env_comment(
     for name, value in exports:
         lines.append(f"#   export {name}={value}")
     lines.append("#   uv run matraix run -c <this-file>")
-    if compute_family and compute_family != "local":
+    if compute_plan.needs_playground_dispatch():
         lines.append(
             "#   sidecar computeFamily={} — matraix run uses HarborJobService".format(
-                compute_family
+                compute_plan.family
             )
         )
     lines.append("#")
@@ -242,12 +273,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--compute-family",
-        default="local",
-        metavar="FAMILY",
+        choices=sorted(_COMPUTE_FAMILIES),
+        default=None,
         help=(
-            "Execution family written into the sidecar (same field as Playground "
-            "computeFamily). Default: local. matraix run -c wraps Harbor for local "
-            "and uses HarborJobService for any other value."
+            "Where trials run (same as Playground computeFamily). Written into "
+            "the sidecar so `matraix run -c` can dispatch Modal / GKE. "
+            "Default: MATRIX_COMPUTE_FAMILY or local."
         ),
     )
     parser.add_argument(
@@ -305,7 +336,6 @@ def main() -> None:
         parser.error("use either --strategy or --no-strategy, not both")
     if args.n_concurrent_trials < 1:
         parser.error("--n-concurrent-trials must be >= 1")
-    compute_family = (args.compute_family or "local").strip().lower() or "local"
 
     try:
         plan = build_retrieval_plan(
@@ -350,6 +380,14 @@ def main() -> None:
     )
     job_name = args.job_name or job_slug
 
+    compute_plan = resolve_compute_plan(
+        execution_mode=execution_mode,
+        trial_profile=trial_profile,
+        cua_backend=args.cua_backend,
+        compute_family=args.compute_family,
+    )
+    n_concurrent_trials = int(args.n_concurrent_trials)
+
     spec: dict[str, object] = {
         "name": job_slug,
         "stratify_fields": [],  # already resolved to concrete ids
@@ -359,6 +397,7 @@ def main() -> None:
         "task": args.task,
         "execution_mode": execution_mode,
         "trial_profile": trial_profile,
+        "compute_family": compute_plan.family,
         "agent": {
             "name": agent_name,
             "model_name": args.model_name,
@@ -367,12 +406,27 @@ def main() -> None:
             "job_name": job_name,
             "jobs_dir": "jobs",
             "n_attempts": 1,
-            "n_concurrent_trials": int(args.n_concurrent_trials),
+            "n_concurrent_trials": n_concurrent_trials,
             "timeout_multiplier": 1.0,
         },
     }
     if args.cua_backend:
         spec["cua_backend"] = args.cua_backend
+
+    run_env_exports = collect_run_env_exports(
+        trial_profile=trial_profile,
+        task_path=args.task,
+        repo_root=REPO_ROOT,
+    )
+
+    print(
+        f"Matched {retrieved.matched_count} personas; selected {retrieved.sample_size}"
+    )
+    print(f"Pool: {retrieved.persona_pool}")
+    if retrieved.strategy_path:
+        print(f"Strategy: {retrieved.strategy_path}")
+    print(f"Execution mode: {execution_mode} | trial profile: {trial_profile}")
+    print(f"Agent: {agent_name}")
 
     if execution_mode == "force_docker" and not args.cua_backend:
         spec["job"]["environment"] = {"type": "docker", "delete": True}
@@ -381,7 +435,9 @@ def main() -> None:
     meta = job_config.pop("_job_meta")
     meta.update(
         {
-            "computeFamily": compute_family,
+            "computeFamily": compute_plan.family,
+            "computeEnvironment": compute_plan.environment,
+            "computeDispatch": compute_plan.dispatch,
             "retrieval": {
                 "pool": retrieved.persona_pool,
                 "matchedCount": retrieved.matched_count,
@@ -393,15 +449,7 @@ def main() -> None:
             }
         }
     )
-
-    if args.cua_backend:
-        from matraix.application_job import resolve_job_environment
-
-        job_config["environment"] = resolve_job_environment(
-            execution_mode=execution_mode,
-            trial_profile=trial_profile,
-            cua_backend=args.cua_backend,
-        )
+    job_config["environment"] = compute_plan.harbor_environment()
 
     out_path = args.out
     if out_path is None:
@@ -411,11 +459,6 @@ def main() -> None:
         out_path = REPO_ROOT / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    run_env_exports = collect_run_env_exports(
-        trial_profile=trial_profile,
-        task_path=args.task,
-        repo_root=REPO_ROOT,
-    )
     stratify_line = (
         ", ".join(retrieved.stratify_fields)
         if retrieved.stratify_fields
@@ -439,6 +482,7 @@ def main() -> None:
     retrieval_line = (" | ".join(filter_bits)) if filter_bits else "none"
     header = (
         f"# Generated by application/scripts/generate_application_job.py\n"
+        f"{compute_plan.header_comment()}\n"
         f"# Task: {args.task}\n"
         f"# Execution mode: {execution_mode} | trial profile: {trial_profile}\n"
         f"# Agent: {agent_name} | harbor task: {job_config['tasks'][0]['path']}\n"
@@ -448,7 +492,7 @@ def main() -> None:
         f"# Retrieval: {retrieval_line}\n"
         f"# Personas: {', '.join(meta['selected_persona_ids'])}\n"
         f"#\n"
-        f"{_format_run_env_comment(run_env_exports, model_name=args.model_name, sample_size=meta['sample_size'], compute_family=compute_family)}"
+        f"{_format_run_env_comment(run_env_exports, model_name=args.model_name, sample_size=meta['sample_size'], compute_plan=compute_plan)}"
     )
     out_path.write_text(
         header + yaml.safe_dump(job_config, sort_keys=False),
@@ -458,17 +502,9 @@ def main() -> None:
     sidecar = out_path.with_suffix(".meta.json")
     sidecar.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
-    print(
-        f"Matched {retrieved.matched_count} personas; selected {meta['sample_size']}"
-    )
-    print(f"Pool: {retrieved.persona_pool}")
-    if retrieved.strategy_path:
-        print(f"Strategy: {retrieved.strategy_path}")
-    print(f"Execution mode: {execution_mode} | trial profile: {trial_profile}")
-    print(f"Agent: {agent_name} | harbor task: {job_config['tasks'][0]['path']}")
+    print(f"Harbor task: {job_config['tasks'][0]['path']}")
     print(f"Job: {out_path}")
     print(f"Meta: {sidecar}")
-    print("Run:")
     primary_exports = export_hint_lines(args.model_name)
     needs_openai_sut = any(name == "MATRIX_CHATBOT_TASK_PATH" for name, _ in run_env_exports)
     openai_already = any("OPENAI_API_KEY" in line for line in primary_exports)
@@ -478,11 +514,12 @@ def main() -> None:
         print("  export OPENAI_API_KEY=...   # user-sim chatbot/SUT default")
     for name, value in run_env_exports:
         print(f"  export {name}={value}")
-    print(f"  uv run matraix run -c {_display_path(out_path)}")
-    if compute_family != "local":
-        print(
-            f"  # sidecar computeFamily={compute_family} — matraix run uses HarborJobService"
-        )
+    for line in format_run_instructions(
+        config_display=_display_path(out_path),
+        compute_plan=compute_plan,
+        n_concurrent_trials=n_concurrent_trials,
+    ):
+        print(line)
     print("Preflight:")
     for line in format_credential_preflight(
         args.model_name,

@@ -163,6 +163,8 @@ def test_options_environment_block(config_manager):
         "promptOwnership",
         "executionPlane",
         "remoteRunnerConfigured",
+        "computeFamily",
+        "computeFamilies",
     }
     assert env["runtime"] == "In-process Harbor runner"
     assert env["personaAgent"] == "Playground simulated user"
