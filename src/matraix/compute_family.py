@@ -1,9 +1,9 @@
 """Resolve Playground compute family to a Harbor environment (+ optional dispatch).
 
 Users set ``computeFamily`` / ``MATRIX_COMPUTE_FAMILY`` (``local`` | ``modal`` | ``gcp``).
-Harbor still receives a normal ``environment.type``. ``dispatch`` is set when
-trials run on a cloud job runner (Modal Jobs / GKE workers), including web/linux
-Docker workers.
+Harbor still receives a normal ``environment.type``. When the family is ``modal``
+or ``gcp``, Playground starts the workers: Modal Functions for survey/chat,
+Modal Sandboxes for web/linux, or GKE Jobs.
 """
 
 from __future__ import annotations
@@ -57,8 +57,8 @@ class ComputePlan:
     def needs_playground_dispatch(self) -> bool:
         """True when ``matraix run`` must go through HarborJobService.
 
-        Modal Jobs / GKE workers (and gcp web ``type: gke``) are Playground
-        dispatch. CUA stays on this machine even if the family is modal/gcp.
+        Modal Functions / Sandboxes and GKE Jobs are Playground dispatch.
+        CUA stays on this machine even if the family is modal/gcp.
         """
         if self.cua_pinned:
             return False

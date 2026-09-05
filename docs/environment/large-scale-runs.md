@@ -30,8 +30,8 @@ uv run matraix run -c configs/jobs/application-task-job-recipe/<generated>.yaml
 ```
 
 `--compute-family modal|gcp` on the generator records the family in the sidecar.
-`matraix run -c` then dispatches through HarborJobService (Modal Jobs / GKE
-workers + shards), same as Playground. Override with
+`matraix run -c` then dispatches through HarborJobService (Modal Function /
+Sandbox or GKE workers + shards), same as Playground. Override with
 `matraix run -c <job.yaml> --compute-family local` to force this machine.
 
 One launch covers the whole cohort. Do not start a separate job per persona.
@@ -56,8 +56,9 @@ macOS / iOS always use use.computer, even when `computeFamily` is `modal` or
 `gcp`. Set `MATRIX_COMPUTE_FAMILY` or pass `computeFamily` on launch.
 
 **Modal** (`survey`, `chat`, `web`, Linux os-app): credentials on the API host
-and one deploy. The first web/Linux job builds the task image; later jobs
-reuse it. Chat needs a sidecar URL that Modal can reach. Setup:
+and one deploy. Survey/chat run as a Function; web/Linux as a Sandbox with
+Docker. The first web/Linux job builds the task image; later jobs reuse it.
+Chat needs a sidecar URL that Modal can reach. Setup:
 [runtime.md](runtime.md).
 
 Start on `modal`. Switch web/Linux to `gcp` first when daily concurrency stays
@@ -70,15 +71,16 @@ lands in `jobs/<job_name>/`. Survey/chat pack up to
 pack `MATRIX_WEB_PACK_CONCURRENCY` (default `1`) browser per worker.
 `MATRIX_SHARD_CONCURRENCY` (default `8`) is the max workers.
 `MATRIX_MAX_CONCURRENT_TRIALS` optionally caps Parallel.
-Survey/chat on Modal Jobs and GKE host workers publish **status** every few
+Survey/chat on Modal Functions and GKE host workers publish **status** every few
 seconds so the mosaic ticks; artifacts flush in batches (Modal) or when the
-pod packs the tree (GKE). All shards are spawned up front so closing the
+pod packs the tree (GKE). Web/linux Modal Sandboxes publish the same overlay
+while the sandbox is up. All shards are spawned up front so closing the
 laptop does not cancel already-queued Modal / GKE work; restart the API to
 reattach.
 
-Chat on Modal/GKE needs a sidecar URL the worker can reach. Production: a
-public endpoint. Local: Playground opens a cloudflared/ngrok tunnel if one
-is installed, or set `MATRIX_CHATBOT_PUBLIC_URL`, or use `computeFamily=local`.
+Chat on Modal/GKE needs a sidecar URL the worker can reach. Set a public
+endpoint, or `MATRIX_CHATBOT_PUBLIC_URL`, or `MATRIX_CHATBOT_TUNNEL=auto` so
+Playground can start cloudflared/ngrok, or use `computeFamily=local`.
 
 Optional knobs: `MATRIX_HOST_PACK_CONCURRENCY`, `MATRIX_WEB_PACK_CONCURRENCY`,
 `MATRIX_SHARD_CONCURRENCY`, `MATRIX_MAX_CONCURRENT_TRIALS`,

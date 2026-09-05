@@ -240,8 +240,9 @@ Returns `jobs/{job_name}/aggregation.json`, refreshing it when needed.
 ### `GET /api/harbor/jobs/{job_name}/live`
 
 Returns live progress for the Playground: launch status, trial phases, and basic
-persona labels. Survey/chat Modal Jobs overlay **status** on a few-second tick
-(full trial dirs arrive in artifact flushes). If the API host sleeps, already
+persona labels. Survey/chat Modal Functions overlay **status** on a few-second tick
+(full trial dirs arrive in artifact flushes). Web/linux Modal Sandboxes publish
+the same overlay while the sandbox is up. If the API host sleeps, already
 spawned Modal/GKE work keeps running; reopen the API on the same `jobs/` to
 reattach. GKE host workers otherwise update when a pod finishes.
 

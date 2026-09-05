@@ -70,24 +70,23 @@ export MATRIX_COMPUTE_FAMILY=modal
 export MATRIX_EXECUTION_PLANE=harbor
 ```
 
-That one deploy covers survey, chat, web, and Linux. The first web/Linux job
-builds the shared task image; later jobs reuse it.
+That one deploy covers survey, chat, web, and Linux. Survey and chat run as a
+Modal Function. Web and Linux run as a Sandbox with Docker. The first web/Linux
+job builds the shared task image; later jobs reuse it.
 
 Chat tasks need a sidecar URL reachable from Modal (`CHATBOT_API_URL` or the
 task’s upstream env). Production uses a public (or VPC) endpoint.
 
-Local sidecars on `127.0.0.1` are invisible from Modal/GKE. On launch,
-Playground tries to open a **temporary public door** to that sidecar if
-`cloudflared` (or `ngrok`) is on PATH — same idea as exposing a local website.
-The door URL is stored in `MATRIX_CHATBOT_PUBLIC_URL` for this API process
-only. Install with `brew install cloudflared`. Disable with
-`MATRIX_CHATBOT_TUNNEL=0`. You can still set `MATRIX_CHATBOT_PUBLIC_URL`
-yourself, or use `computeFamily=local` so everything stays on the laptop.
+Local sidecars on `127.0.0.1` are not reachable from Modal or GKE. Set
+`MATRIX_CHATBOT_PUBLIC_URL` to a URL those workers can call, or set
+`MATRIX_CHATBOT_TUNNEL=auto` so Playground starts cloudflared (or ngrok) for
+this API process. Install with `brew install cloudflared`. Leave the tunnel
+unset to keep the sidecar private. You can also use `computeFamily=local`.
 
 Artifacts land in the same `jobs/<job_name>/` tree as a local run
 (`compute.json`, per-trial `agent/` / `verifier/` / `result.json`, `job.log`).
 
-Survey/chat **Modal Jobs** keep two channels. Status (pending / running / done)
+Survey/chat **Modal Functions** keep two channels. Status (pending / running / done)
 goes to a Modal Dict plus `live_status.json` about every
 `MATRIX_MODAL_LIVE_PUSH_SEC` seconds (default `5`) — no volume commit. Full
 trial trees flush every `MATRIX_MODAL_ARTIFACT_FLUSH_TRIALS` completions
@@ -95,18 +94,22 @@ trial trees flush every `MATRIX_MODAL_ARTIFACT_FLUSH_TRIALS` completions
 `volume.commit()`. The API overlays that status onto local `jobs/<job_name>/`
 so the mosaic ticks without re-downloading logs.
 
+Web/linux **Modal Sandboxes** publish the same mosaic overlay while the sandbox
+is up (`/tmp/matraix-live.json`, plus the jobs volume). Task images persist on
+`matraix-docker-images` so later jobs skip `compose build`.
+
 GKE host workers (`dispatch=gke_workers`) do the same overlay from
 `/tmp/matraix-live.json` about every `MATRIX_GKE_LIVE_PUSH_SEC` seconds
 (default `5`) while the pod is running.
 
 Closing the laptop does **not** stop shards already spawned on Modal (or GKE
 Jobs already created). Launch writes `jobs/<job>/_generated/cloud_run.json`
-with FunctionCall / Job ids **after each spawn**, then waits. Restart the
-Playground API on the same checkout/`jobs/` to reattach and pull artifacts.
-Shards that were never spawned (killed during the brief spawn loop) will not
-run until you retry. The live mosaic is gone while the API is down; it
-catches up on resume. Survey, chat, web, and Linux all use this path when
-`computeFamily` is `modal` or `gcp`.
+with worker ids **after each spawn**, then waits. Restart the Playground API
+on the same checkout/`jobs/` to reattach and pull artifacts. Shards that were
+never spawned (killed during the brief spawn loop) will not run until you
+retry. The live mosaic is gone while the API is down; it catches up on resume.
+Survey, chat, web, and Linux all use this path when `computeFamily` is `modal`
+or `gcp`.
 
 macOS / iOS computer-use always stays on use.computer, even when
 `MATRIX_COMPUTE_FAMILY` is `modal` or `gcp`. Set the family with
@@ -147,8 +150,8 @@ mounts a PVC at `/matraix/jobs` inside the worker; otherwise the Job uses
 `emptyDir` and the API copies `jobs/<job_name>/` back when Harbor finishes.
 
 Chat tasks need a sidecar URL reachable from the GKE pod (not localhost on the
-API host). Same automatic tunnel as Modal: `cloudflared` on PATH, or
-`MATRIX_CHATBOT_PUBLIC_URL`, or `computeFamily=local`.
+API host). Set `MATRIX_CHATBOT_PUBLIC_URL`, or `MATRIX_CHATBOT_TUNNEL=auto`, or
+use `computeFamily=local`.
 
 Then flip the family (restart the Playground API so it picks up the env):
 
@@ -254,7 +257,8 @@ Optional dev-only `taskType=web` returns a deterministic mock when
 | `MATRIX_GKE_JOBS_PVC` | Optional PVC name mounted at `/matraix/jobs` |
 | `MATRIX_GKE_LIVE_PUSH_SEC` | GKE survey/chat status tick (`/tmp/matraix-live.json`, default `5`) |
 | `MATRIX_CHATBOT_PUBLIC_URL` | Public/tunnel chatbot URL for Modal/GKE workers (replaces localhost) |
-| `MATRIX_CHATBOT_TUNNEL` | `auto` (default): start cloudflared/ngrok for local sidecars. `0` disables |
+| `MATRIX_CHATBOT_TUNNEL` | `auto` / `cloudflared` / `ngrok` publishes the local chat sidecar to Modal/GKE. Unset keeps the sidecar private |
+| `MATRIX_RUN_WAIT_TIMEOUT_SEC` | `matraix run -c` wait cap for HarborJobService (default 4 hours) |
 | `GCP_PROJECT` / `MATRIX_GCP_PROJECT` | GCP project id |
 | `REMOTE_RUNNER_API_URL` | Remote runner base URL (required for `remote`) |
 | `REMOTE_RUNNER_API_KEY` | Optional bearer token |
@@ -265,8 +269,8 @@ Optional dev-only `taskType=web` returns a deterministic mock when
 
 Matraix Playground resolves execution per task `metadata.type`:
 
-- `survey` / `chatbot` → host-native agents in `auto` mode (Modal Jobs or GKE host workers when `computeFamily` is `modal` / `gcp`)
-- `web` / `os-app` → docker, Harbor `modal` / `gke`, or `use-computer` backends
+- `survey` / `chatbot` → host-native agents in `auto` mode (Modal Function or GKE host workers when `computeFamily` is `modal` / `gcp`)
+- `web` / `os-app` → Modal Sandbox / GKE / local Docker, or `use-computer` for macOS / iOS
 
 See [large-scale-runs.md](large-scale-runs.md) and
 [quickstart.md](../quickstart.md) for terminal `matraix run` examples.

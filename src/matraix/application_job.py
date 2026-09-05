@@ -52,10 +52,9 @@ def resolve_job_environment(
     """Pick the Harbor environment block for a job spec.
 
     ``compute_family`` (``local`` / ``modal`` / ``gcp``) selects the provider.
-    Survey/chat on ``modal`` keep Harbor ``type: host`` (Modal Jobs dispatch).
-    Web/linux os-app on ``modal`` keep Harbor ``type: docker`` and dispatch
-    the same Modal Jobs workers (task images are prebuilt/cached there).
-    CUA macOS/iOS still pins ``use-computer``.
+    Survey/chat on ``modal`` keep Harbor ``type: host`` (Modal Function).
+    Web/linux on ``modal`` keep Harbor ``type: docker`` and run in a Sandbox
+    (task images cached on a Volume). CUA macOS/iOS still pins ``use-computer``.
     """
     return resolve_compute_plan(
         execution_mode=execution_mode,

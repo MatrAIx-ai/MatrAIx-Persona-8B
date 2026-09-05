@@ -484,7 +484,7 @@ class ConfigManager:
                     {
                         "value": "modal",
                         "label": "Modal",
-                        "description": "Modal Jobs: survey/chat host agents, web/linux Docker workers with cached task images",
+                        "description": "Modal: survey/chat as a Function, web/linux as a Docker Sandbox with cached task images",
                     },
                     {
                         "value": "gcp",

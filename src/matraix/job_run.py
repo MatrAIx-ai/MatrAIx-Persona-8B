@@ -7,6 +7,7 @@ Local Harbor recipes stay on ``harbor run``. Modal / GKE recipes use the same
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -21,6 +22,8 @@ from matraix.persona_job import DEFAULT_DATASET
 _TERMINAL_LAUNCH_STATUSES = frozenset(
     {"completed", "completed_with_errors", "failed", "cancelled"}
 )
+_DEFAULT_WAIT_TIMEOUT_SEC = 4 * 60 * 60
+_WAIT_TIMEOUT_ENV = "MATRIX_RUN_WAIT_TIMEOUT_SEC"
 
 
 def load_job_sidecar(config_path: Path) -> dict[str, Any]:
@@ -148,8 +151,27 @@ def jobs_dir_from_job_config(config_path: Path, repo_root: Path) -> Path:
     return repo_root / path
 
 
-def wait_for_harbor_job(service: object, job_name: str, *, poll_s: float = 2.0) -> dict[str, Any]:
+def _wait_timeout_sec(timeout_s: float | None) -> float:
+    if timeout_s is not None:
+        return max(0.0, float(timeout_s))
+    raw = (os.environ.get(_WAIT_TIMEOUT_ENV) or "").strip()
+    if raw:
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            pass
+    return float(_DEFAULT_WAIT_TIMEOUT_SEC)
+
+
+def wait_for_harbor_job(
+    service: object,
+    job_name: str,
+    *,
+    poll_s: float = 2.0,
+    timeout_s: float | None = None,
+) -> dict[str, Any]:
     """Block until HarborJobService reports a terminal launch status."""
+    deadline = time.monotonic() + _wait_timeout_sec(timeout_s)
     while True:
         detail = service.get_job(job_name)  # type: ignore[attr-defined]
         if isinstance(detail, dict):
@@ -157,6 +179,12 @@ def wait_for_harbor_job(service: object, job_name: str, *, poll_s: float = 2.0) 
             status = launch.get("status") if isinstance(launch, dict) else None
             if status in _TERMINAL_LAUNCH_STATUSES:
                 return detail
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                "timed out waiting for Harbor job {} after {}s".format(
+                    job_name, _wait_timeout_sec(timeout_s)
+                )
+            )
         time.sleep(poll_s)
 
 

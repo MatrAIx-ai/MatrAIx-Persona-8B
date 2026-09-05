@@ -1,15 +1,17 @@
-"""Schedule survey/chat host-agent Harbor jobs as GKE Jobs.
+"""Schedule survey/chat Harbor jobs as GKE Jobs.
 
 Harbor ``environment.type`` stays ``host``. Artifacts merge into the same
-``jobs/<job_name>/`` tree as local / Modal Jobs runs.
+``jobs/<job_name>/`` tree as a local or Modal run.
 """
 
 from __future__ import annotations
 
 import base64
-import json
+import gzip
+import hashlib
 import os
 import shlex
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,7 +21,7 @@ from backend.service.modal_host_job import (
     HARBOR_MODULE_COMMAND,
     MODAL_REMOTE_REPO,
     ModalHostJobResult,
-    apply_live_overlay,
+    apply_worker_live_status,
     merge_job_artifacts,
     modal_pythonpath,
     prepare_modal_job_config,
@@ -38,13 +40,17 @@ _EXIT_MARKER = "/tmp/matraix-exit"
 _ARTIFACT_TAR = "/tmp/matraix-job.tgz"
 _LIVE_STATUS_REMOTE = "/tmp/matraix-live.json"
 _LIVE_PUSH_ENV = "MATRIX_GKE_LIVE_PUSH_SEC"
+_CONFIGMAP_MAX_BYTES = 900_000
+_MAX_ARTIFACT_BYTES = 256 * 1024 * 1024
+_JOBS_DIR_ENV = "MATRIX_GKE_JOBS_DIR"
 
 # Stdlib-only watcher so the mosaic can tick before Harbor finishes packing.
 _GKE_LIVE_WATCH_PY = (
     "import json, os, time\n"
     "from pathlib import Path\n"
     "job = os.environ.get('MATRIX_GKE_LIVE_JOB') or ''\n"
-    "root = Path(os.environ.get('MATRIX_REPO_ROOT') or '/matraix') / 'jobs' / job\n"
+    "jobs_dir = os.environ.get('MATRIX_GKE_JOBS_DIR') or 'jobs'\n"
+    "root = Path(os.environ.get('MATRIX_REPO_ROOT') or '/matraix') / jobs_dir / job\n"
     "dest = Path({live_path!r})\n"
     "exit_marker = Path({exit_path!r})\n"
     "markers = ('config.json', 'trial.log', 'persona_meta.json')\n"
@@ -97,30 +103,78 @@ class GkeHostJobRunner(Protocol):
 
 
 def gke_job_name(job_name: str, shard_key: str = "") -> str:
-    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in job_name).strip("-")
-    base = "matraix-host-{}".format(slug[:40]).strip("-") or "matraix-host-job"
+    """Kubernetes Job name (≤63 characters) for this Harbor job and shard."""
+    digest = hashlib.sha1(
+        "{}\0{}".format(job_name, shard_key).encode("utf-8")
+    ).hexdigest()[:10]
     extra = "".join(ch.lower() if ch.isalnum() else "-" for ch in shard_key).strip("-")
-    if not extra:
-        return base[:63]
-    return "{}-{}".format(base[:55], extra)[:63]
+    base = "matraix-h-{}".format(digest)
+    if extra:
+        return "{}-{}".format(base, extra)[:63]
+    return base[:63]
 
 
-def gke_host_worker_script(job_name: str) -> str:
-    """Run Harbor, pack ``jobs/<name>/``, then stay up so the API can pull the tar."""
+def gke_jobs_dir(shard_key: str = "") -> str:
+    """Harbor output directory on the PVC: ``jobs/<shard>/`` when sharded."""
+    shard = (shard_key or "").strip()
+    if shard:
+        return "jobs/{}".format(shard)
+    return "jobs"
+
+
+def encode_gke_job_config(yaml_text: str) -> dict[str, str]:
+    """Store job YAML in a ConfigMap, gzipping when the file is large."""
+    raw = yaml_text.encode("utf-8")
+    if len(raw) <= _CONFIGMAP_MAX_BYTES:
+        return {"job.yaml": yaml_text}
+    compressed = gzip.compress(raw)
+    if len(compressed) > _CONFIGMAP_MAX_BYTES:
+        raise GkeHostJobError(
+            "job YAML is too large for a Kubernetes ConfigMap "
+            "({} bytes, {} gzipped). Lower MATRIX_SHARD_SIZE.".format(
+                len(raw), len(compressed)
+            )
+        )
+    return {"job.yaml.gz.b64": base64.b64encode(compressed).decode("ascii")}
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    status = getattr(exc, "status", None)
+    if status == 404:
+        return True
+    text = str(exc).lower()
+    return "not found" in text or "404" in text
+
+
+def gke_host_worker_script(job_name: str, *, jobs_dir: str = "jobs") -> str:
+    """Run Harbor, pack ``<jobs_dir>/<name>/``, then stay up so the API can pull the tar."""
     harbor = " ".join(shlex.quote(part) for part in HARBOR_MODULE_COMMAND)
     job_q = shlex.quote(job_name)
     repo_q = shlex.quote(GKE_REMOTE_REPO)
+    jobs_q = shlex.quote(jobs_dir or "jobs")
     watch = shlex.quote(_GKE_LIVE_WATCH_PY)
+    decode = shlex.quote(
+        "import base64, gzip, pathlib\n"
+        "src = pathlib.Path('/config/job.yaml.gz.b64')\n"
+        "dst = pathlib.Path('/tmp/job.yaml')\n"
+        "dst.write_bytes(gzip.decompress(base64.b64decode(src.read_text())))\n"
+    )
     return (
         "set +e\n"
         "export MATRIX_GKE_LIVE_JOB={job}\n"
+        "export MATRIX_GKE_JOBS_DIR={jobs}\n"
+        "CONFIG=/config/job.yaml\n"
+        "if [ -f /config/job.yaml.gz.b64 ]; then\n"
+        "  python -c {decode}\n"
+        "  CONFIG=/tmp/job.yaml\n"
+        "fi\n"
         "python -c {watch} &\n"
         "LIVE_PID=$!\n"
-        "{harbor} --yes -c /config/job.yaml\n"
+        "{harbor} --yes -c \"$CONFIG\"\n"
         "echo $? > {marker}\n"
         "wait \"$LIVE_PID\" 2>/dev/null || true\n"
-        "if [ -d {repo}/jobs/{job} ]; then\n"
-        "  tar czf {artifact} -C {repo}/jobs {job}\n"
+        "if [ -d {repo}/{jobs}/{job} ]; then\n"
+        "  tar czf {artifact} -C {repo}/{jobs} {job}\n"
         "fi\n"
         "sleep 3600\n"
     ).format(
@@ -128,24 +182,16 @@ def gke_host_worker_script(job_name: str) -> str:
         marker=_EXIT_MARKER,
         repo=repo_q,
         job=job_q,
+        jobs=jobs_q,
         artifact=_ARTIFACT_TAR,
         watch=watch,
+        decode=decode,
     )
 
 
 def apply_gke_live_status(dest: Path, raw: bytes | str) -> dict[str, str]:
     """Merge a worker ``live_status.json`` blob into the orchestrator overlay."""
-    text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
-    try:
-        loaded = json.loads(text)
-    except Exception:
-        return {}
-    if not isinstance(loaded, dict):
-        return {}
-    status = {str(key): str(value) for key, value in loaded.items() if str(key)}
-    if status:
-        apply_live_overlay(dest, status)
-    return status
+    return apply_worker_live_status(dest, raw)
 
 
 def gke_live_dest(request: GkeHostJobRequest) -> Path | None:
@@ -163,16 +209,23 @@ def build_gke_job_manifest(
     image: str,
     namespace: str,
     pvc_name: str | None = None,
+    secret_name: str | None = None,
 ) -> dict[str, Any]:
+    jobs_dir = gke_jobs_dir(request.shard_key)
+    kube_name = gke_job_name(request.job_name, request.shard_key)
     env_vars = [
         {"name": key, "value": value}
-        for key, value in {**request.env, **request.secret_env}.items()
+        for key, value in request.env.items()
         if value
     ]
     env_vars.append({"name": "PYTHONPATH", "value": modal_pythonpath(Path(GKE_REMOTE_REPO))})
     env_vars.append({"name": "MATRIX_REPO_ROOT", "value": GKE_REMOTE_REPO})
+    env_vars.append({"name": _JOBS_DIR_ENV, "value": jobs_dir})
+    env_from: list[dict[str, Any]] = []
+    if secret_name and request.secret_env:
+        env_from.append({"secretRef": {"name": secret_name}})
     volumes = [
-        {"name": "config", "configMap": {"name": gke_job_name(request.job_name, request.shard_key) + "-cfg"}}
+        {"name": "config", "configMap": {"name": kube_name + "-cfg"}}
     ]
     mounts = [
         {"name": "config", "mountPath": "/config", "readOnly": True},
@@ -182,11 +235,26 @@ def build_gke_job_manifest(
         volumes.append({"name": "jobs", "persistentVolumeClaim": {"claimName": pvc_name}})
     else:
         volumes.append({"name": "jobs", "emptyDir": {}})
+    container: dict[str, Any] = {
+        "name": "harbor",
+        "image": image,
+        "workingDir": GKE_REMOTE_REPO,
+        "command": ["/bin/sh", "-c"],
+        "args": [gke_host_worker_script(request.job_name, jobs_dir=jobs_dir)],
+        "env": env_vars,
+        "volumeMounts": mounts,
+        "resources": {
+            "requests": {"cpu": "1", "memory": "4Gi"},
+            "limits": {"cpu": "2", "memory": "8Gi"},
+        },
+    }
+    if env_from:
+        container["envFrom"] = env_from
     return {
         "apiVersion": "batch/v1",
         "kind": "Job",
         "metadata": {
-            "name": gke_job_name(request.job_name, request.shard_key),
+            "name": kube_name,
             "namespace": namespace,
             "labels": {"app": "matraix-host-job", "matraix-job": request.job_name},
         },
@@ -196,21 +264,7 @@ def build_gke_job_manifest(
                 "metadata": {"labels": {"app": "matraix-host-job"}},
                 "spec": {
                     "restartPolicy": "Never",
-                    "containers": [
-                        {
-                            "name": "harbor",
-                            "image": image,
-                            "workingDir": GKE_REMOTE_REPO,
-                            "command": ["/bin/sh", "-c"],
-                            "args": [gke_host_worker_script(request.job_name)],
-                            "env": env_vars,
-                            "volumeMounts": mounts,
-                            "resources": {
-                                "requests": {"cpu": "1", "memory": "4Gi"},
-                                "limits": {"cpu": "2", "memory": "8Gi"},
-                            },
-                        }
-                    ],
+                    "containers": [container],
                     "volumes": volumes,
                 },
             },
@@ -226,10 +280,14 @@ class SdkGkeHostJobRunner:
 
     def spawn(self, request: GkeHostJobRequest) -> tuple[str, Any]:
         ctx = self._connect(request)
-        yaml_text = prepare_modal_job_config(request.config_yaml, job_name=request.job_name)
+        yaml_text = prepare_modal_job_config(
+            request.config_yaml,
+            job_name=request.job_name,
+            jobs_dir=gke_jobs_dir(request.shard_key),
+        )
         config_map = ctx["client"].V1ConfigMap(
             metadata=ctx["client"].V1ObjectMeta(name=ctx["cfg_name"], namespace=ctx["namespace"]),
-            data={"job.yaml": yaml_text},
+            data=encode_gke_job_config(yaml_text),
         )
         pvc = (os.environ.get(GKE_JOBS_PVC_ENV) or "").strip() or None
         manifest = build_gke_job_manifest(
@@ -237,10 +295,23 @@ class SdkGkeHostJobRunner:
             image=ctx["image"],
             namespace=ctx["namespace"],
             pvc_name=pvc,
+            secret_name=ctx["secret_name"] if request.secret_env else None,
         )
         try:
             self._replace_config_map(ctx["core"], ctx["cfg_name"], ctx["namespace"], config_map)
+            if request.secret_env:
+                secret = ctx["client"].V1Secret(
+                    metadata=ctx["client"].V1ObjectMeta(
+                        name=ctx["secret_name"],
+                        namespace=ctx["namespace"],
+                    ),
+                    type="Opaque",
+                    string_data=dict(request.secret_env),
+                )
+                self._replace_secret(ctx["core"], ctx["secret_name"], ctx["namespace"], secret)
             self._replace_job(ctx["batch"], ctx["name"], ctx["namespace"], manifest)
+        except GkeHostJobError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise GkeHostJobError(str(exc)) from exc
         return ctx["name"], None
@@ -255,9 +326,6 @@ class SdkGkeHostJobRunner:
         del call
         ctx = self._connect(request)
         name = (call_id or "").strip() or ctx["name"]
-        cfg_name = name + "-cfg" if name == ctx["name"] else name + "-cfg"
-        if name != ctx["name"]:
-            cfg_name = name + "-cfg"
         try:
             from kubernetes import stream
         except ImportError as exc:
@@ -271,13 +339,14 @@ class SdkGkeHostJobRunner:
             )
             artifact = self._read_artifact_tar(stream, ctx["core"], pod, ctx["namespace"])
         except GkeHostJobError:
+            self.cleanup(request)
             raise
         except Exception as exc:  # noqa: BLE001
+            self.cleanup(request)
             raise GkeHostJobError(str(exc)) from exc
-        finally:
-            self._delete_job(ctx["batch"], ctx["core"], name, cfg_name, ctx["namespace"])
         error = None if exit_code == 0 else "GKE host workers exited with code {}".format(exit_code)
         if exit_code == 0 and not artifact:
+            self.cleanup(request)
             raise GkeHostJobError(
                 "GKE host workers finished without returning jobs/{}/ artifacts".format(
                     request.job_name
@@ -290,9 +359,23 @@ class SdkGkeHostJobRunner:
             volume_path=request.job_name,
         )
 
+    def cleanup(self, request: GkeHostJobRequest) -> None:
+        ctx = self._connect(request)
+        self._delete_job(
+            ctx["batch"],
+            ctx["core"],
+            ctx["name"],
+            ctx["cfg_name"],
+            ctx["namespace"],
+            secret_name=ctx["secret_name"],
+        )
+
     def run(self, request: GkeHostJobRequest) -> ModalHostJobResult:
         call_id, _ = self.spawn(request)
-        return self.wait(request, call_id=call_id)
+        try:
+            return self.wait(request, call_id=call_id)
+        finally:
+            self.cleanup(request)
 
     def _connect(self, request: GkeHostJobRequest) -> dict[str, Any]:
         image = gke_host_image()
@@ -317,6 +400,7 @@ class SdkGkeHostJobRunner:
             "namespace": namespace,
             "name": name,
             "cfg_name": name + "-cfg",
+            "secret_name": name + "-sec",
             "image": image,
         }
 
@@ -340,18 +424,43 @@ class SdkGkeHostJobRunner:
                 "(KUBECONFIG or ~/.kube/config) or in-cluster credentials"
             ) from exc
 
+    def _wait_for_absent(self, getter: Any, *, timeout_sec: float = 60.0) -> None:
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            try:
+                getter()
+            except Exception as exc:  # noqa: BLE001
+                if _is_not_found(exc):
+                    return
+                raise
+            time.sleep(0.4)
+        raise GkeHostJobError("timed out waiting for Kubernetes object deletion")
+
     def _replace_config_map(self, core: Any, name: str, namespace: str, body: Any) -> None:
         try:
             core.delete_namespaced_config_map(name, namespace)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            if not _is_not_found(exc):
+                pass
+        self._wait_for_absent(lambda: core.read_namespaced_config_map(name, namespace))
         core.create_namespaced_config_map(namespace, body)
+
+    def _replace_secret(self, core: Any, name: str, namespace: str, body: Any) -> None:
+        try:
+            core.delete_namespaced_secret(name, namespace)
+        except Exception as exc:  # noqa: BLE001
+            if not _is_not_found(exc):
+                pass
+        self._wait_for_absent(lambda: core.read_namespaced_secret(name, namespace))
+        core.create_namespaced_secret(namespace, body)
 
     def _replace_job(self, batch: Any, name: str, namespace: str, manifest: dict[str, Any]) -> None:
         try:
-            batch.delete_namespaced_job(name, namespace, propagation_policy="Background")
-        except Exception:
-            pass
+            batch.delete_namespaced_job(name, namespace, propagation_policy="Foreground")
+        except Exception as exc:  # noqa: BLE001
+            if not _is_not_found(exc):
+                pass
+        self._wait_for_absent(lambda: batch.read_namespaced_job(name, namespace))
         batch.create_namespaced_job(namespace, manifest)
 
     def _delete_job(
@@ -361,6 +470,8 @@ class SdkGkeHostJobRunner:
         job_name: str,
         cfg_name: str,
         namespace: str,
+        *,
+        secret_name: str | None = None,
     ) -> None:
         try:
             batch.delete_namespaced_job(job_name, namespace, propagation_policy="Background")
@@ -370,6 +481,11 @@ class SdkGkeHostJobRunner:
             core.delete_namespaced_config_map(cfg_name, namespace)
         except Exception:
             pass
+        if secret_name:
+            try:
+                core.delete_namespaced_secret(secret_name, namespace)
+            except Exception:
+                pass
 
     def _wait_for_exit_marker(
         self,
@@ -431,23 +547,53 @@ class SdkGkeHostJobRunner:
         pod: str,
         namespace: str,
     ) -> bytes | None:
+        tmp_path: str | None = None
         try:
-            encoded = self._exec(
-                stream,
-                core,
+            handle, tmp_path = tempfile.mkstemp(suffix=".tgz")
+            os.close(handle)
+            written = 0
+            resp = stream.stream(
+                core.connect_get_namespaced_pod_exec,
                 pod,
                 namespace,
-                ["base64", _ARTIFACT_TAR],
+                command=["cat", _ARTIFACT_TAR],
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False,
+                _preload_content=False,
             )
+            try:
+                with open(tmp_path, "wb") as out:
+                    while resp.is_open():
+                        resp.update(timeout=60)
+                        if resp.peek_stdout():
+                            data = resp.read_stdout()
+                            chunk = (
+                                data
+                                if isinstance(data, (bytes, bytearray))
+                                else str(data).encode("latin1")
+                            )
+                            written += len(chunk)
+                            if written > _MAX_ARTIFACT_BYTES:
+                                raise GkeHostJobError(
+                                    "GKE artifact tar exceeded {} bytes".format(
+                                        _MAX_ARTIFACT_BYTES
+                                    )
+                                )
+                            out.write(chunk)
+            finally:
+                resp.close()
+            if written <= 0:
+                return None
+            return Path(tmp_path).read_bytes()
+        except GkeHostJobError:
+            raise
         except Exception:
             return None
-        text = encoded.decode("ascii", errors="ignore").strip()
-        if not text:
-            return None
-        try:
-            return base64.b64decode(text)
-        except Exception:
-            return None
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
 
     def _exec(
         self,

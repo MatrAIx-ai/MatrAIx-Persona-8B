@@ -1,8 +1,8 @@
-"""Prebuild and cache Harbor Docker images for Modal docker workers.
+"""Prebuild and cache Harbor Docker images for Modal web/linux sandboxes.
 
 Harbor tags each trial ``hb__{task.short_name}``, so two Playwright tasks with
-the same Dockerfile still rebuild if the daemon is empty. Modal Functions also
-start with an empty Docker graph. Hash the environment context once, persist
+the same Dockerfile still rebuild if the daemon is empty. Each sandbox starts
+with an empty Docker graph. Hash the environment context once, persist
 ``docker save`` tarballs on a Volume, and retag ``hb__{short_name}`` so Harbor
 skips ``compose build``.
 """

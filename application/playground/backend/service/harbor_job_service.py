@@ -1342,7 +1342,7 @@ class HarborJobService:
                     "computeFamily=modal requires Modal credentials "
                     "(MODAL_TOKEN_ID and MODAL_TOKEN_SECRET, or ~/.modal.toml) "
                     "and a deployed matraix-host-jobs app "
-                    "(harbor_host_job / harbor_docker_job)"
+                    "(application/playground/backend/service/modal_host_app.py)"
                 )
         if compute_plan.dispatch == "gke_workers":
             from matraix.gke_settings import (
@@ -2241,6 +2241,13 @@ class HarborJobService:
                 by_key[key] = row
                 state["shards"] = list(by_key.values())
                 save_cloud_run(job_dir, state)
+                request = handles[key][2]
+                cleanup = getattr(runner, "cleanup", None)
+                if dispatch == "gke_workers" and callable(cleanup):
+                    try:
+                        cleanup(request)
+                    except Exception:
+                        pass
         return codes, errors
 
     def _invoke_modal_host(
@@ -2281,7 +2288,9 @@ class HarborJobService:
             exit_code = int(result.exit_code)
             error = result.error
             if exit_code != 0 and not error:
-                error = "Modal Jobs exited with code {}".format(exit_code)
+                error = "Modal shard {} exited with code {}".format(
+                    shard_key, exit_code
+                )
             return exit_code, error
         except ModalHostJobError as exc:
             return 1, str(exc)

@@ -651,7 +651,7 @@ export function buildBatchGridCells(
     // Status is driven by each cell's OWN matched trial, so it only ever moves
     // forward (queued -> running -> done/error) instead of flickering.
     let status: BatchTrialStatus = "pending";
-    if trial?.completed) {
+    if (trial?.completed) {
       status = trial.succeeded === false || trial.error ? "error" : "done";
     } else if (trial?.stage === "queued") {
       status = "pending";

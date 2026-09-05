@@ -430,3 +430,28 @@ def test_collect_orchestrator_secret_env_rewrites_loopback_chatbot(
 
     env = collect_orchestrator_secret_env()
     assert env["CHATBOT_API_URL"] == "https://tunnel.example"
+
+
+def test_collect_orchestrator_secret_env_includes_provider_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.service.modal_host_job import collect_orchestrator_secret_env
+
+    monkeypatch.delenv("CHATBOT_API_URL", raising=False)
+    monkeypatch.delenv("MATRIX_CHATBOT_PUBLIC_URL", raising=False)
+    for key, value in (
+        ("XAI_API_KEY", "sk-xai"),
+        ("DEEPSEEK_API_KEY", "sk-ds"),
+        ("ZAI_API_KEY", "sk-zai"),
+        ("LLM_API_KEY", "sk-llm"),
+        ("USE_COMPUTER_API_KEY", "sk-uc"),
+        ("CLAUDE_API_KEY", "sk-claude"),
+    ):
+        monkeypatch.setenv(key, value)
+    env = collect_orchestrator_secret_env()
+    assert env["XAI_API_KEY"] == "sk-xai"
+    assert env["DEEPSEEK_API_KEY"] == "sk-ds"
+    assert env["ZAI_API_KEY"] == "sk-zai"
+    assert env["LLM_API_KEY"] == "sk-llm"
+    assert env["USE_COMPUTER_API_KEY"] == "sk-uc"
+    assert env["CLAUDE_API_KEY"] == "sk-claude"

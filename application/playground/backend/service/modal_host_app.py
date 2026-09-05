@@ -1,15 +1,13 @@
-"""Modal app for Harbor jobs (survey/chat host agents + web/linux Docker).
+"""Modal app for Harbor jobs.
 
-Deploy from a MatrAIx checkout:
+Survey and chat use the ``harbor_host_job`` Function. Web and Linux use a
+Sandbox from this app’s Docker image (task images cached on
+``matraix-docker-images``). Deploy once from a MatrAIx checkout:
 
     uv run --extra modal modal deploy application/playground/backend/service/modal_host_app.py
 
 Optional: ``modal secret create matraix-llm ANTHROPIC_API_KEY=...``
 (or set ``MATRIX_MODAL_SECRET``). Orchestrator env keys are also passed per call.
-
-``harbor_host_job`` is the slim survey/chat worker. ``harbor_docker_job`` installs
-Docker, persists task images on the ``matraix-docker-images`` Volume, and runs
-Harbor ``type: docker`` so later dispatches skip ``compose build``.
 """
 
 from __future__ import annotations
@@ -46,6 +44,7 @@ from backend.service.modal_host_job import (  # noqa: E402
     modal_volume_job_name,
     publish_job_to_volume,
 )
+
 
 def _resolve_repo_root() -> str:
     env = (os.environ.get("MATRIX_REPO_ROOT") or "").strip()
@@ -209,23 +208,7 @@ def harbor_host_job(payload: dict) -> dict:
     return _complete_harbor_job(payload)
 
 
-@app.function(
-    image=docker_image,
-    timeout=2 * 60 * 60,
-    cpu=2,
-    memory=8192,
-    volumes={
-        "/modal-jobs": volume,
-        "/modal-docker-images": docker_images_volume,
-    },
-    secrets=_secrets,
-    env={
-        **_WORKER_ENV,
-        "MATRIX_DOCKER_IMAGE_CACHE": "/modal-docker-images",
-    },
-)
-def harbor_docker_job(payload: dict) -> dict:
-    docker_images_volume.reload()
-    result = _complete_harbor_job(payload)
-    docker_images_volume.commit()
-    return result
+@app.function(image=docker_image, timeout=60, cpu=0.125, memory=256)
+def harbor_docker_image() -> str:
+    """Docker image for web/linux Sandboxes."""
+    return "ok"

@@ -1,9 +1,9 @@
-"""Schedule Harbor jobs as Modal Jobs.
+"""Schedule Harbor jobs on Modal.
 
-Survey/chat keep Harbor ``environment.type: host``. Web/linux keep ``type: docker``
-inside a Docker-capable worker; task images are prebuilt onto a Volume so later
-dispatches skip ``docker compose build``. Artifacts merge into the same
-``jobs/<job_name>/`` tree as a local run (``compute.json`` stays orchestrator-owned).
+Survey and chat run as the ``harbor_host_job`` Function. Web and Linux run as a
+Docker-capable Sandbox. Task images are cached on a Volume so later jobs skip
+``docker compose build``. Artifacts merge into the same ``jobs/<job_name>/`` tree
+as a local run (``compute.json`` stays orchestrator-owned).
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from typing import Any, Callable, Protocol
 
 MODAL_HOST_APP_NAME = "matraix-host-jobs"
 MODAL_HOST_FUNCTION_NAME = "harbor_host_job"
-MODAL_DOCKER_FUNCTION_NAME = "harbor_docker_job"
 MODAL_JOBS_VOLUME_NAME = "matraix-jobs"
+SANDBOX_CALL_PREFIX = "sandbox:"
 MODAL_DOCKER_IMAGES_VOLUME_NAME = "matraix-docker-images"
 MODAL_REMOTE_REPO = "/matraix"
 HARBOR_MODULE_COMMAND = ("python", "-m", "harbor.cli.main", "run")
@@ -45,11 +45,18 @@ _TEXT_REWRITE_SUFFIXES = frozenset({
 })
 _SECRET_ENV_KEYS = (
     "ANTHROPIC_API_KEY",
+    "CLAUDE_API_KEY",
     "OPENAI_API_KEY",
     "DASHSCOPE_API_KEY",
+    "DASHSCOPE_API_BASE",
     "OPENROUTER_API_KEY",
     "GOOGLE_API_KEY",
     "GEMINI_API_KEY",
+    "XAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "ZAI_API_KEY",
+    "LLM_API_KEY",
+    "USE_COMPUTER_API_KEY",
     "TOGETHER_API_KEY",
     "FIREWORKS_API_KEY",
     "AZURE_API_KEY",
@@ -65,7 +72,7 @@ _MAX_INLINE_TAR_BYTES = 40 * 1024 * 1024
 
 
 class ModalHostJobError(RuntimeError):
-    """Modal Jobs could not be scheduled or completed."""
+    """Modal could not schedule or complete the job."""
 
 
 @dataclass(frozen=True)
@@ -304,8 +311,13 @@ def rewrite_job_artifact_paths(
             path.write_text(updated, encoding="utf-8")
 
 
-def prepare_modal_job_config(config_yaml: str, *, job_name: str) -> str:
-    """Force Harbor to write ``jobs/<job_name>/`` under the Modal repo root."""
+def prepare_modal_job_config(
+    config_yaml: str,
+    *,
+    job_name: str,
+    jobs_dir: str = "jobs",
+) -> str:
+    """Force Harbor to write ``<jobs_dir>/<job_name>/`` under the remote repo root."""
     try:
         import yaml
     except ImportError:
@@ -314,16 +326,34 @@ def prepare_modal_job_config(config_yaml: str, *, job_name: str) -> str:
     if not isinstance(loaded, dict):
         return config_yaml
     loaded["job_name"] = job_name
-    loaded["jobs_dir"] = "jobs"
+    loaded["jobs_dir"] = jobs_dir or "jobs"
     return yaml.safe_dump(loaded, sort_keys=False)
 
 
 def modal_function_name_for_config(config_yaml: str) -> str:
+    del config_yaml
+    return MODAL_HOST_FUNCTION_NAME
+
+
+def modal_uses_docker_sandbox(config_yaml: str) -> bool:
     from backend.service.modal_docker_prebuild import harbor_environment_type
 
-    if harbor_environment_type(config_yaml) == "docker":
-        return MODAL_DOCKER_FUNCTION_NAME
-    return MODAL_HOST_FUNCTION_NAME
+    return harbor_environment_type(config_yaml) == "docker"
+
+
+def encode_modal_sandbox_call_id(object_id: str) -> str:
+    return SANDBOX_CALL_PREFIX + object_id
+
+
+def is_modal_sandbox_call_id(call_id: str) -> bool:
+    return (call_id or "").startswith(SANDBOX_CALL_PREFIX)
+
+
+def modal_sandbox_object_id(call_id: str) -> str:
+    raw = (call_id or "").strip()
+    if raw.startswith(SANDBOX_CALL_PREFIX):
+        return raw[len(SANDBOX_CALL_PREFIX) :]
+    return raw
 
 
 def execute_host_harbor_job(
@@ -418,6 +448,21 @@ def write_live_status_file(status: dict[str, str], dest: Path) -> bool:
         return False
     path.write_text(encoded, encoding="utf-8")
     return True
+
+
+def apply_worker_live_status(dest: Path, raw: bytes | str) -> dict[str, str]:
+    """Merge a worker ``live_status.json`` blob into the orchestrator overlay."""
+    text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+    try:
+        loaded = json.loads(text)
+    except Exception:
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    status = {str(key): str(value) for key, value in loaded.items() if str(key)}
+    if status:
+        apply_live_overlay(dest, status)
+    return status
 
 
 def apply_live_overlay(dest: Path, status: dict[str, str]) -> Path:
@@ -804,7 +849,7 @@ def wait_modal_call_with_live_pull(
     dest: Path | None,
     poll_sec: float = 5.0,
 ) -> Any:
-    """Block on ``FunctionCall.get`` while applying live status and flushed artifacts."""
+    """Block on the Function while applying live status and flushed artifacts."""
     while True:
         try:
             return call.get(timeout=poll_sec)
@@ -877,7 +922,7 @@ class SdkModalHostJobRunner:
             call = spawn(payload)
         except Exception as exc:  # noqa: BLE001
             raise ModalHostJobError(
-                "Modal Jobs function {}.{} is not reachable. "
+                "Modal function {}.{} is not reachable. "
                 "Deploy application/playground/backend/service/modal_host_app.py "
                 "({}).".format(MODAL_HOST_APP_NAME, modal_function_name_for_config(request.config_yaml), exc)
             ) from exc
@@ -919,7 +964,7 @@ class SdkModalHostJobRunner:
             )
         except Exception as exc:  # noqa: BLE001
             raise ModalHostJobError(
-                "Modal Jobs function {}.{} is not reachable. "
+                "Modal function {}.{} is not reachable. "
                 "Deploy application/playground/backend/service/modal_host_app.py "
                 "({}).".format(
                     MODAL_HOST_APP_NAME,
@@ -936,7 +981,7 @@ class SdkModalHostJobRunner:
     def _function_and_payload(self, request: ModalHostJobRequest) -> tuple[Any, dict[str, Any]]:
         if not modal_credentials_configured():
             raise ModalHostJobError(
-                "computeFamily=modal (Modal Jobs) requires Modal credentials "
+                "computeFamily=modal requires Modal credentials "
                 "(MODAL_TOKEN_ID and MODAL_TOKEN_SECRET, or ~/.modal.toml)"
             )
         try:
@@ -958,7 +1003,7 @@ class SdkModalHostJobRunner:
             fn = modal.Function.from_name(MODAL_HOST_APP_NAME, function_name)
         except Exception as exc:  # noqa: BLE001
             raise ModalHostJobError(
-                "Modal Jobs function {}.{} is not reachable. "
+                "Modal function {}.{} is not reachable. "
                 "Deploy application/playground/backend/service/modal_host_app.py "
                 "({}).".format(MODAL_HOST_APP_NAME, function_name, exc)
             ) from exc
@@ -980,7 +1025,7 @@ class SdkModalHostJobRunner:
 
     def _result_from_raw(self, raw: Any) -> ModalHostJobResult:
         if not isinstance(raw, dict):
-            raise ModalHostJobError("Modal Jobs returned an unexpected payload")
+            raise ModalHostJobError("Modal returned an unexpected payload")
         return ModalHostJobResult(
             exit_code=int(raw.get("exitCode") if raw.get("exitCode") is not None else 1),
             artifact_tar=_decode_artifact(raw),
@@ -1016,7 +1061,7 @@ def materialize_modal_artifacts(
             import modal
         except ImportError as exc:
             raise ModalHostJobError(
-                "Modal Jobs wrote a volume path but the Modal SDK is not installed"
+                "Modal wrote a volume path but the Modal SDK is not installed"
             ) from exc
         volume = modal.Volume.from_name(
             os.environ.get("MATRIX_MODAL_JOBS_VOLUME") or MODAL_JOBS_VOLUME_NAME
@@ -1024,13 +1069,40 @@ def materialize_modal_artifacts(
         download_volume_job(volume, job_name=result.volume_path, dest=dest)
     else:
         raise ModalHostJobError(
-            "Modal Jobs finished without returning jobs/{}/ artifacts".format(job_name)
+            "Modal finished without returning jobs/{}/ artifacts".format(job_name)
         )
     return dest
 
 
+class SdkModalDispatchRunner:
+    """Survey/chat Function, or web/linux Sandbox."""
+
+    def spawn(self, request: ModalHostJobRequest) -> tuple[str, Any]:
+        return self._runner(request).spawn(request)
+
+    def wait(
+        self,
+        request: ModalHostJobRequest,
+        *,
+        call: Any | None = None,
+        call_id: str = "",
+    ) -> ModalHostJobResult:
+        return self._runner(request, call_id).wait(request, call=call, call_id=call_id)
+
+    def run(self, request: ModalHostJobRequest) -> ModalHostJobResult:
+        call_id, handle = self.spawn(request)
+        return self.wait(request, call=handle, call_id=call_id)
+
+    def _runner(self, request: ModalHostJobRequest, call_id: str = "") -> Any:
+        if is_modal_sandbox_call_id(call_id) or modal_uses_docker_sandbox(request.config_yaml):
+            from backend.service.modal_sandbox_job import SdkModalSandboxJobRunner
+
+            return SdkModalSandboxJobRunner()
+        return SdkModalHostJobRunner()
+
+
 def default_modal_host_job_runner() -> ModalHostJobRunner:
-    return SdkModalHostJobRunner()
+    return SdkModalDispatchRunner()
 
 
 def write_compute_json(job_dir: Path, plan: Any) -> Path:

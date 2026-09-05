@@ -117,7 +117,7 @@ Python import names stay stable: `harbor.*`, `matraix.agents.*`, `playground.*`.
 | `MATRIX_GKE_CLUSTER` / `MATRIX_GKE_REGION` / `MATRIX_GKE_REGISTRY` | GKE cluster for `computeFamily=gcp` |
 | `MATRIX_GKE_HOST_IMAGE` | Image for survey/chat GKE host workers |
 | `MATRIX_CHATBOT_PUBLIC_URL` | Tunnel/public URL forwarded to Modal/GKE instead of localhost sidecars |
-| `MATRIX_CHATBOT_TUNNEL` | `auto` (default) opens cloudflared/ngrok for local Modal/GKE chat; `0` off |
+| `MATRIX_CHATBOT_TUNNEL` | `auto` / `cloudflared` / `ngrok` publishes the local chat sidecar to Modal/GKE. Unset keeps the sidecar private |
 | `REMOTE_RUNNER_API_URL` | Remote runner base URL (required for `remote`) |
 | `REMOTE_RUNNER_API_KEY` | Optional bearer token for the worker API |
 | `REMOTE_RUNNER_HARBOR_COMMAND` | Override `harbor` CLI on the worker |

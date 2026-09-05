@@ -1,11 +1,8 @@
-"""Open a temporary public URL to a local chatbot sidecar (dev Modal/GKE).
+"""Public URL for a local chatbot sidecar (Modal/GKE chat).
 
-Production already has a public ``CHATBOT_API_URL``. Local sidecars bind
-localhost, which Modal/GKE cannot call. If ``cloudflared`` (preferred) or
-``ngrok`` is on PATH, Playground starts a quick tunnel and stores the URL in
-``MATRIX_CHATBOT_PUBLIC_URL`` for the API process lifetime.
-
-Set ``MATRIX_CHATBOT_TUNNEL=0`` to disable. ``=ngrok`` skips cloudflared.
+Production already has ``CHATBOT_API_URL``. Local sidecars bind localhost, which
+Modal and GKE cannot call. ``MATRIX_CHATBOT_TUNNEL=auto`` starts cloudflared or
+ngrok and stores the URL in ``MATRIX_CHATBOT_PUBLIC_URL`` for this API process.
 """
 
 from __future__ import annotations
@@ -46,14 +43,16 @@ class ChatbotTunnelError(RuntimeError):
 
 
 def tunnel_mode() -> str:
-    raw = (os.environ.get(CHATBOT_TUNNEL_ENV) or "auto").strip().lower()
-    if raw in {"0", "false", "no", "off", "disable", "disabled"}:
+    raw = (os.environ.get(CHATBOT_TUNNEL_ENV) or "off").strip().lower()
+    if raw in {"", "0", "false", "no", "off", "disable", "disabled"}:
         return "off"
     if raw in {"ngrok"}:
         return "ngrok"
     if raw in {"cloudflared", "cloudflare"}:
         return "cloudflared"
-    return "auto"
+    if raw in {"1", "true", "yes", "on", "enable", "enabled", "auto"}:
+        return "auto"
+    return "off"
 
 
 def loopback_origin(url: str) -> str:
@@ -127,7 +126,7 @@ def _start_tunnel(
             errors.append(str(exc))
     hint = (
         "Install cloudflared (`brew install cloudflared`) so Playground can "
-        "open a temporary public URL to your local chat sidecar, or set {}, "
+        "publish a URL to your local chat sidecar, or set {}, "
         "or use computeFamily=local."
     ).format(CHATBOT_PUBLIC_URL_ENV)
     detail = "; ".join(errors) if errors else "no tunnel backend"

@@ -50,6 +50,16 @@ def test_require_cloud_reachable_rejects_localhost_when_tunnel_off(
         require_cloud_reachable_chatbot_url()
 
 
+def test_require_cloud_reachable_defaults_to_no_tunnel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(CHATBOT_PUBLIC_URL_ENV, raising=False)
+    monkeypatch.delenv(CHATBOT_TUNNEL_ENV, raising=False)
+    monkeypatch.setenv("CHATBOT_API_URL", "http://127.0.0.1:8905")
+    with pytest.raises(ValueError, match="needs a chatbot URL"):
+        require_cloud_reachable_chatbot_url()
+
+
 def test_require_cloud_reachable_accepts_public(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(CHATBOT_PUBLIC_URL_ENV, raising=False)
     monkeypatch.setenv("CHATBOT_API_URL", "https://chat.prod.example")

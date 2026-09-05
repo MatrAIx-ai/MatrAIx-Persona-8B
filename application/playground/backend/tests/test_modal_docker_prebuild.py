@@ -15,7 +15,6 @@ from backend.service.modal_docker_prebuild import (
     prepare_docker_environment_for_job,
     task_short_name,
 )
-from backend.service.modal_host_job import modal_function_name_for_config
 
 
 class _FakeDocker(DockerCli):
@@ -130,11 +129,14 @@ def test_host_jobs_skip_prebuild(tmp_path: Path) -> None:
     )
 
 
-def test_function_name_follows_environment_type() -> None:
-    assert (
-        modal_function_name_for_config("environment:\n  type: docker\n")
-        == "harbor_docker_job"
+def test_docker_jobs_use_sandbox_not_function() -> None:
+    from backend.service.modal_host_job import (
+        modal_function_name_for_config,
+        modal_uses_docker_sandbox,
     )
+
+    assert modal_uses_docker_sandbox("environment:\n  type: docker\n")
+    assert not modal_uses_docker_sandbox("environment:\n  type: host\n")
     assert (
         modal_function_name_for_config("environment:\n  type: host\n")
         == "harbor_host_job"

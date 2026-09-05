@@ -36,11 +36,10 @@ _LOOPBACK_HOSTS = frozenset(
 
 _CLOUD_CHAT_ERROR = (
     "Chat on Modal/GKE needs a chatbot URL the worker can reach. "
-    "Production: set CHATBOT_API_URL (or the task upstream) to the public "
-    "endpoint. Local dev: Playground can open a temporary public URL if "
-    "cloudflared is installed (`brew install cloudflared`), or set "
-    "{public_env} yourself, or use computeFamily=local. "
-    "Set MATRIX_CHATBOT_TUNNEL=0 to disable the automatic tunnel."
+    "Set CHATBOT_API_URL (or the task upstream) to a public endpoint, "
+    "or set {public_env}, or set MATRIX_CHATBOT_TUNNEL=auto so Playground "
+    "can start cloudflared (`brew install cloudflared`). "
+    "Or run with computeFamily=local."
 ).format(public_env=CHATBOT_PUBLIC_URL_ENV)
 
 
@@ -96,8 +95,7 @@ def _chatbot_worker_urls() -> list[str]:
 def require_cloud_reachable_chatbot_url() -> None:
     """Raise if a Modal/GKE chat worker would only see localhost.
 
-    Local dev: if the sidecar is on localhost, Playground tries to open a
-    cloudflared/ngrok tunnel first (unless ``MATRIX_CHATBOT_TUNNEL=0``).
+    Set ``MATRIX_CHATBOT_PUBLIC_URL`` or ``MATRIX_CHATBOT_TUNNEL=auto``.
     """
     urls = _chatbot_worker_urls()
     if urls and not any(is_loopback_chatbot_url(url) for url in urls):

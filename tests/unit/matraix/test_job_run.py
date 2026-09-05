@@ -155,6 +155,16 @@ def test_wait_for_harbor_job_returns_terminal(monkeypatch: pytest.MonkeyPatch) -
     assert detail["launch"]["status"] == "completed"
 
 
+def test_wait_for_harbor_job_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Fake:
+        def get_job(self, job_name: str) -> dict:
+            return {"launch": {"status": "running"}}
+
+    monkeypatch.setattr("matraix.job_run.time.sleep", lambda _s: None)
+    with pytest.raises(TimeoutError, match="timed out waiting"):
+        wait_for_harbor_job(Fake(), "job-1", poll_s=0, timeout_s=0)
+
+
 def test_run_via_harbor_job_service_forwards_launch_kwargs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
