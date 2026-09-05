@@ -723,6 +723,7 @@ class HarborJobLaunchRequest(BaseModel):
     nConcurrentTrials: int = 2
     mode: str = "auto"
     plane: Optional[str] = None
+    computeFamily: Optional[str] = None
     jobName: Optional[str] = None
     osAppSubmissionProfile: Optional[str] = Field(
         None,
@@ -753,6 +754,16 @@ class HarborJobLaunchRequest(BaseModel):
         normalized = value.strip().lower()
         if normalized not in {"harbor", "remote"}:
             raise ValueError("plane must be one of harbor, remote")
+        return normalized
+
+    @field_validator("computeFamily")
+    @classmethod
+    def _validate_compute_family(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        normalized = value.strip().lower().replace("-", "_")
+        if normalized not in {"local", "modal", "gcp"}:
+            raise ValueError("computeFamily must be one of local, modal, gcp")
         return normalized
 
     @field_validator("personaModel")

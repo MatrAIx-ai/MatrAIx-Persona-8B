@@ -137,6 +137,43 @@ def test_resolve_job_environment_use_computer_for_macos_and_ios() -> None:
     ) == {"type": "docker", "delete": True}
 
 
+def test_resolve_job_environment_compute_family(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "MATRIX_GKE_CLUSTER",
+        "MATRIX_GKE_REGION",
+        "MATRIX_GKE_REGISTRY",
+        "GCP_PROJECT",
+        "GOOGLE_CLOUD_PROJECT",
+        "MATRIX_GCP_PROJECT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    assert resolve_job_environment(
+        execution_mode="auto",
+        trial_profile="json_survey",
+        compute_family="local",
+    ) == {"type": "host", "delete": True}
+    assert resolve_job_environment(
+        execution_mode="auto",
+        trial_profile="json_survey",
+        compute_family="modal",
+    ) == {"type": "host", "delete": True}
+    assert resolve_job_environment(
+        execution_mode="auto",
+        trial_profile="user_sim_chat",
+        compute_family="modal",
+    ) == {"type": "host", "delete": True}
+    assert resolve_job_environment(
+        execution_mode="auto",
+        trial_profile="docker_agent",
+        compute_family="modal",
+    ) == {"type": "docker", "delete": True}
+    assert resolve_job_environment(
+        execution_mode="auto",
+        trial_profile="docker_agent",
+        compute_family="gcp",
+    ) == {"type": "gke", "delete": True}
+
+
 def test_build_application_job_config_macos_cua_uses_use_computer(tmp_path: Path) -> None:
     repo = tmp_path
     pool = repo / "persona" / "datasets" / "matraix-persona-dev-sample"

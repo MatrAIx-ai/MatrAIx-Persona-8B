@@ -57,10 +57,20 @@ All paths share:
 
 | Plane | Meaning | Configure |
 |-------|---------|-----------|
-| `harbor` (default) | API or laptop runs `harbor run` locally | `MATRIX_EXECUTION_PLANE=harbor` |
+| `harbor` (default) | API or laptop runs the job locally | `MATRIX_EXECUTION_PLANE=harbor` |
 | `remote` | API dispatches to a Remote Runner worker over HTTP | `MATRIX_EXECUTION_PLANE=remote` + `REMOTE_RUNNER_API_URL` |
 
 Remote plane details: [unified-runtime.md](runtime.md).
+
+### Compute family
+
+| Family | Meaning | Configure |
+|--------|---------|-----------|
+| `local` (default) | Trials on the Harbor orchestrator | `MATRIX_COMPUTE_FAMILY=local` |
+| `modal` | Survey, chat, web, Linux on Modal | `MATRIX_COMPUTE_FAMILY=modal` + Modal deploy |
+| `gcp` | Survey, chat, web, Linux on GKE | `MATRIX_COMPUTE_FAMILY=gcp` + cluster + host image |
+
+Switch when daily concurrency saturates Modal (especially web). See [runtime.md](runtime.md).
 
 **Security note:** the remote plane sends only `PYTHONPATH` and `MATRIX_*` task exports over HTTP. API keys must live on the **worker**, not in the dispatch payload.
 
@@ -99,6 +109,15 @@ Python import names stay stable: `harbor.*`, `matraix.agents.*`, `playground.*`.
 | Variable | Purpose |
 |----------|---------|
 | `MATRIX_EXECUTION_PLANE` | `harbor` (default) or `remote` |
+| `MATRIX_COMPUTE_FAMILY` | `local` (default), `modal`, or `gcp` |
+| `MATRIX_SHARD_CONCURRENCY` | Max workers for one job (default `8`) |
+| `MATRIX_HOST_PACK_CONCURRENCY` | Max survey/chat processes per Modal / GKE host worker (default `32`; does not override Playground Parallel) |
+| `MATRIX_WEB_PACK_CONCURRENCY` | Max browsers per Modal / GKE web worker (default `1`) |
+| `MATRIX_MAX_CONCURRENT_TRIALS` | Optional cap on Playground Parallel |
+| `MATRIX_GKE_CLUSTER` / `MATRIX_GKE_REGION` / `MATRIX_GKE_REGISTRY` | GKE cluster for `computeFamily=gcp` |
+| `MATRIX_GKE_HOST_IMAGE` | Image for survey/chat GKE host workers |
+| `MATRIX_CHATBOT_PUBLIC_URL` | Tunnel/public URL forwarded to Modal/GKE instead of localhost sidecars |
+| `MATRIX_CHATBOT_TUNNEL` | `auto` (default) opens cloudflared/ngrok for local Modal/GKE chat; `0` off |
 | `REMOTE_RUNNER_API_URL` | Remote runner base URL (required for `remote`) |
 | `REMOTE_RUNNER_API_KEY` | Optional bearer token for the worker API |
 | `REMOTE_RUNNER_HARBOR_COMMAND` | Override `harbor` CLI on the worker |
@@ -107,7 +126,7 @@ Python import names stay stable: `harbor.*`, `matraix.agents.*`, `playground.*`.
 ### Task exports (local + remote worker)
 
 `matraix run` sets these automatically from the generated job files. Export
-them manually only when calling `harbor run` directly:
+them manually only when bypassing `matraix run`:
 
 | Variable | When |
 |----------|------|

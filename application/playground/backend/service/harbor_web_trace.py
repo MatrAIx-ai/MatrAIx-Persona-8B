@@ -19,6 +19,23 @@ def _is_safe_relative_path(path: str) -> bool:
     return rel.suffix.lower() in _ALLOWED_SUFFIXES
 
 
+def _rel_screenshot_path(path: str) -> str | None:
+    raw = path.strip().replace("\\", "/")
+    if raw.startswith("file://"):
+        raw = raw[7:]
+    if _is_safe_relative_path(raw):
+        return raw
+    parts = Path(raw).parts
+    if "images" in parts:
+        rel = "/".join(parts[parts.index("images") :])
+        if _is_safe_relative_path(rel):
+            return rel
+    name = Path(raw).name
+    if name and _is_safe_relative_path(name):
+        return name
+    return None
+
+
 def screenshot_file_from_step(step: dict[str, Any]) -> str | None:
     """Return a logs-dir-relative screenshot path for one ATIF trajectory step."""
     observation = step.get("observation")
@@ -38,8 +55,10 @@ def screenshot_file_from_step(step: dict[str, Any]) -> str | None:
                     if not isinstance(source, dict):
                         continue
                     path = source.get("path")
-                    if isinstance(path, str) and _is_safe_relative_path(path.strip()):
-                        return path.strip()
+                    if isinstance(path, str):
+                        rel = _rel_screenshot_path(path)
+                        if rel:
+                            return rel
 
     message = step.get("message")
     if isinstance(message, list):
@@ -50,8 +69,10 @@ def screenshot_file_from_step(step: dict[str, Any]) -> str | None:
             if not isinstance(source, dict):
                 continue
             path = source.get("path")
-            if isinstance(path, str) and _is_safe_relative_path(path.strip()):
-                return path.strip()
+            if isinstance(path, str):
+                rel = _rel_screenshot_path(path)
+                if rel:
+                    return rel
 
     return None
 
@@ -106,6 +127,30 @@ def resolve_trial_screenshot_path(logs_dir: Path, rel_path: str) -> Path:
     if not path.is_file():
         raise FileNotFoundError(rel_path)
     return path
+
+
+def latest_trial_screenshot_bytes(trial_dir: Path) -> bytes | None:
+    """Newest image under the trial logs tree (Harbor modal/gke flush or docker)."""
+    from backend.service.harbor_trial_debrief import find_trial_logs_dir
+
+    logs_dir = find_trial_logs_dir(trial_dir)
+    if logs_dir is None or not logs_dir.is_dir():
+        return None
+    newest: Path | None = None
+    newest_mtime = -1.0
+    for path in logs_dir.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in _ALLOWED_SUFFIXES:
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= newest_mtime:
+            newest = path
+            newest_mtime = mtime
+    if newest is None:
+        return None
+    return newest.read_bytes()
 
 
 def read_harbor_web_trace(

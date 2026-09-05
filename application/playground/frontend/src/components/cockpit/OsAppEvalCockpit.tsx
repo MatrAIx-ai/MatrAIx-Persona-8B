@@ -655,7 +655,7 @@ function OsAppResults({
   harborJobName,
   harborTrialName,
   vncUrl,
-  sandboxId,
+  sandboxId: _sandboxId,
 }: {
   task: OsAppEvalTask | null;
   osAppResult: OsAppResult | null;
@@ -683,11 +683,11 @@ function OsAppResults({
   }, [recordingUrl]);
 
   const isIos = task?.platform === "ios";
-  const useScreenshot = Boolean(sandboxId && harborJobName && harborTrialName);
   const screenshotUrl =
-    useScreenshot && harborJobName && harborTrialName
+    harborJobName && harborTrialName
       ? harborTrialLiveScreenshotUrl(harborJobName, harborTrialName)
       : null;
+  const useScreenshot = Boolean(screenshotUrl) && !vncUrl;
   const [screenshotSrc, setScreenshotSrc] = useState<string | null>(null);
   const screenshotTimerRef = useRef<number | null>(null);
 
@@ -795,7 +795,7 @@ function OsAppResults({
     if (el) el.scrollTop = el.scrollHeight;
   }, [liveSteps.length]);
 
-  const hasLiveView = useScreenshot ? Boolean(screenshotUrl) : Boolean(vncUrl);
+  const hasLiveView = Boolean(vncUrl) || Boolean(screenshotUrl);
 
   const stepsPanel = (
     <div className="flex h-full min-h-0 flex-col rounded-md border border-outline bg-surface p-2">

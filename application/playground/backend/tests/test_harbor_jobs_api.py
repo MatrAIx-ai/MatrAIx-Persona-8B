@@ -86,8 +86,10 @@ class _FakeHarborJobService:
         return job_name
 
     def get_trial_events(self, job_name: str, trial_name: str, *, after: int = 0) -> dict[str, Any]:
-        if (job_name, trial_name) != ("demo-job", "trial-0"):
-            raise ValueError("Trial not found")
+        if job_name != "demo-job":
+            raise ValueError("Job not found")
+        if trial_name != "trial-0":
+            return {"events": [], "offset": after}
         events = [
             {"type": "phase", "phase": "persona_kickoff"},
             {"type": "turn", "turn": {"turnIndex": 1, "userMessage": "hi", "assistantMessage": "hello"}},
@@ -233,6 +235,12 @@ def test_get_harbor_trial_events(client, fake_harbor_jobs):
 
 def test_get_harbor_trial_events_missing(client, fake_harbor_jobs):
     resp = client.get("/api/harbor/jobs/demo-job/trials/missing/events")
+    assert resp.status_code == 200
+    assert resp.json() == {"events": [], "offset": 0}
+
+
+def test_get_harbor_trial_events_missing_job(client, fake_harbor_jobs):
+    resp = client.get("/api/harbor/jobs/missing-job/trials/trial-0/events")
     assert resp.status_code == 404
 
 

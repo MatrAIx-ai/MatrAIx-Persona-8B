@@ -14,6 +14,12 @@ uv run python application/scripts/generate_application_job.py \
   --persona-ids 0042   # or --sample-size N for batch
 
 uv run matraix run -c configs/jobs/application-task-job-recipe/<generated>.yaml
+# Modal / GKE: generate with --compute-family, then the same matraix run:
+# uv run python application/scripts/generate_application_job.py \
+#   --task application/tasks/example-survey_product-feedback \
+#   --sample-size 10 --n-concurrent-trials 32 \
+#   --compute-family modal
+# uv run matraix run -c configs/jobs/application-task-job-recipe/<generated>.yaml
 ```
 
 Walkthrough for all four types: [quickstart.md §6–7](quickstart.md#6-one-persona--cli-with-mode-auto-default).
@@ -303,7 +309,12 @@ uv run python application/scripts/generate_application_job.py \
   --persona-ids 0042,0100,0200
 ```
 
-The script outputs a YAML recipe and a Matraix Playground command to run it. The recipe pins `agents[].model_name` so you can edit it or pass `--model-name` on regenerate to change the persona LLM.
+The script outputs a YAML recipe and a `matraix run -c` command. Pass
+`--n-concurrent-trials` (default 2, same as the UI Parallel control) and
+`--compute-family local|modal|gcp` so the sidecar records where trials run.
+`matraix run` is the only executor: local wraps `harbor run`; modal/gcp
+use HarborJobService (same path as Playground). The recipe pins
+`agents[].model_name` so you can edit it or pass `--model-name` on regenerate.
 
 Generated recipes land under `configs/jobs/application-task-job-recipe/` (see [Recipe directories](#recipe-directories) above).
 

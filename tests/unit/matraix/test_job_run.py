@@ -45,7 +45,7 @@ def _write_recipe(
     return config
 
 
-def test_should_dispatch_local_sidecar_stays_on_harbor_wrap(tmp_path: Path) -> None:
+def test_should_dispatch_local_sidecar_stays_on_harbor(tmp_path: Path) -> None:
     config = _write_recipe(
         tmp_path,
         sidecar={
@@ -62,21 +62,21 @@ def test_should_dispatch_local_sidecar_stays_on_harbor_wrap(tmp_path: Path) -> N
     assert family == "local"
 
 
-def test_should_dispatch_non_local_sidecar(tmp_path: Path) -> None:
+def test_should_dispatch_modal_sidecar(tmp_path: Path) -> None:
     config = _write_recipe(
         tmp_path,
         sidecar={
             "task": "application/tasks/example-survey_product-feedback",
             "trial_profile": "json_survey",
             "execution_mode": "auto",
-            "computeFamily": "hosted",
+            "computeFamily": "modal",
         },
     )
     dispatch, family = should_dispatch_via_playground(
         config_path=config, cli_family=None
     )
     assert dispatch is True
-    assert family == "hosted"
+    assert family == "modal"
 
 
 def test_cli_family_overrides_sidecar(tmp_path: Path) -> None:
@@ -86,7 +86,7 @@ def test_cli_family_overrides_sidecar(tmp_path: Path) -> None:
             "task": "application/tasks/example-survey_product-feedback",
             "trial_profile": "json_survey",
             "execution_mode": "auto",
-            "computeFamily": "hosted",
+            "computeFamily": "modal",
         },
     )
     dispatch, family = should_dispatch_via_playground(
@@ -96,10 +96,10 @@ def test_cli_family_overrides_sidecar(tmp_path: Path) -> None:
     assert family == "local"
 
 
-def test_process_env_does_not_hijack_local_yaml(
+def test_env_compute_family_does_not_hijack_local_yaml(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MATRIX_COMPUTE_FAMILY", "hosted")
+    monkeypatch.setenv("MATRIX_COMPUTE_FAMILY", "modal")
     config = _write_recipe(tmp_path)
     dispatch, family = should_dispatch_via_playground(
         config_path=config, cli_family=None
@@ -117,11 +117,11 @@ def test_launch_kwargs_from_sidecar_and_yaml(tmp_path: Path) -> None:
             "seed": 42,
             "execution_mode": "auto",
             "trial_profile": "json_survey",
-            "computeFamily": "hosted",
+            "computeFamily": "modal",
             "retrieval": {"pool": "persona/datasets/matraix-persona-dev-sample"},
         },
     )
-    kwargs = launch_kwargs_from_job_config(config, execution_plane="harbor")
+    kwargs = launch_kwargs_from_job_config(config, compute_family="modal")
     assert kwargs["task_path"] == "application/tasks/example-survey_product-feedback"
     assert kwargs["persona_ids"] == ["0042", "0007"]
     assert kwargs["persona_pool"] == "persona/datasets/matraix-persona-dev-sample"
@@ -129,15 +129,14 @@ def test_launch_kwargs_from_sidecar_and_yaml(tmp_path: Path) -> None:
     assert kwargs["n_concurrent_trials"] == 32
     assert kwargs["agent_name"] == "persona-json-survey"
     assert kwargs["persona_model"] == "anthropic/claude-haiku-4-5"
-    assert kwargs["execution_plane"] == "harbor"
+    assert kwargs["compute_family"] == "modal"
     assert kwargs["seed"] == 42
-    assert "compute_family" not in kwargs
 
 
 def test_launch_kwargs_requires_sidecar_task(tmp_path: Path) -> None:
     config = _write_recipe(tmp_path)
     with pytest.raises(ValueError, match="sidecar task"):
-        launch_kwargs_from_job_config(config)
+        launch_kwargs_from_job_config(config, compute_family="modal")
 
 
 def test_wait_for_harbor_job_returns_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -171,7 +170,7 @@ def test_run_via_harbor_job_service_forwards_launch_kwargs(
             "seed": 7,
             "execution_mode": "auto",
             "trial_profile": "json_survey",
-            "computeFamily": "hosted",
+            "computeFamily": "modal",
             "retrieval": {"pool": "persona/datasets/matraix-persona-dev-sample"},
         },
     )
@@ -209,12 +208,12 @@ def test_run_via_harbor_job_service_forwards_launch_kwargs(
     code = run_via_harbor_job_service(
         config_path=config,
         repo_root=tmp_path,
-        compute_family="hosted",
+        compute_family="modal",
         execution_plane="harbor",
     )
     assert code == 0
+    assert captured["compute_family"] == "modal"
     assert captured["persona_ids"] == ["0042"]
     assert captured["job_name"] == "cli-survey"
     assert captured["execution_plane"] == "harbor"
-    assert "compute_family" not in captured
     assert captured["shutdown"] is True

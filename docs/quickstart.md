@@ -622,7 +622,7 @@ Full task checklist: [tasks/README.md](../application/tasks/README.md).
 | Goal | Tool | Output |
 |------|------|--------|
 | Explore / debug visually | Playground (Mode **auto**) | `jobs/` |
-| Any of 4 types (terminal, single or batch) | `generate_application_job.py --execution-mode auto` + `matraix run -c` | `jobs/<job_name>/` |
+| Any of 4 types (terminal, single or batch) | `generate_application_job.py --execution-mode auto` then `matraix run -c` (add `--compute-family modal` / `gcp` on generate) | `jobs/<job_name>/` |
 | Deterministic job summary / export | `matraix results <job>` | text / JSON / CSV |
 | Persona narrative batch PDF | Playground **Runs** → **Download PDF** | UI PDF |
 | Install check — Survey & Chat (no Docker) | `matraix smoke <survey-task>` | `Smoke: ok` |

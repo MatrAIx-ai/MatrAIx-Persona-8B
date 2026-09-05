@@ -237,7 +237,7 @@ def test_main_run_sets_max_cost_usd_env(tmp_path: Path, monkeypatch) -> None:
     ]
 
 
-def test_main_run_non_local_sidecar_uses_harbor_job_service(
+def test_main_run_modal_sidecar_uses_harbor_job_service(
     tmp_path: Path, monkeypatch
 ) -> None:
     root = _fake_checkout(tmp_path)
@@ -247,7 +247,7 @@ def test_main_run_non_local_sidecar_uses_harbor_job_service(
             "task": "application/tasks/foo",
             "trial_profile": "json_survey",
             "execution_mode": "auto",
-            "computeFamily": "hosted",
+            "computeFamily": "modal",
             "selected_persona_ids": ["0042"],
             "seed": 1,
         },
@@ -268,20 +268,20 @@ def test_main_run_non_local_sidecar_uses_harbor_job_service(
     original_sys_path = list(sys.path)
     try:
         with pytest.raises(SystemExit) as excinfo:
-            cli.main(["run", "-c", str(config), "--compute-family", "hosted"])
+            cli.main(["run", "-c", str(config), "--compute-family", "modal"])
     finally:
         os.chdir(original_cwd)
         sys.path[:] = original_sys_path
 
     assert excinfo.value.code == 0
-    assert captured["compute_family"] == "hosted"
+    assert captured["compute_family"] == "modal"
     assert captured["config_path"] == config
     assert "args" not in harbor_calls
 
 
 def test_main_run_compute_family_without_config_exits() -> None:
     with pytest.raises(SystemExit) as excinfo:
-        cli.main(["run", "--compute-family", "hosted", "-p", "application/tasks/foo"])
+        cli.main(["run", "--compute-family", "modal", "-p", "application/tasks/foo"])
     assert "--compute-family requires" in str(excinfo.value)
 
 

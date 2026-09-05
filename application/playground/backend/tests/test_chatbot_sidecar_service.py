@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,24 @@ def test_resolve_health_url_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert svc.resolve_health_url("acme_support_api") == "http://127.0.0.1:8904"
     assert svc.resolve_health_url("acme_support_mcp") == "http://127.0.0.1:8903"
     assert svc.resolve_health_url("meal_planning_nutrition") == "http://127.0.0.1:8905"
+
+
+def test_ensure_sidecar_url_env_seeds_meal_planning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATBOT_API_URL", raising=False)
+    url = svc.ensure_sidecar_url_env("meal_planning_nutrition")
+    assert url == "http://127.0.0.1:8905"
+    assert os.environ["CHATBOT_API_URL"] == url
+
+
+def test_ensure_sidecar_url_env_keeps_existing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CHATBOT_API_URL", "https://chat.prod.example")
+    url = svc.ensure_sidecar_url_env("meal_planning_nutrition")
+    assert url == "https://chat.prod.example"
+    assert os.environ["CHATBOT_API_URL"] == url
 
 
 def test_sidecar_host_ports_are_unique() -> None:

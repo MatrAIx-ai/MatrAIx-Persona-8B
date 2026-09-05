@@ -228,6 +228,14 @@ def default_execution_plane() -> str:
     return _default_plane()
 
 
+def default_compute_family() -> str:
+    """Return the default compute family from ``MATRIX_COMPUTE_FAMILY``."""
+    raw = (os.environ.get("MATRIX_COMPUTE_FAMILY") or "local").strip().lower().replace("-", "_")
+    if raw in {"local", "modal", "gcp"}:
+        return raw
+    return "local"
+
+
 def remote_runner_configured() -> bool:
     from backend.service.execution_plane import remote_runner_configured as _configured
 
@@ -466,6 +474,24 @@ class ConfigManager:
                 "executionPlane": default_execution_plane(),
                 "remoteRunnerConfigured": remote_runner_configured(),
                 "personaModel": persona_model(),
+                "computeFamily": default_compute_family(),
+                "computeFamilies": [
+                    {
+                        "value": "local",
+                        "label": "Local",
+                        "description": "Run on the Harbor orchestrator (host agents or local Docker)",
+                    },
+                    {
+                        "value": "modal",
+                        "label": "Modal",
+                        "description": "Modal Jobs: survey/chat host agents, web/linux Docker workers with cached task images",
+                    },
+                    {
+                        "value": "gcp",
+                        "label": "GCP / GKE",
+                        "description": "Survey/chat: packed GKE host Jobs. Web/linux: Harbor environment.type=gke. Switch when daily concurrency saturates Modal.",
+                    },
+                ],
             },
         }
 

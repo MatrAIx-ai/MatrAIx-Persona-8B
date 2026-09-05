@@ -16,11 +16,11 @@
  * export logic, and every result/trace shape are wired exactly as before. Only
  * the structure and presentation are rebuilt.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useI18n } from "@/i18n/I18nProvider";
-import { listWebEvalTasks, api } from "@/lib/api";
+import { listWebEvalTasks, api, harborTrialLiveScreenshotUrl } from "@/lib/api";
 import {
   findPersonaAgent,
   personaModelPipelineLabel,
@@ -489,6 +489,8 @@ export function WebEvalCockpit({
                 error={displayError}
                 persona={persona}
                 onRetry={handleRetry}
+                harborJobName={harborJobName}
+                harborTrialName={harborTrialName}
               />
     </>
   );
@@ -694,6 +696,8 @@ function WebResults({
   error,
   persona,
   onRetry,
+  harborJobName,
+  harborTrialName,
 }: {
   task: WebEvalTask | null;
   webResult: WebResult | null;
@@ -703,10 +707,51 @@ function WebResults({
   error: string | null;
   persona: PlaygroundPersona | null;
   onRetry: () => void;
+  harborJobName: string | null;
+  harborTrialName: string | null;
 }) {
   const { t } = useI18n();
   const running = phase === "launching" || phase === "running";
   const failed = phase === "error" || phase === "timeout";
+  const screenshotUrl =
+    running && harborJobName && harborTrialName
+      ? harborTrialLiveScreenshotUrl(harborJobName, harborTrialName)
+      : null;
+  const [screenshotSrc, setScreenshotSrc] = useState<string | null>(null);
+  const screenshotTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!screenshotUrl) {
+      setScreenshotSrc(null);
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const resp = await fetch(`${screenshotUrl}?t=${Date.now()}`);
+        if (cancelled || !resp.ok) return;
+        const blob = await resp.blob();
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        setScreenshotSrc((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      } catch {
+        /* trajectory / screenshot may not have flushed yet */
+      }
+    };
+    void refresh();
+    screenshotTimerRef.current = window.setInterval(() => void refresh(), 1500);
+    return () => {
+      cancelled = true;
+      if (screenshotTimerRef.current !== null) window.clearInterval(screenshotTimerRef.current);
+      setScreenshotSrc((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [screenshotUrl]);
   const personaTitle = persona
     ? personaDescriptiveTitle(null, persona.blurb, persona.source)
     : t("eval.web.personaFallback");
@@ -741,6 +786,16 @@ function WebResults({
         </div>
       )}
 
+      {running && !webResult && screenshotSrc && !(trace && trace.events.length > 0) && (
+        <div className="overflow-hidden rounded-md border border-outline bg-black">
+          <img
+            src={screenshotSrc}
+            alt={t("eval.web.results.browsing")}
+            className="mx-auto max-h-[28rem] w-full object-contain"
+          />
+        </div>
+      )}
+
       {/* Error */}
       {failed && (
         <ErrorCard
@@ -762,7 +817,7 @@ function WebResults({
       )}
 
       {/* Loading skeleton before any result/trace lands */}
-      {running && !webResult && !trace && (
+      {running && !webResult && !(trace && trace.events.length > 0) && !screenshotSrc && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" aria-hidden>
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-32 animate-rb-pulse rounded-md bg-surface-high" />
