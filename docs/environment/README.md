@@ -70,7 +70,9 @@ Remote plane details: [unified-runtime.md](runtime.md).
 | `modal` | Survey, chat, web, Linux on Modal | `MATRIX_COMPUTE_FAMILY=modal` + Modal deploy |
 | `gcp` | Survey, chat, web, Linux on GKE | `MATRIX_COMPUTE_FAMILY=gcp` + cluster + host image |
 
-Switch when daily concurrency saturates Modal (especially web). See [runtime.md](runtime.md).
+Default is `local`. Set `modal` / `gcp` only for remote trials. If you already
+run on Modal, switch web to GKE when daily concurrency saturates. See
+[runtime.md](runtime.md).
 
 **Security note:** the remote plane sends only `PYTHONPATH` and `MATRIX_*` task exports over HTTP. API keys must live on the **worker**, not in the dispatch payload.
 

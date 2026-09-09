@@ -21,10 +21,13 @@ Optional per-request override: `"plane": "harbor"` or `"plane": "remote"` on
 
 ### Compute family
 
-Set where trial compute runs (independent of `plane`):
+Set where trial compute runs (independent of `plane`). Omit the variable (or
+set `local`) to stay on this machine. `modal` / `gcp` are opt-in:
 
 ```bash
-export MATRIX_COMPUTE_FAMILY=local   # or modal or gcp
+export MATRIX_COMPUTE_FAMILY=local   # default — laptop / API host
+# export MATRIX_COMPUTE_FAMILY=modal
+# export MATRIX_COMPUTE_FAMILY=gcp
 ```
 
 Optional per-request override: `"computeFamily": "local"`, `"modal"`, or `"gcp"`
@@ -38,9 +41,11 @@ on `POST /api/harbor/jobs`.
 
 Each run writes `jobs/<job_name>/compute.json` with `family` and `environment`.
 
-**When to switch.** Start on `modal`. Move web / Linux to `gcp` first when
-daily concurrency stays high. Survey / chat can stay packed on Modal until
-concurrency or cost says otherwise, then set the same `computeFamily=gcp`.
+**When to leave local.** Day-to-day CLI and Playground stay `local`. Use
+`modal` when you want trials to keep running after the laptop closes, or for
+a large batch. Move web / Linux to `gcp` first when daily Modal concurrency
+stays high. Survey / chat can stay packed on Modal until concurrency or cost
+says otherwise, then set the same `computeFamily=gcp`.
 
 Switch globally:
 
@@ -239,7 +244,7 @@ Optional dev-only `taskType=web` returns a deterministic mock when
 | Variable | Purpose |
 |----------|---------|
 | `MATRIX_EXECUTION_PLANE` | Default `harbor` or `remote` |
-| `MATRIX_COMPUTE_FAMILY` | Default `local`, `modal`, or `gcp` |
+| `MATRIX_COMPUTE_FAMILY` | Default `local`. Set `modal` or `gcp` for remote trials |
 | `MATRIX_SHARD_CONCURRENCY` | Max workers for one job (default `8`) |
 | `MATRIX_HOST_PACK_CONCURRENCY` | Max survey/chat processes per Modal / GKE host worker (default `32`; does not override Playground Parallel) |
 | `MATRIX_WEB_PACK_CONCURRENCY` | Max browsers per Modal / GKE web worker (default `1`) |

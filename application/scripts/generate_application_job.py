@@ -5,9 +5,9 @@ Retrieval matches Playground Persona World:
   sources, dimension filters, task persona_strategy.json, cohorts,
   and matraix-persona-1m sampling via PersonaPoolService.
 
-Then run the printed ``matraix run -c`` command. Modal / GKE: pass
-``--compute-family modal|gcp`` here so the sidecar records the family;
-``matraix run`` dispatches through HarborJobService automatically.
+Then run the printed ``matraix run -c`` command. Default is ``local`` (this
+machine). For Modal / GKE, pass ``--compute-family modal|gcp`` so the sidecar
+records the family; ``matraix run`` then dispatches through HarborJobService.
 """
 
 from __future__ import annotations
@@ -278,7 +278,8 @@ def main() -> None:
         help=(
             "Where trials run (same as Playground computeFamily). Written into "
             "the sidecar so `matraix run -c` can dispatch Modal / GKE. "
-            "Default: MATRIX_COMPUTE_FAMILY or local."
+            "Omit to stay local (or MATRIX_COMPUTE_FAMILY). Pass modal/gcp "
+            "only for remote trials."
         ),
     )
     parser.add_argument(

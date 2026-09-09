@@ -14,7 +14,7 @@ uv run python application/scripts/generate_application_job.py \
   --persona-ids 0042   # or --sample-size N for batch
 
 uv run matraix run -c configs/jobs/application-task-job-recipe/<generated>.yaml
-# Modal / GKE: generate with --compute-family, then the same matraix run:
+# Default is local (this machine). Optional Modal / GKE — see large-scale-runs.md:
 # uv run python application/scripts/generate_application_job.py \
 #   --task application/tasks/example-survey_product-feedback \
 #   --sample-size 10 --n-concurrent-trials 32 \
@@ -310,8 +310,9 @@ uv run python application/scripts/generate_application_job.py \
 ```
 
 The script outputs a YAML recipe and a `matraix run -c` command. Pass
-`--n-concurrent-trials` (default 2, same as the UI Parallel control) and
-`--compute-family local|modal|gcp` so the sidecar records where trials run.
+`--n-concurrent-trials` (default 2, same as the UI Parallel control). Omit
+`--compute-family` to stay `local`. Pass `modal` or `gcp` only when trials
+should run remotely; the sidecar records that family.
 `matraix run` is the only executor: local wraps `harbor run`; modal/gcp
 use HarborJobService (same path as Playground). The recipe pins
 `agents[].model_name` so you can edit it or pass `--model-name` on regenerate.

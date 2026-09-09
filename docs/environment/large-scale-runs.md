@@ -17,7 +17,9 @@ Pick one surface. They all write the same `jobs/<job_name>/` tree.
 | **`POST /api/harbor/jobs`** | Automation |
 | **`matraix run -c <job.yaml>`** | CLI that matches Playground (local, Modal, or GCP) |
 
-A thousand-persona Modal (or GCP) batch:
+A thousand-persona batch on this machine is the same generate + `matraix run -c`
+path as the [quickstart](../quickstart.md) (no `--compute-family`; default
+`local`). For Modal (or GKE) so the laptop can close:
 
 ```bash
 uv run python application/scripts/generate_application_job.py \
@@ -41,10 +43,11 @@ One launch covers the whole cohort. Do not start a separate job per persona.
 `plane` is who starts the job. `computeFamily` is where trials run.
 
 ```bash
-export MATRIX_COMPUTE_FAMILY=modal   # or gcp when daily concurrency saturates
+# unset / local = this machine (default)
+export MATRIX_COMPUTE_FAMILY=modal   # remote; or gcp when daily concurrency saturates
 ```
 
-Or pass `"computeFamily"` on `POST /api/harbor/jobs`.
+Or pass `"computeFamily"` on `POST /api/harbor/jobs`. Omit it to stay `local`.
 
 | | Survey / chat | Web / Linux app | macOS / iOS app |
 |--|---------------|-----------------|-----------------|
@@ -61,8 +64,9 @@ Docker. The first web/Linux job builds the task image; later jobs reuse it.
 Chat needs a sidecar URL that Modal can reach. Setup:
 [runtime.md](runtime.md).
 
-Start on `modal`. Switch web/Linux to `gcp` first when daily concurrency stays
-high. Flip with `MATRIX_COMPUTE_FAMILY=gcp` or `"computeFamily": "gcp"`.
+Once you leave `local`, start remote batches on `modal`. Switch web/Linux to
+`gcp` first when daily concurrency stays high. Flip with
+`MATRIX_COMPUTE_FAMILY=gcp` or `"computeFamily": "gcp"`.
 
 `nConcurrentTrials` (Playground **Parallel**) is how many trials run at once.
 Large Modal and GCP jobs split across workers automatically. Every trial still

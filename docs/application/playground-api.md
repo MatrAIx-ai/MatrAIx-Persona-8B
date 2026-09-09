@@ -182,8 +182,10 @@ Request body:
 ```
 
 `computeFamily` is optional (`local`, `modal`, or `gcp`; default
-`MATRIX_COMPUTE_FAMILY` or `local`). The CLI equivalent is
-`generate_application_job.py --compute-family …` then `matraix run -c`. Each job writes
+`MATRIX_COMPUTE_FAMILY` or `local`). Omit it on the API and omit
+`--compute-family` on generate to stay on this machine. For remote trials,
+`generate_application_job.py --compute-family modal` (or `gcp`) then
+`matraix run -c`. Each job writes
 `jobs/<job_name>/compute.json`. macOS/iOS CUA stays `use-computer`
 (`cuaPinned`) even when the family is `modal`/`gcp`. See
 [large-scale-runs.md](../environment/large-scale-runs.md) and
