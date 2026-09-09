@@ -93,7 +93,9 @@ export function useHarborBatchLive(jobName: string | null, options?: { enabled?:
         const trial = activeTrialName
           ? snapshot.trials.find((item) => item.trialName === activeTrialName)
           : undefined;
-        if (trial) {
+        // queued = overlay/persona slot with no trial tree yet. All four task
+        // kinds share this; only chatbot/web/os-app bubbles need events.jsonl.
+        if (trial && trial.stage !== "queued") {
           const offset = offsetsRef.current[trial.trialName] ?? 0;
           try {
             const payload = await api.getHarborTrialEvents(jobName, trial.trialName, offset);

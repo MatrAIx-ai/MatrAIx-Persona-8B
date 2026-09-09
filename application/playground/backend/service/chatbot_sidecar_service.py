@@ -81,6 +81,30 @@ def _default_health_url(spec: SidecarSpec) -> str:
     return "http://127.0.0.1:{}".format(spec.host_port)
 
 
+def ensure_sidecar_url_env(application_id: str | None) -> str:
+    """Write the local sidecar URL into env when Playground never set it.
+
+    Compose sidecars bind ``127.0.0.1:<port>`` without exporting
+    ``CHATBOT_API_URL``. Modal/GKE tunnel code only looks at env, so an
+    unset key means the tunnel never starts and the worker still sees
+    localhost as missing.
+    """
+    app_id = (application_id or "").strip()
+    spec = _SIDECAR_SPECS.get(app_id)
+    if spec is None:
+        return ""
+    existing = (os.environ.get(spec.primary_env) or "").strip()
+    if existing:
+        return existing
+    if spec.legacy_env:
+        legacy = (os.environ.get(spec.legacy_env) or "").strip()
+        if legacy:
+            return legacy
+    url = _default_health_url(spec)
+    os.environ[spec.primary_env] = url
+    return url
+
+
 def resolve_health_url(application_id: str) -> str:
     spec = _SIDECAR_SPECS.get(application_id)
     if spec is None:

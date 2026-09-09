@@ -203,6 +203,7 @@ export const api = {
     nConcurrentTrials?: number;
     mode?: "auto" | "force_docker" | "smoke";
     plane?: "harbor" | "remote";
+    computeFamily?: "local" | "modal" | "gcp";
     jobName?: string | null;
     chatDomain?: string | null;
     chatApplicationId?: string | null;

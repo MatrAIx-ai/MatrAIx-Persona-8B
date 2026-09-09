@@ -53,8 +53,11 @@ jobs:
             application/playground/backend/tests/test_api_schemas.py \
             application/playground/backend/tests/test_application_types.py \
             application/playground/backend/tests/test_application_task_spec.py \
+            application/playground/backend/tests/test_chatbot_reachability.py \
             application/playground/backend/tests/test_chatbot_sidecar_service.py \
+            application/playground/backend/tests/test_cohort_shard_planner.py \
             application/playground/backend/tests/test_config.py \
+            application/playground/backend/tests/test_gke_host_job.py \
             application/playground/backend/tests/test_harbor_chat_eval.py \
             application/playground/backend/tests/test_harbor_chat_mcp_session.py \
             application/playground/backend/tests/test_harbor_job_service.py \
@@ -63,6 +66,7 @@ jobs:
             application/playground/backend/tests/test_harbor_survey_eval.py \
             application/playground/backend/tests/test_harbor_web_trace.py \
             application/playground/backend/tests/test_job_aggregation.py \
+            application/playground/backend/tests/test_job_result_rollup.py \
             application/playground/backend/tests/test_mcp_client_contract.py \
             application/playground/backend/tests/test_persona_1m_index.py \
             application/playground/backend/tests/test_persona_1m_pool.py \
@@ -74,6 +78,9 @@ jobs:
             application/playground/backend/tests/test_remote_runner_server.py \
             application/playground/backend/tests/test_task_detail_service.py \
             application/playground/backend/tests/test_trial_events.py \
+            application/playground/backend/tests/test_modal_compute_launch.py \
+            application/playground/backend/tests/test_modal_docker_prebuild.py \
+            application/playground/backend/tests/test_modal_host_job.py \
             packages/playground/src/playground/tests/test_chatbot_sidecar_compose.py \
             packages/playground/src/playground/tests/test_model_client.py \
             packages/playground/src/playground/tests/test_model_client_openrouter.py \

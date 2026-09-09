@@ -868,6 +868,7 @@ def create_app(catalog_path: Optional[str] = None) -> FastAPI:
                 n_concurrent_trials=body.nConcurrentTrials,
                 execution_mode=body.mode,
                 execution_plane=resolved_plane,
+                compute_family=body.computeFamily,
                 job_name=body.jobName,
                 os_app_submission_profile=body.osAppSubmissionProfile,
                 os_app_backend=body.osAppBackend,

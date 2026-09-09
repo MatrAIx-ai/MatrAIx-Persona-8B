@@ -638,6 +638,9 @@ export interface HarborLaunchView {
   finishedAt?: string | null;
   exitCode?: number | null;
   executionPlane?: string | null;
+  computeFamily?: string | null;
+  computeEnvironment?: string | null;
+  computeDispatch?: string | null;
   remoteRunId?: string | null;
 }
 

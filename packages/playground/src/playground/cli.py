@@ -1,7 +1,7 @@
 """CLI helpers for the playground package.
 
-Headless end-to-end runs now launch through Harbor (``harbor run`` or
-``POST /api/harbor/jobs``). This module keeps :func:`format_transcript` for
+Headless end-to-end runs now launch through ``matraix run`` or
+``POST /api/harbor/jobs``. This module keeps :func:`format_transcript` for
 tests and tooling.
 """
 

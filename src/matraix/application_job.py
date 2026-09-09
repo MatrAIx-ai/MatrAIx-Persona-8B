@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from matraix.compute_family import resolve_compute_plan
 from matraix.persona_agent_context import apply_persona_context_to_agent_spec
 from matraix.persona_job import (
     load_manifest,
@@ -17,7 +18,6 @@ from matraix.persona_job import (
 
 DEFAULT_APPLICATION_JOBS_DIR = "configs/jobs/application-task-job-recipe"
 _EXECUTION_MODES = frozenset({"auto", "force_docker", "smoke"})
-_NATIVE_TRIAL_PROFILES = frozenset({"json_survey", "user_sim_chat"})
 
 
 def resolve_harbor_task_path(task_path: str, *, trial_profile: str) -> str:
@@ -32,7 +32,7 @@ def collect_run_env_exports(
     task_path: str,
     repo_root: Path,
 ) -> list[tuple[str, str]]:
-    """Return ``(VAR, value)`` pairs to export before ``harbor run``."""
+    """Return ``(VAR, value)`` pairs to export before ``matraix run``."""
     _ = repo_root
     exports: list[tuple[str, str]] = []
     if trial_profile == "json_survey":
@@ -47,30 +47,21 @@ def resolve_job_environment(
     execution_mode: str,
     trial_profile: str,
     cua_backend: str | None = None,
+    compute_family: str | None = None,
 ) -> dict[str, Any]:
-    """Pick the Harbor environment block for a job spec."""
-    if cua_backend:
-        normalized = cua_backend.strip().lower().replace("-", "_")
-        if normalized in {
-            "macos",
-            "ios",
-            "use_computer",
-            "use_computer_desktop",
-            "desktop",
-            "anthropic",
-            "anthropic_cua",
-            "ubuntu",
-        }:
-            env: dict[str, Any] = {"type": "use-computer", "delete": True}
-            if normalized == "ios":
-                env["kwargs"] = {"platform": "ios"}
-            return env
-        if normalized in {"docker", "linux", "docker_computer1", "computer1", "computer_1"}:
-            return {"type": "docker", "delete": True}
+    """Pick the Harbor environment block for a job spec.
 
-    if execution_mode == "auto" and trial_profile in _NATIVE_TRIAL_PROFILES:
-        return {"type": "host", "delete": True}
-    return {"type": "docker", "delete": True}
+    ``compute_family`` (``local`` / ``modal`` / ``gcp``) selects the provider.
+    Survey/chat on ``modal`` keep Harbor ``type: host`` (Modal Function).
+    Web/linux on ``modal`` keep Harbor ``type: docker`` and run in a Sandbox
+    (task images cached on a Volume). CUA macOS/iOS still pins ``use-computer``.
+    """
+    return resolve_compute_plan(
+        execution_mode=execution_mode,
+        trial_profile=trial_profile,
+        cua_backend=cua_backend,
+        compute_family=compute_family,
+    ).harbor_environment()
 
 
 def select_personas(
@@ -249,6 +240,11 @@ def build_application_job_config(
                 execution_mode=execution_mode,
                 trial_profile=trial_profile,
                 cua_backend=str(cua_backend) if cua_backend else None,
+                compute_family=(
+                    str(spec.get("compute_family")).strip()
+                    if spec.get("compute_family")
+                    else None
+                ),
             ),
         ),
         "agents": agents,

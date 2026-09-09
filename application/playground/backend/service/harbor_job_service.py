@@ -11,7 +11,7 @@ import threading
 import time
 import tomllib
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,7 +41,10 @@ from playground.remote_runner.dispatch import filter_remote_harbor_payload_env
 from matraix.application_job import (
     DEFAULT_APPLICATION_JOBS_DIR,
     build_application_job_config,
-    resolve_job_environment,
+)
+from matraix.compute_family import (
+    normalize_compute_family,
+    resolve_compute_plan,
 )
 from matraix.launch_env import build_launch_env
 
@@ -206,7 +209,28 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _trial_result_error(result: dict[str, Any] | None) -> str | None:
+def _exception_type(result: dict[str, Any] | None) -> str:
+    if not result:
+        return ""
+    exc = result.get("exception_info")
+    if isinstance(exc, dict):
+        return str(exc.get("exception_type") or "")
+    return ""
+
+
+def _reward_gap_with_artifact(result: dict[str, Any] | None, trial_dir: Path) -> bool:
+    """Harbor errored only because ``reward.txt`` is missing, but artifacts exist."""
+    if "RewardFileNotFoundError" not in _exception_type(result):
+        return False
+    return (trial_dir / "verifier" / "structured_output.json").is_file()
+
+
+def _trial_result_error(
+    result: dict[str, Any] | None,
+    trial_dir: Path | None = None,
+) -> str | None:
+    if trial_dir is not None and _reward_gap_with_artifact(result, trial_dir):
+        return None
     if not result:
         return None
     exc = result.get("exception_info")
@@ -386,7 +410,13 @@ def _external_run_activity_ts(
 ) -> float | None:
     """Latest evidence that an externally driven job is still writing artifacts."""
     latest = _job_result_activity_ts(job_result)
-    for path in (job_dir / "result.json", job_dir / "job.log"):
+    generated = job_dir / "_generated"
+    for path in (
+        job_dir / "result.json",
+        job_dir / "job.log",
+        generated / "live_overlay.json",
+        generated / "cloud_run.json",
+    ):
         mtime = _path_mtime(path)
         if mtime is not None:
             latest = mtime if latest is None else max(latest, mtime)
@@ -405,6 +435,34 @@ def _activity_is_live(*, activity_ts: float | None, now_ts: float) -> bool:
     if activity_ts is None:
         return False
     return (now_ts - activity_ts) <= EXTERNAL_RUN_STALE_AFTER_SEC
+
+
+def _job_source(job_name: str) -> str:
+    """Playground launches vs experiment-arm jobs (``exp-…-cN``)."""
+    return "experiment" if job_name.startswith("exp-") else "playground"
+
+
+def _missing_reward_only(job_dir: Path) -> bool:
+    """True when every Harbor trial error is a missing ``reward.txt`` with artifacts."""
+    saw_reward_gap = False
+    for child in job_dir.iterdir() if job_dir.is_dir() else []:
+        if not child.is_dir():
+            continue
+        result_path = child / "result.json"
+        if not result_path.is_file():
+            continue
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if not _exception_type(payload):
+            continue
+        if not _reward_gap_with_artifact(payload, child):
+            return False
+        saw_reward_gap = True
+    return saw_reward_gap
 
 
 def _job_list_status(
@@ -553,6 +611,21 @@ class _JobStatusState:
     history: list[list[tuple[int, int]]] = field(default_factory=list)
 
 
+def _job_executor_max_workers() -> int:
+    """Concurrent Harbor job launches (each arm holds one worker for its whole
+    run). Default 8 so a typical A/B/N launches every arm in parallel instead of
+    the old cap of 2; override with ``MATRIX_JOB_MAX_WORKERS``."""
+    raw = os.environ.get("MATRIX_JOB_MAX_WORKERS", "").strip()
+    if raw:
+        try:
+            n = int(raw)
+        except ValueError:
+            n = 0
+        if n >= 1:
+            return n
+    return 8
+
+
 @dataclass
 class HarborLaunchRecord:
     job_name: str
@@ -563,6 +636,9 @@ class HarborLaunchRecord:
     finished_at: str | None = None
     exit_code: int | None = None
     execution_plane: str = "harbor"
+    compute_family: str = "local"
+    compute_environment: str | None = None
+    compute_dispatch: str | None = None
     remote_run_id: str | None = None
 
 
@@ -576,8 +652,17 @@ class HarborJobService:
     command_runner: Callable[..., int] = _run_subprocess
     harbor_command: tuple[str, ...] = field(default_factory=lambda: tuple(_default_harbor_command()))
     remote_runner_client: Any | None = None
-    _executor: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=2))
+    modal_host_job_runner: Any | None = None
+    gke_host_job_runner: Any | None = None
+    _executor: ThreadPoolExecutor = field(
+        default_factory=lambda: ThreadPoolExecutor(
+            max_workers=_job_executor_max_workers()
+        )
+    )
     _launches: dict[str, HarborLaunchRecord] = field(default_factory=dict)
+    # Per-job extra launch env (e.g. experiment MATRIX_PARAM_* / EXPERIMENTS_TASK_DIR),
+    # merged in _build_harbor_launch_env so each experiment cell's stimulus is injected.
+    _extra_launch_env: dict[str, dict[str, str]] = field(default_factory=dict)
     _reporting_jobs: set[str] = field(default_factory=set)
     _guard: threading.Lock = field(default_factory=threading.Lock)
     _status_states: dict[str, "_JobStatusState"] = field(default_factory=dict)
@@ -592,11 +677,13 @@ class HarborJobService:
     def from_repo(cls, *, repo_root: Path | None = None, jobs_dir: Path | None = None) -> "HarborJobService":
         root = Path(repo_root) if repo_root is not None else _repo_root()
         resolved_jobs = Path(jobs_dir) if jobs_dir is not None else root / "jobs"
-        return cls(
+        service = cls(
             repo_root=root,
             jobs_dir=resolved_jobs,
             generated_configs_dir=root / DEFAULT_APPLICATION_JOBS_DIR,
         )
+        service.resume_detached_cloud_runs()
+        return service
 
     def _list_job_names(self) -> list[str]:
         if not self.jobs_dir.is_dir():
@@ -611,16 +698,76 @@ class HarborJobService:
         if not job_dir.is_dir():
             return []
         skip = {"_inputs", "_generated"}
-        return sorted(
-            [
-                d.name
-                for d in job_dir.iterdir()
-                if d.is_dir() and d.name not in skip and not d.name.startswith(".")
-            ]
-        )
+        names = {
+            d.name
+            for d in job_dir.iterdir()
+            if d.is_dir() and d.name not in skip and not d.name.startswith(".")
+        }
+        try:
+            from backend.service.modal_host_job import read_live_overlay
+
+            names.update(read_live_overlay(job_dir))
+        except Exception:
+            pass
+        return sorted(names)
 
     def _trial_has_result(self, job_name: str, trial_name: str) -> bool:
         return (self.jobs_dir / job_name / trial_name / "result.json").is_file()
+
+    def _job_config_for_listing(self, job_name: str, job_dir: Path) -> dict[str, Any] | None:
+        meta = self._read_json(self._launch_meta_path(job_name)) or {}
+        job_config = meta.get("jobConfig") if isinstance(meta.get("jobConfig"), dict) else None
+        if isinstance(job_config, dict):
+            return job_config
+        return self._read_json(job_dir / "config.json")
+
+    def _expected_trial_count(self, job_name: str, job_dir: Path) -> int:
+        job_config = self._job_config_for_listing(job_name, job_dir)
+        if not isinstance(job_config, dict):
+            return 0
+        agents = job_config.get("agents")
+        if not isinstance(agents, list):
+            return 0
+        return sum(1 for row in agents if isinstance(row, dict))
+
+    def _in_flight_listing_progress(
+        self, job_name: str, job_dir: Path
+    ) -> tuple[int, int, int]:
+        """trial_count, completed_trials, failed_on_disk for a still-running job.
+
+        Overlay-only dones (no ``result.json`` yet) still move the Runs bar;
+        expected size comes from launch-time ``agents`` so 10/1000 is visible
+        before trial trees flush.
+        """
+        overlay: dict[str, str] = {}
+        try:
+            from backend.service.modal_host_job import read_live_overlay
+
+            overlay = read_live_overlay(job_dir)
+        except Exception:  # noqa: BLE001
+            overlay = {}
+        names = set(self._list_trial_names(job_name)) | set(overlay)
+        trial_count = max(self._expected_trial_count(job_name, job_dir), len(names))
+        completed = 0
+        failed = 0
+        for name in names:
+            if self._trial_has_result(job_name, name):
+                completed += 1
+                if (
+                    _trial_result_error(
+                        self._read_json(job_dir / name / "result.json"),
+                        job_dir / name,
+                    )
+                    is not None
+                ):
+                    failed += 1
+                continue
+            state = overlay.get(name)
+            if state in {"done", "error"}:
+                completed += 1
+            if state == "error":
+                failed += 1
+        return trial_count, completed, failed
 
     def _read_json(self, path: Path) -> dict[str, Any] | None:
         if not path.is_file():
@@ -914,26 +1061,24 @@ class HarborJobService:
                 failed_trials_on_disk = int(stats.get("n_errored_trials") or 0)
                 activity_ts = None
             else:
-                trials = self._list_trial_names(job_name)
-                trial_count = len(trials)
-                completed_trials = sum(
-                    1 for trial_name in trials if self._trial_has_result(job_name, trial_name)
-                )
-                failed_trials_on_disk = sum(
-                    1
-                    for trial_name in trials
-                    if _trial_result_error(
-                        self._read_json(job_dir / trial_name / "result.json")
-                    )
-                    is not None
+                trial_count, completed_trials, failed_trials_on_disk = (
+                    self._in_flight_listing_progress(job_name, job_dir)
                 )
                 activity_ts = _external_run_activity_ts(
                     job_dir,
                     job_result=job_result,
-                    trial_names=trials,
+                    trial_names=self._list_trial_names(job_name),
                 )
             with self._guard:
                 launch = self._launches.get(job_name)
+            if failed_trials_on_disk > 0 and _missing_reward_only(job_dir):
+                failed_trials_on_disk = 0
+                if isinstance(job_result, dict):
+                    patched = dict(job_result)
+                    stats = dict(patched.get("stats") or {})
+                    stats["n_errored_trials"] = 0
+                    patched["stats"] = stats
+                    job_result = patched
             status, failed_trials = _job_list_status(
                 trial_count=trial_count,
                 completed_trials=completed_trials,
@@ -946,6 +1091,7 @@ class HarborJobService:
             summaries.append(
                 {
                     "jobName": job_name,
+                    "source": _job_source(job_name),
                     "applicationType": self._job_application_type(job_name, job_dir),
                     "taskTitle": task_meta.get("taskTitle"),
                     "taskName": task_meta.get("taskName"),
@@ -1007,7 +1153,7 @@ class HarborJobService:
             trial_dir = job_dir / trial_name
             result = self._read_json(trial_dir / "result.json")
             completed = self._trial_has_result(job_name, trial_name)
-            error = _trial_result_error(result)
+            error = _trial_result_error(result, trial_dir)
             persona_meta = _persona_meta_from_trial(trial_dir)
             vnc_url = _read_vnc_url(trial_dir)
             sandbox_id = _read_sandbox_id(trial_dir)
@@ -1087,6 +1233,8 @@ class HarborJobService:
         os_app_backend: str | None = None,
         cua_backend: str | None = None,
         execution_plane: str | None = None,
+        compute_family: str | None = None,
+        extra_launch_env: dict[str, str] | None = None,
     ) -> str:
         from backend.service.execution_plane import (
             ExecutionPlaneError,
@@ -1095,6 +1243,10 @@ class HarborJobService:
             remote_runner_configured,
         )
 
+        try:
+            resolved_compute_family = normalize_compute_family(compute_family)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
         try:
             resolved_plane = normalize_execution_plane(
                 execution_plane or default_execution_plane()
@@ -1176,6 +1328,62 @@ class HarborJobService:
             mode=execution_mode,
             repo_root=self.repo_root,
         )
+        compute_plan = resolve_compute_plan(
+            execution_mode=execution_mode,
+            trial_profile=trial_profile,
+            cua_backend=os_app_backend,
+            compute_family=resolved_compute_family,
+        )
+        if compute_plan.dispatch == "modal_jobs":
+            from backend.service.modal_host_job import modal_credentials_configured
+
+            if self.modal_host_job_runner is None and not modal_credentials_configured():
+                raise ValueError(
+                    "computeFamily=modal requires Modal credentials "
+                    "(MODAL_TOKEN_ID and MODAL_TOKEN_SECRET, or ~/.modal.toml) "
+                    "and a deployed matraix-host-jobs app "
+                    "(application/playground/backend/service/modal_host_app.py)"
+                )
+        if compute_plan.dispatch == "gke_workers":
+            from matraix.gke_settings import (
+                GKE_CLUSTER_ENV,
+                GKE_HOST_IMAGE_ENV,
+                GKE_REGION_ENV,
+                gke_host_workers_ready,
+            )
+
+            if self.gke_host_job_runner is None and not gke_host_workers_ready():
+                raise ValueError(
+                    "computeFamily=gcp for survey/chat requires {} "
+                    "(image with MatrAIx + Harbor) and kubeconfig "
+                    "or {} + {} for gcloud get-credentials".format(
+                        GKE_HOST_IMAGE_ENV,
+                        GKE_CLUSTER_ENV,
+                        GKE_REGION_ENV,
+                    )
+                )
+        if compute_plan.environment == "gke":
+            from matraix.gke_settings import missing_gke_harbor_keys
+
+            missing = missing_gke_harbor_keys()
+            if missing:
+                raise ValueError(
+                    "computeFamily=gcp for web/linux requires GKE settings "
+                    "(missing {}). Set MATRIX_GKE_CLUSTER, MATRIX_GKE_REGION, "
+                    "MATRIX_GKE_REGISTRY, and GCP_PROJECT.".format(", ".join(missing))
+                )
+        if trial_profile == "user_sim_chat" and compute_plan.dispatch in {
+            "modal_jobs",
+            "gke_workers",
+        }:
+            from backend.service.chatbot_reachability import (
+                require_cloud_reachable_chatbot_url,
+            )
+            from backend.service.chatbot_sidecar_service import ensure_sidecar_url_env
+
+            ensure_sidecar_url_env(chat_application_id)
+            require_cloud_reachable_chatbot_url()
+        n_concurrent_trials = max(1, int(n_concurrent_trials or 1))
         resolved_survey_task_path: str | None = None
         resolved_chat_task_path: str | None = None
         if trial_profile == "json_survey":
@@ -1209,6 +1417,7 @@ class HarborJobService:
             "execution_mode": execution_mode,
             "trial_profile": trial_profile,
             "cua_backend": os_app_backend,
+            "compute_family": compute_plan.family,
             "agent": {"name": agent, "model_name": model},
             "job": {
                 "job_name": resolved_job_name,
@@ -1230,12 +1439,8 @@ class HarborJobService:
                 )
         # os_app_submission_profile / cua_submission_profile are no longer injected:
         # agents mirror final_answer only; task verifiers recover named JSON.
+        job_config["environment"] = compute_plan.harbor_environment()
         if os_app_backend:
-            job_config["environment"] = resolve_job_environment(
-                execution_mode=execution_mode,
-                trial_profile=trial_profile,
-                cua_backend=os_app_backend,
-            )
             env_type = ""
             env_block = job_config.get("environment")
             if isinstance(env_block, dict):
@@ -1273,6 +1478,7 @@ class HarborJobService:
         config_path = self.generated_configs_dir / "{}.yaml".format(resolved_job_name)
         header = (
             "# Generated by Playground POST /api/harbor/jobs\n"
+            "{}\n"
             "# Task: {}\n"
             "# Harbor task: {}\n"
             "# Mode: {}\n"
@@ -1284,6 +1490,7 @@ class HarborJobService:
             "# Persona filters: {}\n"
             "# Personas: {}\n"
             "# Jobs output: {}/\n\n".format(
+                compute_plan.header_comment(),
                 task_path,
                 resolved_task_path,
                 job_meta.get("execution_mode", "auto") if job_meta else "auto",
@@ -1306,21 +1513,112 @@ class HarborJobService:
             encoding="utf-8",
         )
 
+        from backend.service.cohort_shard_planner import (
+            plan_job_shards,
+            should_fanout_cloud_shards,
+            should_fanout_harbor_shards,
+        )
+
+        shard_records: list[dict[str, Any]] = []
+        job_shards = plan_job_shards(job_config, trial_profile=trial_profile)
+        planned_shards = job_shards.shards
+        fanout_cloud = should_fanout_cloud_shards(compute_plan.dispatch, len(planned_shards))
+        fanout_harbor = should_fanout_harbor_shards(
+            family=compute_plan.family,
+            environment=compute_plan.environment,
+            dispatch=compute_plan.dispatch,
+            shard_count=len(planned_shards),
+        )
+        if fanout_cloud or fanout_harbor:
+            for shard, shard_cfg in planned_shards:
+                if fanout_harbor:
+                    shard_cfg["jobs_dir"] = _rel_path(
+                        self.jobs_dir
+                        / resolved_job_name
+                        / "_generated"
+                        / "work"
+                        / shard.key,
+                        self.repo_root,
+                    )
+                shard_path = self.generated_configs_dir / "{}.shard-{:02d}.yaml".format(
+                    resolved_job_name,
+                    shard.shard_index,
+                )
+                shard_header = header + "# Internal shard {}/{} offset={} limit={}\n\n".format(
+                    shard.shard_index + 1,
+                    shard.shard_count,
+                    shard.offset,
+                    shard.limit,
+                )
+                shard_path.write_text(
+                    shard_header + yaml.safe_dump(shard_cfg, sort_keys=False),
+                    encoding="utf-8",
+                )
+                shard_records.append(
+                    {
+                        "index": shard.shard_index,
+                        "count": shard.shard_count,
+                        "offset": shard.offset,
+                        "limit": shard.limit,
+                        "key": shard.key,
+                        "kind": "harbor" if fanout_harbor else "cloud",
+                        "personaIds": list(shard.persona_ids),
+                        "nConcurrentTrials": int(
+                            shard_cfg.get("n_concurrent_trials") or 1
+                        ),
+                        "configPath": _rel_path(shard_path, self.repo_root),
+                    }
+                )
+            generated = self.jobs_dir / resolved_job_name / "_generated"
+            generated.mkdir(parents=True, exist_ok=True)
+            (generated / "shards.json").write_text(
+                json.dumps(
+                    {
+                        "jobName": resolved_job_name,
+                        **job_shards.layout.to_dict(),
+                        "shards": shard_records,
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
         record = HarborLaunchRecord(
             job_name=resolved_job_name,
             status="queued",
             config_path=_rel_path(config_path, self.repo_root),
             started_at=_utc_now(),
             execution_plane=resolved_plane,
+            compute_family=compute_plan.family,
+            compute_environment=compute_plan.environment,
+            compute_dispatch=compute_plan.dispatch,
         )
+        normalized_extra_env = {str(k): str(v) for k, v in (extra_launch_env or {}).items()}
         with self._guard:
             self._launches[resolved_job_name] = record
+            if normalized_extra_env:
+                self._extra_launch_env[resolved_job_name] = normalized_extra_env
 
-        use_local_distributed = _should_use_local_distributed_harbor(
-            execution_mode=execution_mode,
-            execution_plane=resolved_plane,
-            trial_profile=trial_profile,
+        use_local_distributed = (
+            compute_plan.dispatch is None
+            and _should_use_local_distributed_harbor(
+                execution_mode=execution_mode,
+                execution_plane=resolved_plane,
+                trial_profile=trial_profile,
+            )
         )
+
+        from backend.service.modal_host_job import write_compute_json
+
+        write_compute_json(self.jobs_dir / resolved_job_name, compute_plan)
+        try:
+            (self.jobs_dir / resolved_job_name / "config.json").write_text(
+                json.dumps(job_config, indent=2, default=str) + "\n",
+                encoding="utf-8",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
         # Persist the exact dispatch inputs so "retry failed" can replay the
         # identical run in-place (Harbor resumes and only re-runs deleted trials).
@@ -1329,6 +1627,9 @@ class HarborJobService:
             {
                 "configPath": _rel_path(config_path, self.repo_root),
                 "executionPlane": resolved_plane,
+                "computeFamily": compute_plan.family,
+                "computeEnvironment": compute_plan.environment,
+                "computeDispatch": compute_plan.dispatch,
                 "executionMode": execution_mode,
                 "useLocalDistributed": use_local_distributed,
                 "trialProfile": trial_profile,
@@ -1339,7 +1640,9 @@ class HarborJobService:
                 "chatApplicationId": chat_application_id,
                 "chatApplicationContext": chat_application_context,
                 "chatMaxTurns": chat_max_turns,
+                "extraLaunchEnv": normalized_extra_env or None,
                 "jobConfig": job_config,
+                "shards": shard_records,
             },
         )
 
@@ -1369,7 +1672,11 @@ class HarborJobService:
                 chat_max_turns,
                 trial_profile,
             )
-            if resolved_plane == "remote":
+            if compute_plan.dispatch == "modal_jobs":
+                self._executor.submit(self._dispatch_modal_host, *dispatch_kwargs)
+            elif compute_plan.dispatch == "gke_workers":
+                self._executor.submit(self._dispatch_gke_host, *dispatch_kwargs)
+            elif resolved_plane == "remote":
                 self._executor.submit(self._dispatch_remote, *dispatch_kwargs)
             else:
                 self._executor.submit(self._run_harbor, *dispatch_kwargs)
@@ -1386,10 +1693,15 @@ class HarborJobService:
         chat_application_context: str | None,
         chat_max_turns: int | None,
         for_remote: bool = False,
+        job_name: str | None = None,
     ) -> dict[str, str]:
         # PYTHONPATH entries are shared with the `matraix run` CLI so GUI and
         # CLI launches cannot drift apart (issue #78).
         env = build_launch_env(self.repo_root, base_env={} if for_remote else None)
+        if job_name:
+            with self._guard:
+                extra = dict(self._extra_launch_env.get(job_name) or {})
+            env.update(extra)
         if survey_task_path:
             env["MATRIX_SURVEY_TASK_PATH"] = survey_task_path
         if trial_profile == "user_sim_chat":
@@ -1438,6 +1750,7 @@ class HarborJobService:
             chat_application_id=chat_application_id,
             chat_application_context=chat_application_context,
             chat_max_turns=chat_max_turns,
+            job_name=job_name,
         )
         try:
             from backend.service.local_distributed_harbor import (
@@ -1485,15 +1798,13 @@ class HarborJobService:
         chat_max_turns: int | None = None,
         trial_profile: str | None = None,
     ) -> None:
+        del os_app_submission_profile
+        from backend.service.cohort_shard_planner import shard_concurrency_from_env
+
         with self._guard:
             record = self._launches[job_name]
             record.status = "running"
 
-        command = list(self.harbor_command) + [
-            "--yes",
-            "-c",
-            _rel_path(config_path, self.repo_root),
-        ]
         env = self._build_harbor_launch_env(
             survey_task_path=survey_task_path,
             chat_task_path=chat_task_path,
@@ -1502,17 +1813,28 @@ class HarborJobService:
             chat_application_id=chat_application_id,
             chat_application_context=chat_application_context,
             chat_max_turns=chat_max_turns,
+            job_name=job_name,
         )
+        work = self._cloud_shard_work_items(job_name, config_path)
         try:
             held: dict[str, Any] = {}
 
             def _invoke() -> None:
-                code = self.command_runner(
-                    command,
-                    cwd=self.repo_root,
-                    env=env,
-                )
-                held["exit_code"] = code
+                if len(work) == 1:
+                    held["exit_code"] = self._invoke_harbor_config(work[0][1], env)
+                    self._merge_harbor_shard_tree(job_name, work[0][0])
+                    return
+                codes: list[int] = []
+                workers = min(shard_concurrency_from_env(), len(work))
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = [
+                        pool.submit(self._invoke_harbor_config, path, env)
+                        for _, path in work
+                    ]
+                    for (shard_key, _), future in zip(work, futures):
+                        codes.append(int(future.result()))
+                        self._merge_harbor_shard_tree(job_name, shard_key)
+                held["exit_code"] = 0 if codes and all(code == 0 for code in codes) else 1
 
             self._run_with_trial_host_scoring(job_name, _invoke)
             exit_code = int(held.get("exit_code", 1))
@@ -1530,9 +1852,487 @@ class HarborJobService:
             record.error = error
             record.finished_at = _utc_now()
         # Rescue anything the per-trial watcher missed (idempotent).
+        self._maybe_rollup_job_result(job_name)
         self._maybe_run_host_verifier(job_name)
         self._maybe_generate_post_run_feedback(job_name)
         self._maybe_schedule_reporting(job_name, self.jobs_dir / job_name)
+
+    def _invoke_harbor_config(self, config_path: Path, env: dict[str, str]) -> int:
+        command = list(self.harbor_command) + [
+            "--yes",
+            "-c",
+            _rel_path(config_path, self.repo_root),
+        ]
+        return int(self.command_runner(command, cwd=self.repo_root, env=env))
+
+    def _merge_harbor_shard_tree(self, job_name: str, shard_key: str) -> None:
+        staged = self.jobs_dir / job_name / "_generated" / "work" / shard_key / job_name
+        if not staged.is_dir():
+            return
+        from backend.service.modal_host_job import merge_job_dir
+
+        merge_job_dir(staged, self.jobs_dir / job_name)
+        shutil.rmtree(staged.parent, ignore_errors=True)
+
+    def _dispatch_modal_host(
+        self,
+        job_name: str,
+        config_path: Path,
+        survey_task_path: str | None = None,
+        chat_task_path: str | None = None,
+        os_app_submission_profile: str | None = None,
+        chat_domain: str | None = None,
+        chat_application_id: str | None = None,
+        chat_application_context: str | None = None,
+        chat_max_turns: int | None = None,
+        trial_profile: str | None = None,
+    ) -> None:
+        self._dispatch_cloud_host(
+            "modal_jobs",
+            job_name,
+            config_path,
+            survey_task_path=survey_task_path,
+            chat_task_path=chat_task_path,
+            os_app_submission_profile=os_app_submission_profile,
+            chat_domain=chat_domain,
+            chat_application_id=chat_application_id,
+            chat_application_context=chat_application_context,
+            chat_max_turns=chat_max_turns,
+            trial_profile=trial_profile,
+        )
+
+    def _dispatch_gke_host(
+        self,
+        job_name: str,
+        config_path: Path,
+        survey_task_path: str | None = None,
+        chat_task_path: str | None = None,
+        os_app_submission_profile: str | None = None,
+        chat_domain: str | None = None,
+        chat_application_id: str | None = None,
+        chat_application_context: str | None = None,
+        chat_max_turns: int | None = None,
+        trial_profile: str | None = None,
+    ) -> None:
+        self._dispatch_cloud_host(
+            "gke_workers",
+            job_name,
+            config_path,
+            survey_task_path=survey_task_path,
+            chat_task_path=chat_task_path,
+            os_app_submission_profile=os_app_submission_profile,
+            chat_domain=chat_domain,
+            chat_application_id=chat_application_id,
+            chat_application_context=chat_application_context,
+            chat_max_turns=chat_max_turns,
+            trial_profile=trial_profile,
+        )
+
+    def _cloud_shard_work_items(
+        self,
+        job_name: str,
+        config_path: Path,
+    ) -> list[tuple[str, Path]]:
+        meta = self._read_json(self._launch_meta_path(job_name)) or {}
+        shards = meta.get("retryShards") if isinstance(meta.get("retryShards"), list) else []
+        if not shards:
+            shards = meta.get("shards") if isinstance(meta.get("shards"), list) else []
+        items: list[tuple[str, Path]] = []
+        for row in shards:
+            if not isinstance(row, dict):
+                continue
+            rel = str(row.get("configPath") or "").strip()
+            if not rel:
+                continue
+            path = self.repo_root / rel
+            if path.is_file():
+                items.append((str(row.get("key") or "s{}".format(len(items))), path))
+        if items:
+            return items
+        return [("s0", config_path)]
+
+    def _dispatch_cloud_host(
+        self,
+        dispatch: str,
+        job_name: str,
+        config_path: Path,
+        *,
+        survey_task_path: str | None,
+        chat_task_path: str | None,
+        os_app_submission_profile: str | None,
+        chat_domain: str | None,
+        chat_application_id: str | None,
+        chat_application_context: str | None,
+        chat_max_turns: int | None,
+        trial_profile: str | None,
+    ) -> None:
+        del os_app_submission_profile
+        from backend.service.cohort_shard_planner import shard_concurrency_from_env
+
+        with self._guard:
+            record = self._launches[job_name]
+            record.status = "running"
+
+        env = self._build_harbor_launch_env(
+            survey_task_path=survey_task_path,
+            chat_task_path=chat_task_path,
+            trial_profile=trial_profile,
+            chat_domain=chat_domain,
+            chat_application_id=chat_application_id,
+            chat_application_context=chat_application_context,
+            chat_max_turns=chat_max_turns,
+            for_remote=True,
+            job_name=job_name,
+        )
+        work = self._cloud_shard_work_items(job_name, config_path)
+        errors: list[str] = []
+        codes: list[int] = []
+
+        def _run_one(item: tuple[str, Path]) -> tuple[int, str | None]:
+            shard_key, shard_path = item
+            if dispatch == "gke_workers":
+                return self._invoke_gke_host(job_name, shard_path, shard_key, env)
+            if dispatch != "modal_jobs":
+                raise ValueError("unknown cloud host dispatch {!r}".format(dispatch))
+            return self._invoke_modal_host(job_name, shard_path, shard_key, env)
+
+        try:
+            runner = self._cloud_host_runner(dispatch)
+            if self._runner_supports_spawn(runner):
+                codes, errors = self._spawn_and_wait_cloud_shards(
+                    dispatch, job_name, work, env, runner
+                )
+            elif len(work) == 1:
+                code, error = _run_one(work[0])
+                codes.append(code)
+                if error:
+                    errors.append(error)
+            else:
+                workers = min(shard_concurrency_from_env(), len(work))
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = [pool.submit(_run_one, item) for item in work]
+                    for future in as_completed(futures):
+                        code, error = future.result()
+                        codes.append(code)
+                        if error:
+                            errors.append(error)
+            exit_code = 0 if codes and all(code == 0 for code in codes) else 1
+            error = "; ".join(errors) if errors else None
+            if exit_code != 0 and not error:
+                error = "cloud host shards exited with codes {}".format(codes)
+            status = "completed" if exit_code == 0 else "failed"
+        except Exception as exc:  # noqa: BLE001
+            status = "failed"
+            error = str(exc)
+            exit_code = 1
+
+        with self._guard:
+            record = self._launches[job_name]
+            record.status = status
+            record.exit_code = exit_code
+            record.error = error
+            record.finished_at = _utc_now()
+        try:
+            from backend.service.modal_host_job import load_cloud_run, save_cloud_run
+
+            job_dir = self.jobs_dir / job_name
+            cloud_state = load_cloud_run(job_dir)
+            if cloud_state:
+                cloud_state["status"] = status
+                save_cloud_run(job_dir, cloud_state)
+        except Exception:
+            pass
+        self._maybe_rollup_job_result(job_name)
+        self._maybe_run_host_verifier(job_name)
+        self._maybe_generate_post_run_feedback(job_name)
+        self._maybe_schedule_reporting(job_name, self.jobs_dir / job_name)
+
+    def resume_detached_cloud_runs(self) -> list[str]:
+        """Reattach Modal/GKE shards that kept running after this API process died."""
+        from backend.service.modal_host_job import load_cloud_run
+
+        resumed: list[str] = []
+        for job_name in self._list_job_names():
+            data = load_cloud_run(self.jobs_dir / job_name)
+            if not data or data.get("status") != "running":
+                continue
+            with self._guard:
+                existing = self._launches.get(job_name)
+                if existing is not None and existing.status in {"running", "queued"}:
+                    continue
+                meta = self._read_json(self._launch_meta_path(job_name)) or {}
+                self._launches[job_name] = HarborLaunchRecord(
+                    job_name=job_name,
+                    status="running",
+                    config_path=str(meta.get("configPath") or "") or None,
+                    started_at=str(meta.get("startedAt") or _utc_now()),
+                    execution_plane=str(meta.get("executionPlane") or "harbor"),
+                    compute_family=str(meta.get("computeFamily") or "modal"),
+                    compute_environment=str(meta.get("computeEnvironment") or "host"),
+                    compute_dispatch=str(
+                        data.get("dispatch") or meta.get("computeDispatch") or "modal_jobs"
+                    ),
+                )
+                extra = meta.get("extraLaunchEnv")
+                if isinstance(extra, dict):
+                    self._extra_launch_env[job_name] = {
+                        str(key): str(value) for key, value in extra.items()
+                    }
+            config_rel = str(meta.get("configPath") or "")
+            config_path = self.repo_root / config_rel if config_rel else (
+                self.generated_configs_dir / "{}.yaml".format(job_name)
+            )
+            self._executor.submit(self._resume_cloud_host_job, job_name, config_path, meta)
+            resumed.append(job_name)
+        return resumed
+
+    def _resume_cloud_host_job(
+        self,
+        job_name: str,
+        config_path: Path,
+        meta: dict[str, Any],
+    ) -> None:
+        dispatch = str(meta.get("computeDispatch") or "modal_jobs")
+        if not config_path.is_file():
+            config_path = self.generated_configs_dir / "{}.yaml".format(job_name)
+        self._dispatch_cloud_host(
+            dispatch,
+            job_name,
+            config_path,
+            survey_task_path=meta.get("surveyTaskPath"),
+            chat_task_path=meta.get("chatTaskPath"),
+            os_app_submission_profile=meta.get("osAppSubmissionProfile"),
+            chat_domain=meta.get("chatDomain"),
+            chat_application_id=meta.get("chatApplicationId"),
+            chat_application_context=meta.get("chatApplicationContext"),
+            chat_max_turns=meta.get("chatMaxTurns"),
+            trial_profile=meta.get("trialProfile"),
+        )
+
+    def _cloud_host_runner(self, dispatch: str) -> Any:
+        if dispatch == "gke_workers":
+            from backend.service.gke_host_job import default_gke_host_job_runner
+
+            return self.gke_host_job_runner or default_gke_host_job_runner()
+        from backend.service.modal_host_job import default_modal_host_job_runner
+
+        return self.modal_host_job_runner or default_modal_host_job_runner()
+
+    def _runner_supports_spawn(self, runner: Any) -> bool:
+        return callable(getattr(runner, "spawn", None)) and callable(
+            getattr(runner, "wait", None)
+        )
+
+    def _cloud_host_request(
+        self,
+        dispatch: str,
+        job_name: str,
+        config_path: Path,
+        shard_key: str,
+        env: dict[str, str],
+    ) -> Any:
+        from backend.service.modal_host_job import (
+            HARBOR_MODULE_COMMAND,
+            collect_orchestrator_secret_env,
+        )
+
+        if dispatch == "gke_workers":
+            from backend.service.gke_host_job import GkeHostJobRequest
+
+            return GkeHostJobRequest(
+                job_name=job_name,
+                config_yaml=config_path.read_text(encoding="utf-8"),
+                env=filter_remote_harbor_payload_env(env),
+                secret_env=collect_orchestrator_secret_env(),
+                shard_key=shard_key,
+                live_jobs_dir=str(self.jobs_dir.resolve()),
+            )
+        from backend.service.modal_host_job import ModalHostJobRequest
+
+        return ModalHostJobRequest(
+            job_name=job_name,
+            config_yaml=config_path.read_text(encoding="utf-8"),
+            repo_root=str(self.repo_root.resolve()),
+            jobs_dir="jobs",
+            env=filter_remote_harbor_payload_env(env),
+            harbor_command=HARBOR_MODULE_COMMAND,
+            secret_env=collect_orchestrator_secret_env(),
+            shard_key=shard_key,
+            live_jobs_dir=str(self.jobs_dir.resolve()),
+        )
+
+    def _spawn_and_wait_cloud_shards(
+        self,
+        dispatch: str,
+        job_name: str,
+        work: list[tuple[str, Path]],
+        env: dict[str, str],
+        runner: Any,
+    ) -> tuple[list[int], list[str]]:
+        from backend.service.modal_host_job import load_cloud_run, save_cloud_run
+
+        job_dir = self.jobs_dir / job_name
+        state = load_cloud_run(job_dir) or {
+            "jobName": job_name,
+            "dispatch": dispatch,
+            "status": "running",
+            "shards": [],
+        }
+        state["dispatch"] = dispatch
+        state["status"] = "running"
+        by_key: dict[str, dict[str, Any]] = {}
+        for row in state.get("shards") or []:
+            if isinstance(row, dict) and row.get("key"):
+                by_key[str(row["key"])] = row
+        handles: dict[str, tuple[Any, str, Any]] = {}
+        for shard_key, shard_path in work:
+            request = self._cloud_host_request(dispatch, job_name, shard_path, shard_key, env)
+            row = by_key.get(shard_key) or {"key": shard_key}
+            call_id = str(row.get("callId") or "").strip()
+            call = None
+            if not call_id:
+                call_id, call = runner.spawn(request)
+                row["callId"] = call_id
+                row["state"] = "spawned"
+                by_key[shard_key] = row
+                state["shards"] = list(by_key.values())
+                save_cloud_run(job_dir, state)
+            handles[shard_key] = (call, call_id, request)
+
+        def _wait_one(shard_key: str) -> tuple[int, str | None]:
+            call, call_id, request = handles[shard_key]
+            try:
+                result = runner.wait(request, call=call, call_id=call_id)
+                if dispatch == "gke_workers":
+                    from backend.service.gke_host_job import materialize_gke_artifacts
+
+                    materialize_gke_artifacts(
+                        result, jobs_dir=self.jobs_dir, job_name=job_name
+                    )
+                else:
+                    from backend.service.modal_host_job import materialize_modal_artifacts
+
+                    materialize_modal_artifacts(
+                        result, jobs_dir=self.jobs_dir, job_name=job_name
+                    )
+                exit_code = int(result.exit_code)
+                error = result.error
+                if exit_code != 0 and not error:
+                    error = "cloud host shard {} exited with code {}".format(
+                        shard_key, exit_code
+                    )
+                return exit_code, error
+            except Exception as exc:  # noqa: BLE001
+                return 1, str(exc)
+
+        codes: list[int] = []
+        errors: list[str] = []
+        workers = max(1, len(handles))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_wait_one, key): key for key in handles}
+            for future in as_completed(futures):
+                key = futures[future]
+                code, error = future.result()
+                codes.append(code)
+                if error:
+                    errors.append(error)
+                row = by_key.get(key) or {"key": key}
+                row["state"] = "completed" if code == 0 else "failed"
+                by_key[key] = row
+                state["shards"] = list(by_key.values())
+                save_cloud_run(job_dir, state)
+                request = handles[key][2]
+                cleanup = getattr(runner, "cleanup", None)
+                if dispatch == "gke_workers" and callable(cleanup):
+                    try:
+                        cleanup(request)
+                    except Exception:
+                        pass
+        return codes, errors
+
+    def _invoke_modal_host(
+        self,
+        job_name: str,
+        config_path: Path,
+        shard_key: str,
+        env: dict[str, str],
+    ) -> tuple[int, str | None]:
+        from backend.service.modal_host_job import (
+            HARBOR_MODULE_COMMAND,
+            ModalHostJobError,
+            ModalHostJobRequest,
+            collect_orchestrator_secret_env,
+            default_modal_host_job_runner,
+            materialize_modal_artifacts,
+        )
+
+        request = ModalHostJobRequest(
+            job_name=job_name,
+            config_yaml=config_path.read_text(encoding="utf-8"),
+            repo_root=str(self.repo_root.resolve()),
+            jobs_dir="jobs",
+            env=filter_remote_harbor_payload_env(env),
+            harbor_command=HARBOR_MODULE_COMMAND,
+            secret_env=collect_orchestrator_secret_env(),
+            shard_key=shard_key,
+            live_jobs_dir=str(self.jobs_dir.resolve()),
+        )
+        try:
+            runner = self.modal_host_job_runner or default_modal_host_job_runner()
+            result = runner.run(request)
+            materialize_modal_artifacts(
+                result,
+                jobs_dir=self.jobs_dir,
+                job_name=job_name,
+            )
+            exit_code = int(result.exit_code)
+            error = result.error
+            if exit_code != 0 and not error:
+                error = "Modal shard {} exited with code {}".format(
+                    shard_key, exit_code
+                )
+            return exit_code, error
+        except ModalHostJobError as exc:
+            return 1, str(exc)
+
+    def _invoke_gke_host(
+        self,
+        job_name: str,
+        config_path: Path,
+        shard_key: str,
+        env: dict[str, str],
+    ) -> tuple[int, str | None]:
+        from backend.service.gke_host_job import (
+            GkeHostJobError,
+            GkeHostJobRequest,
+            default_gke_host_job_runner,
+            materialize_gke_artifacts,
+        )
+        from backend.service.modal_host_job import collect_orchestrator_secret_env
+
+        request = GkeHostJobRequest(
+            job_name=job_name,
+            config_yaml=config_path.read_text(encoding="utf-8"),
+            env=filter_remote_harbor_payload_env(env),
+            secret_env=collect_orchestrator_secret_env(),
+            shard_key=shard_key,
+            live_jobs_dir=str(self.jobs_dir.resolve()),
+        )
+        try:
+            runner = self.gke_host_job_runner or default_gke_host_job_runner()
+            result = runner.run(request)
+            materialize_gke_artifacts(
+                result,
+                jobs_dir=self.jobs_dir,
+                job_name=job_name,
+            )
+            exit_code = int(result.exit_code)
+            error = result.error
+            if exit_code != 0 and not error:
+                error = "GKE host workers exited with code {}".format(exit_code)
+            return exit_code, error
+        except GkeHostJobError as exc:
+            return 1, str(exc)
 
     def _dispatch_remote(
         self,
@@ -1561,23 +2361,29 @@ class HarborJobService:
             chat_application_context=chat_application_context,
             chat_max_turns=chat_max_turns,
             for_remote=True,
+            job_name=job_name,
         )
-        payload = {
-            "jobName": job_name,
-            "configYaml": config_path.read_text(encoding="utf-8"),
-            "repoRoot": str(self.repo_root.resolve()),
-            "jobsDir": _rel_path(self.jobs_dir, self.repo_root),
-            "env": filter_remote_harbor_payload_env(env),
-        }
+        work = self._cloud_shard_work_items(job_name, config_path)
         try:
             client = self._remote_client()
-            run = client.create_run(task_type="harbor_job", payload=payload)
-            with self._guard:
-                record = self._launches[job_name]
-                record.remote_run_id = run.id
-            client.wait_for_run(run.id)
+            last_error: str | None = None
+            for index, (shard_key, shard_path) in enumerate(work):
+                payload = {
+                    "jobName": job_name,
+                    "configYaml": shard_path.read_text(encoding="utf-8"),
+                    "repoRoot": str(self.repo_root.resolve()),
+                    "jobsDir": _rel_path(self.jobs_dir, self.repo_root),
+                    "env": filter_remote_harbor_payload_env(env),
+                }
+                run = client.create_run(task_type="harbor_job", payload=payload)
+                if index == 0:
+                    with self._guard:
+                        record = self._launches[job_name]
+                        record.remote_run_id = run.id
+                client.wait_for_run(run.id)
+                self._merge_harbor_shard_tree(job_name, shard_key)
             status = "completed"
-            error = None
+            error = last_error
             exit_code = 0
         except Exception as exc:  # noqa: BLE001
             status = "failed"
@@ -1591,6 +2397,7 @@ class HarborJobService:
             record.error = error
             record.finished_at = _utc_now()
         # Remote trials land locally after wait; job-end scoring is the primary path.
+        self._maybe_rollup_job_result(job_name)
         self._maybe_run_host_verifier(job_name)
         self._maybe_generate_post_run_feedback(job_name)
         self._maybe_schedule_reporting(job_name, self.jobs_dir / job_name)
@@ -1701,9 +2508,18 @@ class HarborJobService:
         *,
         after: int = 0,
     ) -> dict[str, Any]:
-        trial_dir = self.jobs_dir / job_name / trial_name
+        job_dir = self.jobs_dir / job_name
+        if not job_dir.is_dir():
+            with self._guard:
+                known = job_name in self._launches
+            if not known:
+                raise ValueError("Job not found: {}".format(job_name))
+            return {"events": [], "offset": after}
+        trial_dir = job_dir / trial_name
         if not trial_dir.is_dir():
-            raise ValueError("Trial not found: {}/{}".format(job_name, trial_name))
+            # Overlay-only / not-yet-flushed trials (Modal, GKE) are listed on
+            # /live before the tree exists. Empty is the pollable not-ready state.
+            return {"events": [], "offset": after}
         from playground.harbor.trial_events import (
             EVENTS_FILENAME,
             read_events_after,
@@ -1716,9 +2532,15 @@ class HarborJobService:
         from backend.service.harbor_trial_debrief import find_trial_logs_dir
         from backend.service.harbor_web_trace import read_harbor_web_trace
 
-        trial_dir = self.jobs_dir / job_name / trial_name
+        job_dir = self.jobs_dir / job_name
+        trial_dir = job_dir / trial_name
         if not trial_dir.is_dir():
-            raise ValueError("Trial not found: {}/{}".format(job_name, trial_name))
+            if not job_dir.is_dir():
+                with self._guard:
+                    known = job_name in self._launches
+                if not known:
+                    raise ValueError("Job not found: {}".format(job_name))
+            return {"trace": {"events": [], "raw": {}}}
         trace = read_harbor_web_trace(
             find_trial_logs_dir(trial_dir),
             job_name=job_name,
@@ -1756,6 +2578,13 @@ class HarborJobService:
         job = self.get_job(job_name)
         if job is None:
             raise ValueError("Job not found: {}".format(job_name))
+        overlay: dict[str, str] = {}
+        try:
+            from backend.service.modal_host_job import read_live_overlay
+
+            overlay = read_live_overlay(self.jobs_dir / job_name)
+        except Exception:
+            overlay = {}
         live_trials: list[dict[str, Any]] = []
         for trial in job.get("trials", []):
             if not isinstance(trial, dict):
@@ -1768,18 +2597,36 @@ class HarborJobService:
             instruction_path = trial_dir / "instruction.md"
             phase = _trial_live_phase(trial_dir) if trial_dir.is_dir() else None
             completed = bool(trial.get("completed"))
+            succeeded = trial.get("succeeded")
+            error = trial.get("error")
+            overlay_state = overlay.get(trial_name)
+            if overlay_state == "error":
+                completed = True
+                succeeded = False
+                if not error:
+                    error = "failed"
+            elif overlay_state == "done":
+                completed = True
+                if not error:
+                    succeeded = True
             vnc_url = _read_vnc_url(trial_dir) if trial_dir.is_dir() else None
             sandbox_id = _read_sandbox_id(trial_dir) if trial_dir.is_dir() else None
+            stage = _resolve_trial_stage(trial_dir, phase=phase, completed=completed)
+            if not completed:
+                if overlay_state == "running" and (not stage or stage == "queued"):
+                    stage = "agent_running"
+                elif overlay_state == "pending":
+                    stage = "queued"
             live_trials.append(
                 {
                     "trialName": trial_name,
                     "personaId": persona_meta.get("persona_id"),
                     "personaName": persona_meta.get("display_name"),
                     "completed": completed,
-                    "succeeded": trial.get("succeeded"),
-                    "error": trial.get("error"),
+                    "succeeded": succeeded,
+                    "error": error,
                     "phase": phase,
-                    "stage": _resolve_trial_stage(trial_dir, phase=phase, completed=completed),
+                    "stage": stage,
                     "hasInstruction": instruction_path.is_file(),
                     "vncUrl": vnc_url,
                     "sandboxId": sandbox_id,
@@ -1805,14 +2652,25 @@ class HarborJobService:
         trial_dir = job_dir / trial_name
         result_path = trial_dir / "result.json"
         if result_path.is_file():
-            error = _trial_result_error(self._read_json(result_path))
+            error = _trial_result_error(self._read_json(result_path), trial_dir)
             return STATUS_CODE_ERROR if error else STATUS_CODE_DONE
+        overlay_code = None
+        try:
+            from backend.service.modal_host_job import overlay_status_code, read_live_overlay
+
+            overlay_code = overlay_status_code(read_live_overlay(job_dir).get(trial_name))
+        except Exception:
+            overlay_code = None
+        if overlay_code in {STATUS_CODE_DONE, STATUS_CODE_ERROR}:
+            return overlay_code
         if (
             (trial_dir / "config.json").is_file()
             or (trial_dir / "trial.log").is_file()
             or (trial_dir / "agent").is_dir()
         ):
             return STATUS_CODE_RUNNING
+        if overlay_code is not None:
+            return overlay_code
         return STATUS_CODE_PENDING
 
     def _refresh_status_state(self, job_name: str) -> _JobStatusState:
@@ -1846,7 +2704,8 @@ class HarborJobService:
         # Re-check only trials that have not finalized yet.
         for index, name in enumerate(state.trial_names):
             if state.codes[index] >= STATUS_CODE_DONE:
-                continue
+                if (job_dir / name / "result.json").is_file():
+                    continue
             new_code = self._coarse_trial_code(job_dir, name)
             if new_code != state.codes[index]:
                 state.codes[index] = new_code
@@ -1921,6 +2780,93 @@ class HarborJobService:
             # Retry is a convenience; never let metadata persistence break a launch.
             pass
 
+    def _maybe_rollup_job_result(self, job_name: str) -> None:
+        meta = self._read_json(self._launch_meta_path(job_name)) or {}
+        dispatch = str(meta.get("computeDispatch") or "")
+        shards = meta.get("shards") if isinstance(meta.get("shards"), list) else []
+        if dispatch not in {"modal_jobs", "gke_workers"} and not shards:
+            return
+        from backend.service.job_result_rollup import synthesize_job_result
+
+        with self._guard:
+            record = self._launches.get(job_name)
+        started = record.started_at if record is not None else None
+        try:
+            synthesize_job_result(
+                self.jobs_dir / job_name,
+                job_config=meta.get("jobConfig") if isinstance(meta.get("jobConfig"), dict) else None,
+                started_at=started,
+                finished=True,
+            )
+        except Exception:  # noqa: BLE001
+            return
+        if meta.get("retryShards"):
+            meta.pop("retryShards", None)
+            self._persist_launch_meta(job_name, meta)
+
+    def _failed_trial_persona_id(self, trial_dir: Path) -> str:
+        from backend.service.job_result_rollup import trial_persona_id
+
+        return trial_persona_id(trial_dir)
+
+    def _retry_shards_for_failures(
+        self,
+        meta: dict[str, Any],
+        failed_persona_ids: set[str],
+        *,
+        job_name: str,
+    ) -> list[dict[str, Any]]:
+        shards = meta.get("shards") if isinstance(meta.get("shards"), list) else []
+        if not shards or not failed_persona_ids:
+            return []
+        job_config = meta.get("jobConfig") if isinstance(meta.get("jobConfig"), dict) else {}
+        agents = [row for row in (job_config.get("agents") or []) if isinstance(row, dict)]
+        retry_rows: list[dict[str, Any]] = []
+        for shard in shards:
+            if not isinstance(shard, dict):
+                continue
+            shard_ids = {
+                str(pid).strip()
+                for pid in (shard.get("personaIds") or [])
+                if str(pid).strip()
+            }
+            overlap = shard_ids & failed_persona_ids if shard_ids else set(failed_persona_ids)
+            if shard_ids and not overlap:
+                continue
+            retry_cfg = dict(job_config)
+            if agents:
+                from backend.service.cohort_shard_planner import _agent_persona_id
+
+                retry_cfg["agents"] = [
+                    dict(agent)
+                    for index, agent in enumerate(agents)
+                    if _agent_persona_id(agent, index) in overlap
+                ]
+                if not retry_cfg["agents"]:
+                    continue
+            if shard.get("kind") == "harbor":
+                key = str(shard.get("key") or "s0")
+                retry_cfg["job_name"] = job_name
+                retry_cfg["jobs_dir"] = _rel_path(
+                    self.jobs_dir / job_name / "_generated" / "work" / key,
+                    self.repo_root,
+                )
+            index = int(shard.get("index") or 0)
+            retry_path = self.generated_configs_dir / "{}.shard-{:02d}.retry.yaml".format(
+                job_name,
+                index,
+            )
+            retry_path.parent.mkdir(parents=True, exist_ok=True)
+            retry_path.write_text(yaml.safe_dump(retry_cfg, sort_keys=False), encoding="utf-8")
+            retry_rows.append(
+                {
+                    **shard,
+                    "configPath": _rel_path(retry_path, self.repo_root),
+                    "personaIds": sorted(overlap),
+                }
+            )
+        return retry_rows
+
     def failed_trial_count(self, job_name: str) -> int:
         job_dir = self.jobs_dir / job_name
         if not job_dir.is_dir():
@@ -1928,7 +2874,7 @@ class HarborJobService:
         count = 0
         for trial_name in self._list_trial_names(job_name):
             result = self._read_json(job_dir / trial_name / "result.json")
-            if _trial_result_error(result) is not None:
+            if _trial_result_error(result, job_dir / trial_name) is not None:
                 count += 1
         return count
 
@@ -1953,7 +2899,10 @@ class HarborJobService:
         failed_dirs = [
             job_dir / trial_name
             for trial_name in self._list_trial_names(job_name)
-            if _trial_result_error(self._read_json(job_dir / trial_name / "result.json"))
+            if _trial_result_error(
+                self._read_json(job_dir / trial_name / "result.json"),
+                job_dir / trial_name,
+            )
             is not None
         ]
         if not failed_dirs:
@@ -1971,6 +2920,18 @@ class HarborJobService:
                 "Cannot retry: generated config is unavailable for {}".format(job_name)
             )
 
+        failed_persona_ids = {
+            pid
+            for trial_dir in failed_dirs
+            if (pid := self._failed_trial_persona_id(trial_dir))
+        }
+        retry_shards = self._retry_shards_for_failures(
+            meta, failed_persona_ids, job_name=job_name
+        )
+        if retry_shards:
+            meta["retryShards"] = retry_shards
+            self._persist_launch_meta(job_name, meta)
+
         for trial_dir in failed_dirs:
             shutil.rmtree(trial_dir, ignore_errors=True)
         # Reset job-level completion + reporting so status and reporting recompute.
@@ -1980,6 +2941,8 @@ class HarborJobService:
             self._status_states.pop(job_name, None)
 
         plane = str(meta.get("executionPlane") or "harbor")
+        compute_dispatch = meta.get("computeDispatch")
+        retry_extra_env = {str(k): str(v) for k, v in (meta.get("extraLaunchEnv") or {}).items()}
         with self._guard:
             self._launches[job_name] = HarborLaunchRecord(
                 job_name=job_name,
@@ -1987,7 +2950,16 @@ class HarborJobService:
                 config_path=config_rel or None,
                 started_at=_utc_now(),
                 execution_plane=plane,
+                compute_family=str(meta.get("computeFamily") or "local"),
+                compute_environment=(
+                    str(meta["computeEnvironment"])
+                    if meta.get("computeEnvironment")
+                    else None
+                ),
+                compute_dispatch=str(compute_dispatch) if compute_dispatch else None,
             )
+            if retry_extra_env:
+                self._extra_launch_env[job_name] = retry_extra_env
 
         if meta.get("useLocalDistributed"):
             self._executor.submit(
@@ -2015,7 +2987,11 @@ class HarborJobService:
                 meta.get("chatMaxTurns"),
                 meta.get("trialProfile"),
             )
-            if plane == "remote":
+            if compute_dispatch == "modal_jobs":
+                self._executor.submit(self._dispatch_modal_host, *dispatch_kwargs)
+            elif compute_dispatch == "gke_workers":
+                self._executor.submit(self._dispatch_gke_host, *dispatch_kwargs)
+            elif plane == "remote":
                 self._executor.submit(self._dispatch_remote, *dispatch_kwargs)
             else:
                 self._executor.submit(self._run_harbor, *dispatch_kwargs)
@@ -2255,22 +3231,37 @@ class HarborJobService:
         raise FileNotFoundError("instruction not found for trial {}/{}".format(job_name, trial_name))
 
     def trial_live_screenshot(self, job_name: str, trial_name: str) -> bytes:
-        """Proxy the live screenshot from use.computer for an active trial."""
-        import httpx
-
+        """Live frame: use.computer sandbox, else latest flushed trial screenshot."""
         trial_dir = self.jobs_dir / job_name / trial_name
-        sandbox_id = _read_sandbox_id(trial_dir)
-        if not sandbox_id:
-            raise FileNotFoundError("no active sandbox for this trial")
-        api_key = (os.environ.get("USE_COMPUTER_API_KEY") or "").strip()
-        if not api_key:
+        sandbox_id = _read_sandbox_id(trial_dir) if trial_dir.is_dir() else None
+        if sandbox_id:
+            api_key = (os.environ.get("USE_COMPUTER_API_KEY") or "").strip()
+            if api_key:
+                import httpx
+
+                base_url = os.environ.get(
+                    "USE_COMPUTER_BASE_URL", "https://api.use.computer"
+                ).rstrip("/")
+                url = "{}/v1/sandboxes/{}/screenshot".format(base_url, sandbox_id)
+                try:
+                    with httpx.Client(timeout=10.0) as client:
+                        resp = client.get(
+                            url, headers={"Authorization": "Bearer {}".format(api_key)}
+                        )
+                        resp.raise_for_status()
+                        return resp.content
+                except Exception:
+                    pass
+            elif not trial_dir.is_dir():
+                raise RuntimeError("USE_COMPUTER_API_KEY not configured")
+        from backend.service.harbor_web_trace import latest_trial_screenshot_bytes
+
+        blob = latest_trial_screenshot_bytes(trial_dir) if trial_dir.is_dir() else None
+        if blob:
+            return blob
+        if sandbox_id and not (os.environ.get("USE_COMPUTER_API_KEY") or "").strip():
             raise RuntimeError("USE_COMPUTER_API_KEY not configured")
-        base_url = os.environ.get("USE_COMPUTER_BASE_URL", "https://api.use.computer").rstrip("/")
-        url = "{}/v1/sandboxes/{}/screenshot".format(base_url, sandbox_id)
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.get(url, headers={"Authorization": "Bearer {}".format(api_key)})
-            resp.raise_for_status()
-            return resp.content
+        raise FileNotFoundError("no live screenshot for this trial")
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
@@ -2287,6 +3278,9 @@ def _launch_view(record: HarborLaunchRecord | None) -> dict[str, Any] | None:
         "finishedAt": record.finished_at,
         "exitCode": record.exit_code,
         "executionPlane": record.execution_plane,
+        "computeFamily": record.compute_family,
+        "computeEnvironment": record.compute_environment,
+        "computeDispatch": record.compute_dispatch,
         "remoteRunId": record.remote_run_id,
     }
 
