@@ -28,7 +28,8 @@ REMOTE_RUNNER_API_URL_ENV = "REMOTE_RUNNER_API_URL"
 DEFAULT_PERSONA_MODEL = "anthropic/claude-haiku-4-5"
 
 # Persona-model IDs use LiteLLM provider prefixes (``anthropic/``, ``openai/``,
-# ``gemini/``, ``xai/``, ``deepseek/``, ``zai/``, ``dashscope/``, ``openrouter/``).
+# ``gemini/``, ``xai/``, ``deepseek/``, ``zai/``, ``dashscope/``, ``openrouter/``,
+# ``orcarouter/``).
 # OpenAI-compatible providers use their own credentials and endpoints.
 PERSONA_MODEL_KNOB_META: Dict[str, Dict[str, str]] = {
     "anthropic/claude-haiku-4-5": {
@@ -162,6 +163,14 @@ PERSONA_MODEL_KNOB_META: Dict[str, Dict[str, str]] = {
     "openrouter/anthropic/claude-haiku-4.5": {
         "label": "Claude Haiku 4.5",
         "description": "Anthropic Claude Haiku 4.5 served through OpenRouter.",
+    },
+    "orcarouter/auto": {
+        "label": "OrcaRouter auto",
+        "description": "Adaptive routing across many models via OrcaRouter.",
+    },
+    "orcarouter/anthropic/claude-haiku-4.5": {
+        "label": "Claude Haiku 4.5",
+        "description": "Anthropic Claude Haiku 4.5 served through OrcaRouter.",
     },
 }
 

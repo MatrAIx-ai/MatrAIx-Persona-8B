@@ -37,6 +37,8 @@ def resolve_provider_credential(model_name: str) -> ProviderCredential:
         return ProviderCredential("Gemini", "GEMINI_API_KEY", value)
     if lowered.startswith("openrouter/"):
         return ProviderCredential("OpenRouter", "OPENROUTER_API_KEY", value)
+    if lowered.startswith("orcarouter/"):
+        return ProviderCredential("OrcaRouter", "ORCAROUTER_API_KEY", value)
     if lowered.startswith("xai/"):
         return ProviderCredential("xAI", "XAI_API_KEY", value)
     if lowered.startswith("deepseek/"):

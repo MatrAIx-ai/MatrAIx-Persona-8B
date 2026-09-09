@@ -55,6 +55,26 @@ def test_resolve_deepseek_and_zai(monkeypatch) -> None:
     assert resolve_provider_credential("zai/glm-5").present is True
 
 
+def test_resolve_openrouter_and_orcarouter(monkeypatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("ORCAROUTER_API_KEY", raising=False)
+    openrouter = resolve_provider_credential("openrouter/z-ai/glm-4.7")
+    assert openrouter.provider == "OpenRouter"
+    assert openrouter.env_var == "OPENROUTER_API_KEY"
+    assert openrouter.present is False
+    orcarouter = resolve_provider_credential("orcarouter/auto")
+    assert orcarouter.provider == "OrcaRouter"
+    assert orcarouter.env_var == "ORCAROUTER_API_KEY"
+    assert orcarouter.present is False
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-test")
+    assert resolve_provider_credential("openrouter/anthropic/claude-haiku-4.5").present is True
+    assert (
+        resolve_provider_credential("orcarouter/anthropic/claude-haiku-4.5").present
+        is True
+    )
+
+
 def test_resolve_anthropic_default_and_bare_model() -> None:
     assert resolve_provider_credential("anthropic/claude-sonnet-4-6").env_var == (
         "ANTHROPIC_API_KEY"

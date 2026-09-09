@@ -21,6 +21,7 @@ from playground.openai_client import (
 DASHSCOPE_DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+ORCAROUTER_DEFAULT_BASE_URL = "https://api.orcarouter.ai/v1"
 XAI_DEFAULT_BASE_URL = "https://api.x.ai/v1"
 DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
 ZAI_DEFAULT_BASE_URL = "https://api.z.ai/api/paas/v4"
@@ -167,6 +168,31 @@ def openrouter_openai_client_kwargs(model: str) -> Dict[str, str]:
     ).strip()
     return {
         "model": openrouter_model_id(model),
+        "api_key": api_key,
+        "base_url": base_url,
+    }
+
+
+def orcarouter_model_id(model: str) -> str:
+    """Return the bare OrcaRouter model id from a Harbor persona model string."""
+    value = (model or "").strip()
+    if value.startswith("orcarouter/"):
+        return value.split("/", 1)[1]
+    return value
+
+
+def orcarouter_openai_client_kwargs(model: str) -> Dict[str, str]:
+    """OpenAI SDK kwargs for OrcaRouter's OpenAI-compatible chat endpoint."""
+    api_key = (os.environ.get("ORCAROUTER_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "ORCAROUTER_API_KEY is required for persona model {!r}".format(model)
+        )
+    base_url = (
+        os.environ.get("ORCAROUTER_API_BASE") or ORCAROUTER_DEFAULT_BASE_URL
+    ).strip()
+    return {
+        "model": orcarouter_model_id(model),
         "api_key": api_key,
         "base_url": base_url,
     }
@@ -332,6 +358,16 @@ def build_json_client(model: str, *, temperature: float = 0.7) -> Any:
             temperature=temperature,
             timeout_seconds=timeout_seconds,
             provider="openrouter",
+        )
+    if value.startswith("orcarouter/"):
+        kwargs = orcarouter_openai_client_kwargs(value)
+        return OpenAIChatClient(
+            model=kwargs["model"],
+            api_key=kwargs["api_key"],
+            base_url=kwargs["base_url"],
+            temperature=temperature,
+            timeout_seconds=timeout_seconds,
+            provider="orcarouter",
         )
     if value.startswith("xai/"):
         kwargs = xai_openai_client_kwargs(value)

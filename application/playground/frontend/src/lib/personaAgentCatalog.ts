@@ -347,6 +347,7 @@ function isCuaCapablePersonaModel(modelId: string, platform: string): boolean {
       isGeminiChat ||
       modelId.startsWith("dashscope/") ||
       modelId.startsWith("openrouter/") ||
+      modelId.startsWith("orcarouter/") ||
       modelId.startsWith("xai/") ||
       modelId.startsWith("deepseek/") ||
       modelId.startsWith("zai/")
@@ -391,6 +392,7 @@ const PERSONA_MODEL_PROVIDER_LABELS: Record<string, string> = {
   google: "Google",
   openai: "OpenAI",
   openrouter: "OpenRouter",
+  orcarouter: "OrcaRouter",
   xai: "xAI",
   deepseek: "DeepSeek",
   zai: "Z.ai",
