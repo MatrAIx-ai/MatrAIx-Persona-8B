@@ -16,6 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from matraix.results_diversity import (
+    DiversitySummary,
+    QuestionMeta,
+    canonical_answer,
+    compute_diversity,
+)
+
 
 SCHEMA_VERSION = "MatraixJobResults.v1"
 
@@ -54,6 +61,16 @@ class TrialSummary:
     group_values: dict[str, str] = field(default_factory=dict)
     # Backward-compatible alias used by early Survey CSV/tests.
     survey_answers: dict[str, Any] = field(default_factory=dict)
+    # Parallel per-question rationale text (excluded from ledger serialization
+    # so existing JSON/CSV/text outputs stay unchanged); feeds diversity only.
+    survey_rationales: dict[str, str] = field(default_factory=dict)
+    # Lowered ``taskType`` from verifier/structured_output.json ("" when the
+    # trial carried no structured output or no taskType). Read once in
+    # _summarize_trial; _detect_app_type consumes it without re-reading.
+    task_type: str = ""
+    # Per-question questionnaire metadata (questionType / K) parsed from the
+    # same single structured-output read; excluded from serialization.
+    question_meta: dict[str, QuestionMeta] = field(default_factory=dict)
 
 
 @dataclass
@@ -78,6 +95,8 @@ class OutcomeLens:
     distributions: list[Distribution] = field(default_factory=list)
     metrics: list[Metric] = field(default_factory=list)
     source: str = "none"
+    # Response-diversity diagnostics; set for survey jobs only.
+    diversity: DiversitySummary | None = None
 
 
 @dataclass
@@ -145,20 +164,51 @@ class JobResultsReport:
                 "coverage": dict(self.ledger.coverage) if self.ledger else {},
                 "usage": asdict(self.usage),
                 "rewards": dict(self.ledger.rewards) if self.ledger else {},
-                "trials": [asdict(trial) for trial in self.trials],
+                "trials": [_trial_to_dict(trial) for trial in self.trials],
             },
             "lens": {
                 "kind": self.lens.kind if self.lens else "none",
                 "primarySummary": self.lens.primary_summary if self.lens else "",
-                "distributions": [asdict(dist) for dist in (self.lens.distributions if self.lens else [])],
-                "metrics": [asdict(metric) for metric in (self.lens.metrics if self.lens else [])],
+                "distributions": [
+                    asdict(dist)
+                    for dist in (self.lens.distributions if self.lens else [])
+                ],
+                "metrics": [
+                    asdict(metric)
+                    for metric in (self.lens.metrics if self.lens else [])
+                ],
                 "source": self.lens.source if self.lens else "none",
+                "diversity": (
+                    self.lens.diversity.to_dict()
+                    if self.lens and self.lens.diversity is not None
+                    else None
+                ),
             },
             "groupBy": list(self.group_by),
             "groupedDistributions": self.grouped_distributions,
             "notes": list(self.notes),
         }
         return payload
+
+
+def _trial_to_dict(trial: TrialSummary) -> dict[str, Any]:
+    """Serialization matching ``asdict`` minus ``survey_rationales``.
+
+    Keeps ``MatraixJobResults.v1`` ledger JSON byte-identical for existing
+    consumers while rationale text still feeds diversity diagnostics.
+    """
+    return {
+        "trial_name": trial.trial_name,
+        "persona_id": trial.persona_id,
+        "persona_name": trial.persona_name,
+        "reward": trial.reward,
+        "error": trial.error,
+        "usage": asdict(trial.usage),
+        "artifact_paths": list(trial.artifact_paths),
+        "signals": dict(trial.signals),
+        "group_values": dict(trial.group_values),
+        "survey_answers": dict(trial.survey_answers),
+    }
 
 
 def resolve_job_dir(job: str | Path, *, repo_root: Path | None = None) -> Path:
@@ -178,7 +228,9 @@ def resolve_job_dir(job: str | Path, *, repo_root: Path | None = None) -> Path:
         if path.is_dir() and (path / "result.json").is_file():
             return path
         if path.is_dir() and any(
-            (child / "result.json").is_file() for child in path.iterdir() if child.is_dir()
+            (child / "result.json").is_file()
+            for child in path.iterdir()
+            if child.is_dir()
         ):
             return path
     raise FileNotFoundError(f"job directory not found: {job}")
@@ -351,11 +403,15 @@ def _structured_output(trial_dir: Path) -> dict[str, Any] | None:
     return _read_json(trial_dir / "verifier" / "structured_output.json")
 
 
-def _signals_from_structured_output(payload: dict[str, Any]) -> dict[str, Any]:
+def _signals_from_structured_output(
+    payload: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Extract signals plus per-question rationale text from structured output."""
     signals: dict[str, Any] = {}
+    rationales: dict[str, str] = {}
     contexts = payload.get("contexts")
     if not isinstance(contexts, list):
-        return signals
+        return signals, rationales
     for context in contexts:
         if not isinstance(context, dict):
             continue
@@ -367,6 +423,9 @@ def _signals_from_structured_output(payload: dict[str, Any]) -> dict[str, Any]:
                 qid = qid[len("question.") :]
             if "response" in facets:
                 signals[f"answer_{qid}"] = facets["response"]
+            reason = facets.get("reason", facets.get("rationale"))
+            if isinstance(reason, str) and reason.strip():
+                rationales[qid] = reason
         elif context_type == "task_outcome":
             if "outcome_status" in facets:
                 signals["outcome_status"] = facets["outcome_status"]
@@ -399,13 +458,16 @@ def _signals_from_structured_output(payload: dict[str, Any]) -> dict[str, Any]:
         elif context_type == "conversation_summary":
             if "conversation_path" in facets:
                 signals["conversation_path"] = facets["conversation_path"]
-    return signals
+    return signals, rationales
 
 
-def _survey_answers_from_artifact(trial_dir: Path) -> dict[str, Any]:
+def _survey_answers_from_artifact(
+    trial_dir: Path,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Read survey answers plus rationale text from app output artifacts."""
     output = _find_output_dir(trial_dir)
     if output is None:
-        return {}
+        return {}, {}
     for name in ("survey_result.json", "survey_responses.json"):
         payload = _read_json(output / name)
         if not payload:
@@ -414,6 +476,7 @@ def _survey_answers_from_artifact(trial_dir: Path) -> dict[str, Any]:
         if not isinstance(answers, list):
             continue
         out: dict[str, Any] = {}
+        rationales: dict[str, str] = {}
         for entry in answers:
             if not isinstance(entry, dict):
                 continue
@@ -421,8 +484,11 @@ def _survey_answers_from_artifact(trial_dir: Path) -> dict[str, Any]:
             if qid is None:
                 continue
             out[str(qid)] = entry.get("value")
-        return out
-    return {}
+            rationale = entry.get("rationale")
+            if isinstance(rationale, str) and rationale.strip():
+                rationales[str(qid)] = rationale
+        return out, rationales
+    return {}, {}
 
 
 def _decision_label_from_artifact(trial_dir: Path) -> str | None:
@@ -430,7 +496,12 @@ def _decision_label_from_artifact(trial_dir: Path) -> str | None:
     if output is None:
         return None
     for path in sorted(output.glob("*.json")):
-        if path.name in {"user_feedback.json", "survey_result.json", "survey_responses.json", "transcript.json"}:
+        if path.name in {
+            "user_feedback.json",
+            "survey_result.json",
+            "survey_responses.json",
+            "transcript.json",
+        }:
             continue
         payload = _read_json(path)
         if not payload:
@@ -464,13 +535,22 @@ def _summarize_trial(
         structured = _structured_output(trial_dir)
         signals: dict[str, Any] = {}
         survey_answers: dict[str, Any] = {}
+        rationales: dict[str, str] = {}
+        question_meta: dict[str, QuestionMeta] = {}
+        task_type = ""
         if structured:
-            signals.update(_signals_from_structured_output(structured))
+            signals, rationales = _signals_from_structured_output(structured)
+            question_meta = _question_meta_from_payload(structured)
+            task_type = str(structured.get("taskType") or "").strip().lower()
             for key, value in list(signals.items()):
                 if key.startswith("answer_"):
                     survey_answers[key[len("answer_") :]] = value
         if not survey_answers:
-            survey_answers = _survey_answers_from_artifact(trial_dir)
+            survey_answers, artifact_rationales = _survey_answers_from_artifact(
+                trial_dir
+            )
+            if not rationales:
+                rationales = artifact_rationales
             for qid, value in survey_answers.items():
                 signals.setdefault(f"answer_{qid}", value)
         if "decision_label" not in signals:
@@ -497,6 +577,9 @@ def _summarize_trial(
             artifact_paths=_artifact_paths(trial_dir, job_dir=job_dir),
             signals=signals,
             survey_answers=survey_answers,
+            survey_rationales=rationales,
+            task_type=task_type,
+            question_meta=question_meta,
             group_values=_group_values_for_trial(group_by=group_by, persona_meta=meta),
         )
     except Exception as exc:  # noqa: BLE001
@@ -506,13 +589,21 @@ def _summarize_trial(
 
 def _detect_app_type(job_dir: Path, trials: list[TrialSummary]) -> str:
     votes: Counter[str] = Counter()
+    # taskType was parsed once per trial in _summarize_trial; only trial dirs
+    # missing from that map (e.g. skipped corrupt trials) are read here.
+    task_type_by_trial = {trial.trial_name: trial.task_type for trial in trials}
     for trial_dir in _list_trial_dirs(job_dir):
-        structured = _structured_output(trial_dir)
-        if structured:
-            task_type = str(structured.get("taskType") or "").strip().lower()
-            if task_type in _APP_TYPES and task_type != "unknown":
-                votes[task_type] += 1
-                continue
+        task_type = task_type_by_trial.get(trial_dir.name)
+        if task_type is None:
+            structured = _structured_output(trial_dir)
+            task_type = (
+                str(structured.get("taskType") or "").strip().lower()
+                if structured
+                else ""
+            )
+        if task_type in _APP_TYPES and task_type != "unknown":
+            votes[task_type] += 1
+            continue
         output = _find_output_dir(trial_dir)
         if output is None:
             continue
@@ -558,7 +649,7 @@ def _count_signal(trials: Iterable[TrialSummary], key: str) -> dict[str, int]:
             value = trial.survey_answers.get(key[len("answer_") :])
         if value is None:
             continue
-        counter[str(value)] += 1
+        counter[canonical_answer(value)] += 1
     return dict(sorted(counter.items(), key=lambda item: (-item[1], item[0])))
 
 
@@ -585,6 +676,12 @@ def _mean_numeric(trials: Iterable[TrialSummary], key: str) -> float | None:
     return sum(values) / len(values)
 
 
+def _question_sort_key(qid: str) -> tuple[int, int | str]:
+    if qid.startswith("q") and qid[1:].isdigit():
+        return (0, int(qid[1:]))
+    return (1, qid)
+
+
 def _survey_answer_keys(trials: list[TrialSummary]) -> list[str]:
     keys = {
         key[len("answer_") :]
@@ -593,12 +690,78 @@ def _survey_answer_keys(trials: list[TrialSummary]) -> list[str]:
         if key.startswith("answer_")
     } | {qid for trial in trials for qid in trial.survey_answers}
 
-    def sort_key(qid: str) -> tuple[int, int | str]:
-        if qid.startswith("q") and qid[1:].isdigit():
-            return (0, int(qid[1:]))
-        return (1, qid)
+    return sorted(keys, key=_question_sort_key)
 
-    return sorted(keys, key=sort_key)
+
+def _survey_response_pairs(
+    trials: list[TrialSummary],
+) -> dict[str, list[tuple[Any, str]]]:
+    """Per-question ``(answer value, rationale text)`` pairs for diversity."""
+    keys = {qid for trial in trials for qid in trial.survey_answers} | {
+        qid for trial in trials for qid in trial.survey_rationales
+    }
+    pairs: dict[str, list[tuple[Any, str]]] = {}
+    for qid in sorted(keys, key=_question_sort_key):
+        rows: list[tuple[Any, str]] = []
+        for trial in trials:
+            value = trial.survey_answers.get(qid)
+            if value is None:
+                value = trial.signals.get(f"answer_{qid}")
+            rationale = trial.survey_rationales.get(qid, "")
+            if value is None and not rationale.strip():
+                continue
+            rows.append((value, rationale))
+        if rows:
+            pairs[qid] = rows
+    return pairs
+
+
+def _question_meta_from_payload(payload: dict[str, Any]) -> dict[str, QuestionMeta]:
+    """Questionnaire metadata (type / category count K) from one payload.
+
+    Reads ``questionType``, ``scaleMin``/``scaleMax`` (likert) and
+    ``choiceOptions`` (choices) from the ``question_response`` contexts;
+    K is None when the context does not carry the questionnaire. Called on
+    the structured output already read once by ``_summarize_trial``.
+    """
+    meta: dict[str, QuestionMeta] = {}
+    contexts = payload.get("contexts")
+    if not isinstance(contexts, list):
+        return meta
+    for context in contexts:
+        if not isinstance(context, dict):
+            continue
+        if str(context.get("contextType") or "").strip() != "question_response":
+            continue
+        qid_raw = (
+            context.get("key") or context.get("label") or context.get("questionId")
+        )
+        if qid_raw is None:
+            continue
+        qid = str(qid_raw)
+        if qid.startswith("question."):
+            qid = qid[len("question.") :]
+        if qid in meta:
+            continue
+        question_type = str(context.get("questionType") or "").strip().lower() or None
+        category_count: int | None = None
+        if question_type == "likert":
+            scale_min = _as_int(context.get("scaleMin"))
+            scale_max = _as_int(context.get("scaleMax"))
+            if (
+                scale_min is not None
+                and scale_max is not None
+                and scale_max > scale_min
+            ):
+                category_count = scale_max - scale_min + 1
+        elif question_type in {"single_choice", "multi_choice"}:
+            options = context.get("choiceOptions")
+            if isinstance(options, list) and options:
+                category_count = len(options)
+        meta[qid] = QuestionMeta(
+            question_type=question_type, category_count=category_count
+        )
+    return meta
 
 
 def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens:
@@ -614,7 +777,11 @@ def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens
                     Distribution(key=qid, label=f"Question {qid}", counts=counts)
                 )
         if not distributions:
-            source = "artifact_fallback" if any(trial.survey_answers for trial in trials) else "none"
+            source = (
+                "artifact_fallback"
+                if any(trial.survey_answers for trial in trials)
+                else "none"
+            )
         primary = (
             _top_mix_summary(distributions[0].counts)
             if distributions
@@ -622,10 +789,15 @@ def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens
         )
         if distributions:
             primary = f"{distributions[0].label}: {primary}"
-        answered = sum(1 for trial in trials if trial.survey_answers or any(
-            key.startswith("answer_") for key in trial.signals
-        ))
-        metrics.append(Metric(key="answered_trials", label="Trials with answers", value=answered))
+        answered = sum(
+            1
+            for trial in trials
+            if trial.survey_answers
+            or any(key.startswith("answer_") for key in trial.signals)
+        )
+        metrics.append(
+            Metric(key="answered_trials", label="Trials with answers", value=answered)
+        )
         return OutcomeLens(
             kind="survey",
             primary_summary=primary,
@@ -639,11 +811,17 @@ def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens
         path_counts = _count_signal(trials, "conversation_path")
         if outcome_counts:
             distributions.append(
-                Distribution(key="outcome_status", label="Task outcome", counts=outcome_counts)
+                Distribution(
+                    key="outcome_status", label="Task outcome", counts=outcome_counts
+                )
             )
         if path_counts:
             distributions.append(
-                Distribution(key="conversation_path", label="Conversation path", counts=path_counts)
+                Distribution(
+                    key="conversation_path",
+                    label="Conversation path",
+                    counts=path_counts,
+                )
             )
         rating = _mean_numeric(trials, "feedback_overall_experience_rating")
         if rating is not None:
@@ -673,11 +851,15 @@ def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens
         outcome_counts = _count_signal(trials, "outcome_status")
         if decision_counts:
             distributions.append(
-                Distribution(key="decision_label", label="Choice", counts=decision_counts)
+                Distribution(
+                    key="decision_label", label="Choice", counts=decision_counts
+                )
             )
         if outcome_counts:
             distributions.append(
-                Distribution(key="outcome_status", label="Task outcome", counts=outcome_counts)
+                Distribution(
+                    key="outcome_status", label="Task outcome", counts=outcome_counts
+                )
             )
         primary = (
             f"Choices: {_top_mix_summary(decision_counts)}"
@@ -693,7 +875,11 @@ def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens
             primary_summary=primary,
             distributions=distributions,
             metrics=metrics,
-            source=source if distributions else "artifact_fallback" if decision_counts else "none",
+            source=source
+            if distributions
+            else "artifact_fallback"
+            if decision_counts
+            else "none",
         )
 
     if app_type == "os-app":
@@ -710,7 +896,9 @@ def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens
         )
         if outcome_counts:
             distributions.append(
-                Distribution(key="outcome_status", label="Task outcome", counts=outcome_counts)
+                Distribution(
+                    key="outcome_status", label="Task outcome", counts=outcome_counts
+                )
             )
         if decision_outcome_counts:
             distributions.append(
@@ -722,7 +910,9 @@ def build_outcome_lens(app_type: str, trials: list[TrialSummary]) -> OutcomeLens
             )
         if decision_counts:
             distributions.append(
-                Distribution(key="decision_label", label="Decision", counts=decision_counts)
+                Distribution(
+                    key="decision_label", label="Decision", counts=decision_counts
+                )
             )
         for goal_key in goal_keys[:8]:
             counts = _count_signal(trials, f"goal_{goal_key}")
@@ -824,13 +1014,15 @@ def _grouped_distributions(
                     if signal_key.startswith("answer_")
                     else signal_key
                 )
-                nested[group_key][group_value][dist_key][str(value)] += 1
+                nested[group_key][group_value][dist_key][canonical_answer(value)] += 1
     out: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
     for group_key, by_group in nested.items():
         out[group_key] = {}
         for group_value, by_signal in sorted(by_group.items()):
             out[group_key][group_value] = {
-                signal: dict(sorted(counter.items(), key=lambda item: (-item[1], item[0])))
+                signal: dict(
+                    sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+                )
                 for signal, counter in sorted(by_signal.items())
             }
     return out
@@ -883,6 +1075,18 @@ def collect_job_results(
         trials=trials,
     )
     lens = build_outcome_lens(app_type, trials)
+    if app_type == "survey" and lens is not None:
+        response_pairs = _survey_response_pairs(trials)
+        if response_pairs:
+            # First trial wins per question, matching the prior sorted
+            # trial-dir scan; the metadata was already read in _summarize_trial.
+            question_meta: dict[str, QuestionMeta] = {}
+            for trial in trials:
+                for qid, meta in trial.question_meta.items():
+                    question_meta.setdefault(qid, meta)
+            lens.diversity = compute_diversity(
+                response_pairs, question_meta=question_meta
+            )
     if group_keys and not any(trial.group_values for trial in trials):
         notes.append(
             "group-by keys were requested but no matching persona fields were found."
@@ -941,7 +1145,9 @@ def format_text_report(report: JobResultsReport) -> str:
         lines.append("Distributions")
         for dist in lens.distributions[:12]:
             total = sum(dist.counts.values())
-            top = ", ".join(f"{value}={count}" for value, count in list(dist.counts.items())[:5])
+            top = ", ".join(
+                f"{value}={count}" for value, count in list(dist.counts.items())[:5]
+            )
             lines.append(f"  {dist.label} (n={total}): {top}")
 
     if lens and lens.metrics:
@@ -950,6 +1156,29 @@ def format_text_report(report: JobResultsReport) -> str:
         for metric in lens.metrics:
             unit = f" {metric.unit}" if metric.unit else ""
             lines.append(f"  {metric.label}: {metric.value}{unit}")
+
+    if lens and lens.diversity is not None:
+        diversity = lens.diversity
+        lines.append("")
+        lines.append("Response diversity")
+        for entry in diversity.questions:
+            dup = (
+                "-"
+                if entry.rationale_dup_rate is None
+                else f"{entry.rationale_dup_rate:.3f}"
+            )
+            flag = entry.flag if entry.flag else "-"
+            lines.append(
+                f"  {entry.question_id}  n={entry.n}  top={entry.top_share:.3f}  "
+                f"eff={entry.effective_answers:.3f}  pair={entry.pair_match_rate:.3f}  "
+                f"dup={dup}  {flag}"
+            )
+        summary = f"Diversity: {diversity.flagged_low} of {diversity.evaluated} questions flagged LOW"
+        if diversity.flagged_low:
+            summary += f" - responses may be model-dominated ({diversity.method})"
+        else:
+            summary += f" ({diversity.method})"
+        lines.append(summary)
 
     if report.grouped_distributions:
         lines.append("")
@@ -1041,13 +1270,17 @@ def format_csv_report(report: JobResultsReport) -> str:
             "n_cache_tokens": trial.usage.n_cache_tokens
             if trial.usage.n_cache_tokens is not None
             else "",
-            "cost_usd": trial.usage.cost_usd if trial.usage.cost_usd is not None else "",
+            "cost_usd": trial.usage.cost_usd
+            if trial.usage.cost_usd is not None
+            else "",
             "artifact_paths": ";".join(trial.artifact_paths),
         }
         for key in group_keys:
             row[f"group_{key}"] = trial.group_values.get(key, "")
         for qid in answer_keys:
-            value = trial.survey_answers.get(qid, trial.signals.get(f"answer_{qid}", ""))
+            value = trial.survey_answers.get(
+                qid, trial.signals.get(f"answer_{qid}", "")
+            )
             row[f"answer_{qid}"] = "" if value is None else value
         for key in signal_keys:
             if key.startswith("answer_") and key[len("answer_") :] in answer_keys:

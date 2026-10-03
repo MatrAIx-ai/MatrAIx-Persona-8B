@@ -433,6 +433,16 @@ debug surfaces:
 Open the submission JSON under `artifacts/app/output/` to read what that
 simulated user chose.
 
+For Survey jobs, the text/JSON report also includes deterministic response-diversity
+diagnostics (`deterministic-v1`): per-question top-answer share, effective answer
+count, pairwise answer-match rate, and rationale duplication. Questions are flagged
+LOW/MODERATE when personas agree too much — often a sign one underlying model is
+repeating itself across personas:
+
+```bash
+uv run matraix results <job_name> --format json | jq '.lens.diversity'
+```
+
 Refresh batch reporting:
 
 ```bash
@@ -625,6 +635,7 @@ Full task checklist: [tasks/README.md](../application/tasks/README.md).
 | Any of 4 types (terminal, single or batch) | `generate_application_job.py --execution-mode auto` then `matraix run -c` | `jobs/<job_name>/` (local) |
 | Same recipe on Modal / GKE (optional) | add `--compute-family modal` or `gcp` on generate; see [large-scale runs](environment/large-scale-runs.md) | remote trials; laptop can close |
 | Deterministic job summary / export | `matraix results <job>` | text / JSON / CSV |
+| Response-diversity diagnostics (survey) | `matraix results <job>` | `Response diversity` section |
 | Persona narrative batch PDF | Playground **Runs** → **Download PDF** | UI PDF |
 | Install check — Survey & Chat (no Docker) | `matraix smoke <survey-task>` | `Smoke: ok` |
 | Install check — Web & OS-app (Docker) | `harbor-smoke-local.yaml` | `jobs/harbor-smoke-local/` |
