@@ -1261,3 +1261,53 @@ def test_generate_synthetic_pool_contrast_drops_overlay_per_cell(tmp_path, monke
         ).read_text(encoding="utf-8")
     )
     assert clone["dimensions"]["study_trust"] == "High"
+
+
+def _write_outside_pool(path: Path) -> None:
+    path.mkdir(parents=True)
+    (path / "persona_x1.yaml").write_text(
+        "persona_id: x1\nversion: '1.0'\nsource: external\ndimensions: {}\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize(
+    "pool",
+    ["{outside}", "../outside", "persona/../../outside", "../repo-sibling"],
+)
+def test_pool_outside_repo_is_rejected(tmp_path, pool):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write_pool(repo)
+    _write_outside_pool(tmp_path / "outside")
+    _write_outside_pool(tmp_path / "repo-sibling")
+    service = PersonaPoolService(repo_root=repo)
+    pool = pool.format(outside=tmp_path / "outside")
+    with pytest.raises(ValueError, match="inside the repo"):
+        service.list_persona_ids(pool)
+    with pytest.raises(ValueError, match="inside the repo"):
+        service.get_persona_detail("x1", persona_pool=pool)
+
+
+def test_save_pool_as_dataset_rejects_source_outside_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write_pool(repo)
+    _write_outside_pool(tmp_path / "outside")
+    service = PersonaPoolService(repo_root=repo)
+    with pytest.raises(ValueError, match="inside the repo"):
+        service.save_pool_as_dataset(
+            source_pool=str(tmp_path / "outside"), name="poc"
+        )
+    assert not (repo / "persona" / "datasets" / "poc").exists()
+
+
+def test_pool_inside_repo_still_resolves(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _write_pool(repo)
+    service = PersonaPoolService(repo_root=repo)
+    pool = "persona/datasets/matraix-persona-dev-sample"
+    for variant in (pool, pool + "/", "persona/./datasets/../datasets/matraix-persona-dev-sample"):
+        assert service.list_persona_ids(variant)["count"] == 2
+    assert service.list_persona_ids(str(repo / pool))["count"] == 2

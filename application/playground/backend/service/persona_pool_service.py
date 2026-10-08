@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import shutil
@@ -292,7 +293,15 @@ class PersonaPoolService:
         return cls(repo_root=Path(repo_root) if repo_root is not None else _repo_root())
 
     def _pool_dir(self, persona_pool: str) -> Path:
-        return self.repo_root / persona_pool
+        root = Path(os.path.normpath(self.repo_root))
+        pool_dir = Path(os.path.normpath(root / persona_pool))
+        try:
+            pool_dir.relative_to(root)
+        except ValueError:
+            raise ValueError(
+                "persona pool must be inside the repo: {}".format(persona_pool)
+            ) from None
+        return pool_dir
 
     def match_attributes(
         self,
