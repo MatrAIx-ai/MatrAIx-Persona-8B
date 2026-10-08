@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from backend.api.path_safety import check_task_path
 from backend.service.config import PERSONA_MODEL_OPTIONS
 
 __all__ = [
@@ -738,6 +739,11 @@ class HarborJobLaunchRequest(BaseModel):
     chatApplicationContext: Optional[str] = None
     chatMaxTurns: Optional[int] = None
 
+    @field_validator("taskPath")
+    @classmethod
+    def _validate_task_path(cls, value: str) -> str:
+        return check_task_path(value)  # type: ignore[return-value]
+
     @field_validator("mode")
     @classmethod
     def _validate_mode(cls, value: str) -> str:
@@ -962,6 +968,11 @@ class PersonaPoolSampleRequest(BaseModel):
     """Declared target shares `{ dim: { value: weight } }` for proportional mix."""
     taskPath: Optional[str] = None
     """Optional task path — included in coverage error hints."""
+
+    @field_validator("taskPath")
+    @classmethod
+    def _validate_task_path(cls, value: Optional[str]) -> Optional[str]:
+        return check_task_path(value)
     previewLimit: int = 32
     includePersonaIds: Optional[bool] = None
     includeDimensions: Optional[List[str]] = None
@@ -1046,6 +1057,11 @@ class PersonaPoolGenerateRequest(BaseModel):
     """After the first pool, clone extra custom-dimension values (same people)."""
     taskPath: Optional[str] = None
     """When set, fill that task's ``persona_strategy.json`` (one-time synthesize)."""
+
+    @field_validator("taskPath")
+    @classmethod
+    def _validate_task_path(cls, value: Optional[str]) -> Optional[str]:
+        return check_task_path(value)
     name: Optional[str] = None
 
 

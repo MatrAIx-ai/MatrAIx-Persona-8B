@@ -54,6 +54,7 @@ from starlette.responses import Response as StarletteResponse
 # `import recbot...` resolves later (and so `import backend...` works at all).
 import backend.api  # noqa: F401  (side effect: sys.path wiring)
 from backend.api import schemas
+from backend.api.path_safety import is_safe_relative_path, is_safe_segment
 from backend.api.deps import AppState, build_state, state_from_request
 
 __all__ = ["create_app", "app", "preflight_checks", "catalog_item_view"]
@@ -578,6 +579,17 @@ def _web_dist_dir() -> str:
 # --------------------------------------------------------------------------- #
 # App factory
 # --------------------------------------------------------------------------- #
+def _reject_unsafe_path_input(request: Request) -> None:
+    """Refuse job/trial names and task paths that could escape their directory."""
+    for key in ("job_name", "trial_name"):
+        value = request.path_params.get(key)
+        if value is not None and not is_safe_segment(str(value)):
+            raise HTTPException(status_code=400, detail="invalid {}".format(key))
+    task_path = request.query_params.get("taskPath")
+    if task_path is not None and not is_safe_relative_path(task_path):
+        raise HTTPException(status_code=400, detail="invalid taskPath")
+
+
 def create_app(catalog_path: Optional[str] = None) -> FastAPI:
     """Construct and return a fully-wired :class:`FastAPI` application.
 
@@ -604,6 +616,7 @@ def create_app(catalog_path: Optional[str] = None) -> FastAPI:
         version="0.1.0",
         summary="Developer harness API for persona-driven chatbot evaluation.",
         lifespan=lifespan,
+        dependencies=[Depends(_reject_unsafe_path_input)],
     )
     app.state.services = state
 
