@@ -125,9 +125,11 @@ class InprocessSurveyEvalRunner:
         if usage is not None:
             record_trial_cost(job_dir, usage.cost_usd)
             emit({"type": "usage", "usage": usage.to_dict()})
-        answers = _normalize_answers(raw.get("answers"), instrument)
+        answers, filled_ids = _normalize_answers(raw.get("answers"), instrument)
         metrics = _metrics(answers, instrument)
-        trajectory = _build_trajectory(instrument, answers, created_at)
+        trajectory = _build_trajectory(
+            instrument, answers, created_at, missing_required=filled_ids
+        )
         result = SurveyEvalResult(
             config=config,
             persona=persona,
@@ -157,13 +159,18 @@ def _build_trajectory(
     instrument: SurveyInstrument,
     answers: List[SurveyAnswer],
     created_at: str,
+    *,
+    missing_required: Optional[List[str]] = None,
 ) -> List[TrajectoryEvent]:
     answer_by_id = {answer.question_id: answer for answer in answers}
-    missing_required = [
-        question.id
-        for question in instrument.questions
-        if question.required and question.id not in answer_by_id
-    ]
+    # Callers pass the required questions they back-filled with a neutral
+    # default, since those are in ``answers`` but were never really answered.
+    if missing_required is None:
+        missing_required = [
+            question.id
+            for question in instrument.questions
+            if question.required and question.id not in answer_by_id
+        ]
     events = [
         TrajectoryEvent(
             timestamp=_event_timestamp(created_at, 0),
@@ -236,7 +243,10 @@ def _build_trajectory(
     return events
 
 
-def _normalize_answers(raw_answers: Any, instrument: SurveyInstrument) -> List[SurveyAnswer]:
+def _normalize_answers(
+    raw_answers: Any, instrument: SurveyInstrument
+) -> tuple[List[SurveyAnswer], List[str]]:
+    """Return usable answers plus the ids of required questions that were back-filled."""
     by_id = {question.id: question for question in instrument.questions}
     answers: List[SurveyAnswer] = []
     if not isinstance(raw_answers, list):
@@ -249,15 +259,22 @@ def _normalize_answers(raw_answers: Any, instrument: SurveyInstrument) -> List[S
         question = by_id.get(answer.question_id)
         if question is None or answer.question_id in seen:
             continue
-        answer.value = _normalize_value(answer.value, question)
+        value = _normalize_value(answer.value, question)
+        if value is _NO_ANSWER:
+            # Not a valid answer for this question: treat it as unanswered rather
+            # than recording some other option under the persona's rationale.
+            continue
+        answer.value = value
         if not question.resolves_ask_rationale(instrument):
             answer.rationale = ""
         if not question.resolves_ask_confidence(instrument):
             answer.confidence = None
         answers.append(answer)
         seen.add(answer.question_id)
+    filled: List[str] = []
     for question in instrument.questions:
         if question.required and question.id not in seen:
+            filled.append(question.id)
             answers.append(
                 SurveyAnswer(
                     question_id=question.id,
@@ -272,32 +289,63 @@ def _normalize_answers(raw_answers: Any, instrument: SurveyInstrument) -> List[S
                     ),
                 )
             )
-    return answers
+    return answers, filled
+
+
+_NO_ANSWER = object()
+
+
+def _likert_bounds(question: SurveyQuestion) -> tuple[int, int]:
+    low = 1 if question.min_value is None else int(question.min_value)
+    high = 5 if question.max_value is None else int(question.max_value)
+    return low, high
+
+
+def _match_option(value: Any, question: SurveyQuestion) -> Optional[str]:
+    """Option id for ``value``: exact id, then id or label ignoring case/whitespace."""
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return None
+    if text in question.options:
+        return text
+    folded = text.casefold()
+    for option_id in question.options:
+        if option_id.casefold() == folded:
+            return option_id
+    for detail in question.option_details:
+        if detail.label and detail.label.strip().casefold() == folded:
+            return detail.id
+    return None
 
 
 def _normalize_value(value: Any, question: SurveyQuestion) -> Any:
+    """Coerce a model answer to the question's type, or ``_NO_ANSWER`` if it can't be."""
     if question.type == "likert":
+        if isinstance(value, bool):
+            return _NO_ANSWER
         try:
             number = int(round(float(value)))
         except (TypeError, ValueError):
-            low = question.min_value or 1
-            high = question.max_value or 5
-            number = int(round((low + high) / 2))
-        return max(question.min_value or 1, min(question.max_value or 5, number))
+            return _NO_ANSWER
+        low, high = _likert_bounds(question)
+        return max(low, min(high, number))
     if question.type == "single_choice":
-        text = str(value)
-        return text if text in question.options else question.options[0]
+        matched = _match_option(value, question)
+        return matched if matched is not None else _NO_ANSWER
     if question.type == "multi_choice":
         values = value if isinstance(value, list) else [value]
-        selected = [str(item) for item in values if str(item) in question.options]
-        return selected or [question.options[0]]
+        selected: List[str] = []
+        for item in values:
+            matched = _match_option(item, question)
+            if matched is not None and matched not in selected:
+                selected.append(matched)
+        return selected or _NO_ANSWER
     return str(value or "").strip()
 
 
 def _default_value(question: SurveyQuestion) -> Any:
     if question.type == "likert":
-        low = question.min_value or 1
-        high = question.max_value or 5
+        low, high = _likert_bounds(question)
         return int(round((low + high) / 2))
     if question.type == "single_choice":
         return question.options[0]
