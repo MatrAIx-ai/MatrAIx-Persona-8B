@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, Tuple
 
@@ -113,15 +115,57 @@ def schema_prompt_block(schema: SelfReportSchema) -> str:
     return "\n".join(lines)
 
 
+_LEADING_WORD = re.compile(r"[a-z0-9]+")
+_NUMBER = r"-?\d+(?:\.\d+)?"
+_SCORE_OUT_OF = re.compile(r"\s*({0})\s*(?:/|out of)\s*{0}\s*".format(_NUMBER), re.IGNORECASE)
+
+
+def _leading_word(text: str) -> str:
+    """First word of an answer such as ``"Yes."`` or ``"no, it did not"``."""
+    match = _LEADING_WORD.match(text.strip().lower())
+    return match.group(0) if match else ""
+
+
 def _coerce_bool(value: Any, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
-    text = str(value or "").strip().lower()
+    text = _leading_word(str(value if value is not None else ""))
     if text in {"true", "yes", "1"}:
         return True
     if text in {"false", "no", "0"}:
         return False
     return default
+
+
+def _parse_number(value: Any) -> float | None:
+    """Number from ``8``, ``"8"``, ``"8/10"``, ``"8 out of 10"`` or ``"rating: 8"``."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        pass
+    text = str(value if value is not None else "")
+    scored = _SCORE_OUT_OF.fullmatch(text)
+    if scored:
+        return float(scored.group(1))
+    numbers = re.findall(_NUMBER, text)
+    if len(numbers) == 1:
+        return float(numbers[0])
+    return None
+
+
+def _match_choice(text: str, choices: Tuple[str, ...]) -> str | None:
+    """Choice for an answer like ``"No."`` or ``"partially, it missed my budget"``."""
+    cleaned = text.strip().lower()
+    if cleaned in choices:
+        return cleaned
+    trimmed = cleaned.rstrip(".!?;:")
+    if trimmed in choices:
+        return trimmed
+    # Longest choice the answer starts with, followed by a non-word character.
+    for choice in sorted(choices, key=len, reverse=True):
+        if cleaned.startswith(choice) and not cleaned[len(choice) : len(choice) + 1].isalnum():
+            return choice
+    return None
 
 
 def _coerce_int(
@@ -132,10 +176,10 @@ def _coerce_int(
 ) -> int | None:
     if value in (None, ""):
         return None
-    try:
-        number = int(round(float(value)))
-    except (TypeError, ValueError):
+    parsed = _parse_number(value)
+    if parsed is None or not math.isfinite(parsed):
         return None
+    number = int(round(parsed))
     if minimum is not None:
         number = max(minimum, number)
     if maximum is not None:
@@ -161,12 +205,13 @@ def coerce_self_report_payload(
         elif schema_field.kind == "boolean":
             payload[schema_field.key] = _coerce_bool(value, default=False)
         elif schema_field.kind == "enum":
-            text = str(value or "").strip().lower()
+            text = str(value if value is not None else "").strip().lower()
             choices = tuple(choice.lower() for choice in schema_field.choices)
-            if text in choices:
-                payload[schema_field.key] = text
+            matched = _match_choice(text, choices)
+            if matched is not None:
+                payload[schema_field.key] = matched
             elif (
-                text in {"true", "false", "yes", "no", "1", "0"}
+                _leading_word(text) in {"true", "false", "yes", "no", "1", "0"}
                 and "yes" in choices
                 and "no" in choices
             ):
