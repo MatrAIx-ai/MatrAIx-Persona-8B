@@ -437,6 +437,28 @@ def candidate_row_ids_for_filters(
     return intersect_sorted(parts)
 
 
+def even_quotas(sizes: list[int], total: int) -> list[int]:
+    """Split ``total`` as evenly as possible over cells capped at ``sizes``.
+
+    Remainders go to the earliest cells; a cell that runs out hands its share
+    to the cells that still have room.
+    """
+    quotas = [0] * len(sizes)
+    remaining = min(max(0, int(total)), sum(sizes))
+    open_cells = [i for i, size in enumerate(sizes) if size > 0]
+    while remaining > 0 and open_cells:
+        share, extra = divmod(remaining, len(open_cells))
+        still_open: list[int] = []
+        for rank, i in enumerate(open_cells):
+            take = min(share + (1 if rank < extra else 0), sizes[i] - quotas[i])
+            quotas[i] += take
+            remaining -= take
+            if quotas[i] < sizes[i]:
+                still_open.append(i)
+        open_cells = still_open
+    return quotas
+
+
 def sample_row_ids_with_index(
     index: Persona1MIndex,
     *,
@@ -495,6 +517,24 @@ def sample_row_ids_with_index(
 
         cells = list(product(*field_values))
         rng.shuffle(cells)
+        if per_cell is None:
+            # equalTotal: spread sample_size evenly over the non-empty cells.
+            pools: list[np.ndarray] = []
+            for cell in cells:
+                if len(pools) >= sample_size:
+                    break  # every later cell would get a zero quota
+                parts = [base] if base is not None else []
+                for field, value in zip(bare, cell):
+                    parts.append(index.row_ids_for(field, [value]))
+                cell_ids = intersect_sorted(parts)
+                if cell_ids.size:
+                    pools.append(cell_ids)
+            quotas = even_quotas([int(pool.size) for pool in pools], sample_size)
+            for pool, take in zip(pools, quotas):
+                if take:
+                    pick = rng.choice(pool, size=take, replace=False)
+                    chosen.extend(int(x) for x in np.atleast_1d(pick))
+            return np.asarray(chosen, dtype=np.uint32)
         # Explicit per-cell quota is primary: take N per cell across ALL cells;
         # sample_size is not a clip (mirrors PersonaPoolService contract).
         target = per_cell * len(cells) if per_cell is not None else sample_size
