@@ -2493,10 +2493,11 @@ class PersonaPoolService:
         sample_size = int(
             sample_size_override if sample_size_override is not None else cohort.get("sampleSize") or 1
         )
+        seed = cohort.get("seed")
         sampled = self.sample_pool(
             persona_pool=pool,
             sample_size=sample_size,
-            seed=int(cohort.get("seed") or 42),
+            seed=int(seed if seed is not None else 42),
             sources=list(cohort.get("sources") or []) or None,
             dimension_filters=dict(cohort.get("dimensionFilters") or {}) or None,
         )
@@ -2522,6 +2523,7 @@ class PersonaPoolService:
         }
 
     def _cohort_view(self, payload: dict[str, Any]) -> dict[str, Any]:
+        seed = payload.get("seed")
         return {
             "cohortId": str(payload.get("cohortId") or ""),
             "name": str(payload.get("name") or ""),
@@ -2529,7 +2531,7 @@ class PersonaPoolService:
             "createdAt": payload.get("createdAt"),
             "pool": str(payload.get("pool") or DEFAULT_PERSONA_POOL),
             "kind": str(payload.get("kind") or "recipe"),
-            "seed": int(payload.get("seed") or 42),
+            "seed": int(seed if seed is not None else 42),
             "sampleSize": int(payload.get("sampleSize") or 1),
             "sources": list(payload.get("sources") or []),
             "dimensionFilters": dict(payload.get("dimensionFilters") or {}),

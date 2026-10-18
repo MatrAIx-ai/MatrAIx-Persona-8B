@@ -312,6 +312,45 @@ def test_save_list_and_resolve_cohort(tmp_path, monkeypatch):
     assert resolved["personaIds"] == ["0002"]
 
 
+@pytest.mark.parametrize("kind", ["recipe", "frozen"])
+@pytest.mark.parametrize("seed", [0, 7])
+def test_saved_cohort_preserves_seed(tmp_path, kind, seed):
+    _write_pool(tmp_path)
+    service = PersonaPoolService(repo_root=tmp_path)
+    expected = service.sample_pool(sample_size=1, seed=seed)
+
+    saved = service.save_cohort(
+        cohort_id="saved-seed", kind=kind, seed=seed, sample_size=1
+    )
+    loaded = service.get_cohort("saved-seed")
+    resolved = service.resolve_cohort_launch("saved-seed")
+
+    assert resolved["personaIds"] == expected["personaIds"]
+    assert saved["seed"] == seed
+    assert loaded["seed"] == seed
+    assert resolved["seed"] == seed
+
+
+@pytest.mark.parametrize("seed_data", [{}, {"seed": None}], ids=["missing", "null"])
+def test_saved_cohort_defaults_missing_seed(tmp_path, seed_data):
+    _write_pool(tmp_path)
+    service = PersonaPoolService(repo_root=tmp_path)
+    service.save_cohort(cohort_id="default-seed", sample_size=1)
+    path = tmp_path / "persona/datasets/saved-cohorts/default-seed/cohort.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.pop("seed")
+    payload.update(seed_data)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    expected = service.sample_pool(sample_size=1, seed=42)
+    loaded = service.get_cohort("default-seed")
+    resolved = service.resolve_cohort_launch("default-seed")
+
+    assert loaded["seed"] == 42
+    assert resolved["seed"] == 42
+    assert resolved["personaIds"] == expected["personaIds"]
+
+
 def test_get_persona_detail(tmp_path, monkeypatch):
     repo = tmp_path
     _write_pool(repo)
