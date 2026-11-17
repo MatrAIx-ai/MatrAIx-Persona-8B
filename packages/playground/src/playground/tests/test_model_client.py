@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from playground.model_client import (
@@ -345,3 +347,56 @@ def test_build_json_client_requires_zai_key(monkeypatch):
     monkeypatch.delenv("ZAI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="ZAI_API_KEY"):
         build_json_client("zai/glm-5")
+
+
+class _FakeAnthropicResponse:
+    def __init__(self, payload):
+        self._body = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self._body
+
+
+def _capture_anthropic_body(monkeypatch, model):
+    sent = {}
+
+    def fake_urlopen(request, timeout=None):
+        sent.update(json.loads(request.data.decode("utf-8")))
+        return _FakeAnthropicResponse(
+            {
+                "content": [{"type": "text", "text": '{"ok": true}'}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            }
+        )
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setattr("playground.model_client.urllib.request.urlopen", fake_urlopen)
+    client = build_json_client(model, temperature=0.7)
+    assert client.complete_json("sys", "user") == {"ok": True}
+    return sent
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "anthropic/claude-haiku-5-5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-opus-5-5",
+        "anthropic/claude-fable-5-2",
+    ],
+)
+def test_anthropic_json_client_omits_temperature_for_claude_5(monkeypatch, model):
+    # Claude 5 models answer HTTP 400 "`temperature` is deprecated for this model".
+    assert "temperature" not in _capture_anthropic_body(monkeypatch, model)
+
+
+def test_anthropic_json_client_keeps_temperature_for_claude_4(monkeypatch):
+    sent = _capture_anthropic_body(monkeypatch, "anthropic/claude-haiku-4-5-20251001")
+    assert sent["temperature"] == 0.7

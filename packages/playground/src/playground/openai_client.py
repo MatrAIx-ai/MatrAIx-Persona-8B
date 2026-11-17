@@ -30,7 +30,9 @@ def openai_model_supports_custom_temperature(model: str) -> bool:
 
     GPT-5 family models currently only allow the API default (1); sending
     ``0.1`` / ``0.7`` returns HTTP 400. Claude Opus 4.7+ (and Bedrock Opus)
-    similarly reject an explicit non-default temperature.
+    similarly reject an explicit non-default temperature, as does every
+    Claude 5 model (``claude-haiku-5-5``, ``claude-sonnet-5``,
+    ``claude-opus-5-5``, ...): "`temperature` is deprecated for this model".
     """
     lowered = (model or "").strip().lower()
     bare = lowered.rsplit("/", 1)[-1] if "/" in lowered else lowered
@@ -38,6 +40,9 @@ def openai_model_supports_custom_temperature(model: str) -> bool:
         return False
     opus = re.search(r"opus-4-(\d+)", lowered)
     if opus is not None and int(opus.group(1)) >= 7:
+        return False
+    claude = re.search(r"claude-[a-z]+-(\d+)", lowered)
+    if claude is not None and int(claude.group(1)) >= 5:
         return False
     if "bedrock" in lowered and "opus" in lowered:
         return False

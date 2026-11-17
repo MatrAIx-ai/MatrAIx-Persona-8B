@@ -93,6 +93,18 @@ def test_openai_model_supports_custom_temperature_opus_rules():
     assert not openai_model_supports_custom_temperature("claude-opus-4-7")
 
 
+def test_openai_model_supports_custom_temperature_claude_5_rules():
+    from playground.openai_client import openai_model_supports_custom_temperature
+
+    assert not openai_model_supports_custom_temperature("anthropic/claude-haiku-5-5")
+    assert not openai_model_supports_custom_temperature("claude-sonnet-5")
+    assert not openai_model_supports_custom_temperature("anthropic/claude-opus-5-5")
+    assert not openai_model_supports_custom_temperature("claude-fable-5-2")
+    assert not openai_model_supports_custom_temperature("us.anthropic.claude-sonnet-5-5-v1:0")
+    assert openai_model_supports_custom_temperature("anthropic/claude-haiku-4-5-20251001")
+    assert openai_model_supports_custom_temperature("claude-3-5-sonnet-20241022")
+
+
 def test_complete_json_raises_on_unparseable():
     client = OpenAIChatClient(model="gpt-4o-mini", client=_FakeOpenAI("not json at all"))
     with pytest.raises(ValueError):
